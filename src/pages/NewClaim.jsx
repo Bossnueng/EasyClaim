@@ -1,39 +1,200 @@
+import {
+  Form,
+  Input,
+  DatePicker,
+  AutoComplete,
+  InputNumber,
+  Upload,
+  Button,
+  Card
+} from "antd";
+import {
+  UploadOutlined
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+
+const { TextArea } = Input;
+
+const productOptions = [
+  { value: "Pepsi 550 ml" },
+  { value: "Pepsi Max 550 ml" },
+  { value: "Mirinda Orange" },
+  { value: "7UP" },
+  { value: "Lipton Lemon Tea" },
+];
+
 const NewClaim = () => {
+
   return (
-    <div>
-       <header className="bg-surface shadow-sm sticky top-0 z-40 flex items-center gap-4 w-full px-4 h-16 border-b border-outline-variant">
-                <span className="material-symbols-outlined cursor-pointer" onClick={() => setPage("dashboard")}>arrow_back</span>
-                <h1 className="text-xl font-bold text-primary">เคลมใหม่</h1>
-            </header>
-      <main className="p-4 space-y-6">
-        <div>
-          <h2 className="text-xl font-bold mb-1">แบบฟอร์มส่งเคลมสินค้า</h2>
-          <p className="text-sm text-on-surface-variant">กรุณาระบุรายละเอียดสินค้าและอาการเสียให้ครบถ้วน</p>
-        </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-bold mb-2">หมายเลขคำสั่งซื้อ</label>
-              <input type="text" className="w-full p-3 border border-outline-variant rounded-xl" placeholder="เช่น ORD-12345"/>
-            </div>
-          
-            <div>
-              <label className="block text-sm font-bold mb-2">ชื่อสินค้า</label>
-              <input type="text" className="w-full p-3 border border-outline-variant rounded-xl" placeholder="ระบุชื่อรุ่นสินค้า"/>
-            </div>
+    <div className="p-6">
 
-            <div>
-              <label className="block text-sm font-bold mb-2 text-primary">รูปภาพประกอบอาการเสีย</label>
-              <div className="border-2 border-dashed border-outline-variant p-10 rounded-2xl flex flex-col items-center justify-center bg-surface-container-low">
-                <span className="material-symbols-outlined text-4xl text-primary mb-2">cloud_upload</span>
-                <p className="text-sm text-on-surface-variant">แตะเพื่ออัปโหลดรูปภาพ</p>
+      <Card>
+
+        <h1 className="text-2xl font-bold mb-2">
+          เคลมสินค้า
+        </h1>
+
+        <p className="text-gray-500 mb-6">
+          กรุณากรอกรายละเอียดสินค้าให้ครบถ้วน
+        </p>
+
+        <Form
+          layout="vertical"
+        >
+
+          {/* วันที่ */}
+
+          <Form.Item label="วันที่">
+
+            <DatePicker
+
+              className="w-full"
+
+              defaultValue={dayjs()}
+
+              disabled
+
+            />
+
+          </Form.Item>
+
+          {/* ชื่อสินค้า */}
+
+          <Form.Item label="ชื่อสินค้า">
+
+            <AutoComplete
+
+              options={productOptions}
+
+              placeholder="ค้นหาชื่อสินค้า"
+
+              filterOption={(inputValue, option) =>
+                option.value
+                  .toUpperCase()
+                  .includes(inputValue.toUpperCase())
+              }
+
+            />
+
+          </Form.Item>
+
+          {/* Lot */}
+
+          <Form.Item label="หมายเลข Lot">
+
+            <Input
+
+              placeholder="เช่น L24080015"
+
+            />
+
+          </Form.Item>
+
+          {/* วันที่ผลิต */}
+
+          <Form.Item label="วันที่ผลิต">
+
+            <DatePicker
+
+              className="w-full"
+
+            />
+
+          </Form.Item>
+
+          {/* วันหมดอายุ */}
+
+          <Form.Item label="วันที่หมดอายุ">
+
+            <DatePicker
+
+              className="w-full"
+
+            />
+
+          </Form.Item>
+
+          {/* จำนวน */}
+
+          <Form.Item label="จำนวน">
+
+            <InputNumber
+
+              min={1}
+
+              addonAfter="ขวด"
+
+              className="w-full"
+
+            />
+
+          </Form.Item>
+
+          {/* รายละเอียด */}
+
+          <Form.Item label="รายละเอียด">
+
+            <TextArea
+
+              rows={5}
+
+              placeholder="กรอกรายละเอียดอาการเสีย"
+
+            />
+
+          </Form.Item>
+
+          {/* Upload */}
+
+          <Form.Item label="รูปภาพประกอบ">
+
+            <Upload
+
+              listType="picture-card"
+
+              beforeUpload={() => false}
+
+            >
+
+              <div>
+
+                <UploadOutlined />
+
+                <div className="mt-2">
+
+                  อัปโหลด
+
+                </div>
+
               </div>
-            </div>
-            <button className="w-full bg-primary text-white font-bold py-4 rounded-xl shadow-lg">ส่งข้อมูลการเคลม</button>
-          </div>
-      </main>
-    </div>
-  )
-}
 
-export default NewClaim
+            </Upload>
+
+          </Form.Item>
+
+          <Button
+
+            type="primary"
+
+            size="large"
+
+            block
+
+          >
+
+            ส่งข้อมูลการเคลม
+
+          </Button>
+
+        </Form>
+
+      </Card>
+
+    </div>
+
+  );
+
+};
+
+export default NewClaim;

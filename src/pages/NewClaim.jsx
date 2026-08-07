@@ -19,6 +19,8 @@ import {
 
 import dayjs from "dayjs";
 
+import { useNavigate } from "react-router-dom";
+
 const { TextArea } = Input;
 
 const productOptions = [
@@ -54,9 +56,41 @@ const claimType = [
 
 const NewClaim = () => {
 
-  const onFinish = (values) => {
-    console.log(values);
-  };
+  const navigate = useNavigate();
+
+
+  const onFinish = (values)=>{
+
+    const claimData = {
+
+        claimId:
+          "CLM-" + Date.now(),
+
+        createdDate:
+          dayjs().format("DD/MM/YYYY"),
+
+        reporter:
+          "Phonnapha Kaenmueang",
+
+        ...values,
+
+        status:"Processing"
+
+    };
+
+
+    localStorage.setItem(
+      "claimData",
+      JSON.stringify(claimData)
+    );
+
+
+    navigate(
+      `/claim/processing/${claimData.claimId}`
+    );
+
+ };
+  
 
   return (
 

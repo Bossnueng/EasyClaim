@@ -11,7 +11,7 @@ const MenuList = () => {
         </Menu.Item>
 
         <Menu.Item key="newclaim" icon = {<FileAddOutlined/>}>
-          <NavLink to="/claim">New Claim</NavLink>
+          <NavLink to="/claim/new">New Claim</NavLink>
         </Menu.Item>
 
         <Menu.Item key="history" icon = {<HistoryOutlined/>}>

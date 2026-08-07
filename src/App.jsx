@@ -10,13 +10,20 @@ import AppRouter from "./routes/AppRouter";
 const{Content} = Layout;
 
 function App() {
+
+  const [collapsed, setCollapsed] = useState(true);
   
    return (
     <>
     <Layout style={{ minHeight: "100vh" }}>
-      <Sidebar />
+      <Sidebar 
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}/>
       <Layout>
-        <HeaderBar />
+        <HeaderBar 
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+        />
         <Content style={{ padding: "24px", background: "#f5f5f5"}}>
           <AppRouter />
         </Content>

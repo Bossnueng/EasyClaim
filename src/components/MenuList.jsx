@@ -7,7 +7,7 @@ const MenuList = () => {
   return (
     <Menu theme="dark" className="menu-bar">
         <Menu.Item key="home" icon = {<HomeOutlined/>}>
-          <NavLink to="/dashboard">Home</NavLink>
+          <NavLink to="/">Home</NavLink>
         </Menu.Item>
 
         <Menu.Item key="newclaim" icon = {<FileAddOutlined/>}>

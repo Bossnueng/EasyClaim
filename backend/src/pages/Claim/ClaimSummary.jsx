@@ -1,33 +1,9 @@
 import {Card,Tag,Descriptions,Button,Space} from "antd";
-import { useNavigate, useParams } from "react-router-dom";
+import {useNavigate} from "react-router-dom";
 
 const ClaimSummary=()=>{
     const navigate=useNavigate();
-    const { claimId } = useParams();
-
-    const claims = JSON.parse(localStorage.getItem("claims")) || [];
-
-    const data = claims.find(
-    (item) => item.claimId === claimId
-    );
-
-    if (!data) {
-    return (
-        <div className="p-6">
-        <Card>
-            <h2>ไม่พบข้อมูลการเคลม</h2>
-
-            <Button
-            type="primary"
-            onClick={() => navigate("/claim")}
-            >
-            กลับ
-            </Button>
-        </Card>
-        </div>
-    );
-    }
-    
+    const data = JSON.parse(localStorage.getItem("claimData"));
 
     return (
         <div className="p-6 bg-gray-100 min-h-screen">
@@ -61,12 +37,7 @@ const ClaimSummary=()=>{
                     </Card>
 
                     <div className="flex justify-end mt-6">
-                        <Button
-                            type="primary"
-                            onClick={() => navigate("/history")}
-                        >
-                            กลับหน้ารายการ Claim
-                        </Button>
+                        <Button type="primary" onClick={()=>navigate("/claim/new")}>กลับหน้ารายการ Claim</Button>
                     </div>
                 </Space>
             </Card>

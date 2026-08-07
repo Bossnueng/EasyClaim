@@ -36,14 +36,10 @@ const claimType = [
   },
 ];
 
-
 const NewClaim = () => {
   const navigate = useNavigate();
-  
-
   const onFinish = (values)=>{
-    
-      const claimData = {
+    const claimData = {
         claimId:
           "CLM-" + Date.now(),
         createdDate:
@@ -52,28 +48,14 @@ const NewClaim = () => {
           "Phonnapha Kaenmueang",
         ...values,
         status:"Processing"
-    };       
-      
-     
-
-      const oldClaims =
-        JSON.parse(
-        localStorage.getItem("claims")
-        ) || [];
-
-
-    oldClaims.push(claimData);
-
-
+    };    
     localStorage.setItem(
-      "claims",
-      JSON.stringify(oldClaims)
+      "claimData",
+      JSON.stringify(claimData)
     );
-
     navigate(
       `/claim/processing/${claimData.claimId}`
     );
-
   };
   
 

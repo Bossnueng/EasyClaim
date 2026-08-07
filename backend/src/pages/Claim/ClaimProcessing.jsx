@@ -4,16 +4,15 @@ import { useNavigate, useParams} from "react-router-dom";
 
 const ClaimProcessing =()=>{
     const navigate = useNavigate();
-    const {claimId}=useParams();
+    const {id}=useParams();
 
     useEffect(()=>{
         const timer=setTimeout(()=>{
-            navigate(`/history/${claimId}`);
+            navigate(`/claim/summary/${id}`);
         },3000);
 
         return ()=>clearTimeout(timer);
     },[]);
-
 
     return(
         <div className="min-h-screen bg-gray-100 flex items-center justify-center">

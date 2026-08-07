@@ -6,9 +6,6 @@ import History from "../pages/History";
 import Chatbox from "../pages/Chatbox";
 import ClaimProcessing from "../pages/Claim/ClaimProcessing";
 import ClaimSummary from "../pages/Claim/ClaimSummary";
-import ClaimList from "../pages/Claim/ClaimList";
-
-
 
 function AppRouter() {
   return (
@@ -24,21 +21,19 @@ function AppRouter() {
         element={<NewClaim/>}
       />
 
-      
-
         <Route 
-        path="/claim/processing/:claimId" 
+        path="/claim/processing/:id" 
         element={<ClaimProcessing />}
         />
 
         <Route 
-        path="/history/:claimId" 
+        path="/claim/summary/:id" 
         element={<ClaimSummary />}
         />
 
       <Route
         path="/history"
-        element={<ClaimList/>}
+        element={<History/>}
       />
 
       <Route

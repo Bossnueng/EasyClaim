@@ -1,35 +1,11 @@
 import {Menu} from "antd"
 import {HomeOutlined, FileAddOutlined, HistoryOutlined, WechatOutlined, BarsOutlined} from "@ant-design/icons"
-import { NavLink, useLocation } from "react-router-dom";
-
+import { NavLink } from "react-router-dom";
 
 
 const MenuList = () => {
-
-  const location = useLocation();
-  
-  const getSelectedKey = () => {
-  if (location.pathname.startsWith("/history")) {
-    return "history";
-  }
-
-  if (location.pathname.startsWith("/claim")) {
-    return "newclaim";
-  }
-
-  if (location.pathname.startsWith("/chat")) {
-    return "chat";
-  }
-
-  return "home";
-};
-
   return (
-    <Menu theme="dark"
-      mode="inline"
-      selectedKeys={[getSelectedKey()]}
-      className="menu-bar">
-
+    <Menu theme="dark" className="menu-bar">
         <Menu.Item key="home" icon = {<HomeOutlined/>}>
           <NavLink to="/">Home</NavLink>
         </Menu.Item>
@@ -39,14 +15,14 @@ const MenuList = () => {
         </Menu.Item>
 
         <Menu.Item key="history" icon = {<HistoryOutlined/>}>
-          <NavLink to="/history">Claim List</NavLink>
+          <NavLink to="/history">History</NavLink>
         </Menu.Item>
        
         <Menu.Item key="chat" icon = {<WechatOutlined/>}>
           <NavLink to="/chat">Chat</NavLink>
         </Menu.Item>
     </Menu>
-  );
-};
+  )
+}
 
 export default MenuList

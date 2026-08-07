@@ -23,103 +23,121 @@ const Home = () => {
     switch (status) {
       case "รอการตรวจสอบ":
       case "Processing":
-        return <Tag color="processing">Processing</Tag>;
+        return <Tag color="processing" style={{ margin: 0 }}>Processing</Tag>;
       case "อนุมัติ":
       case "Approved":
-        return <Tag color="success">Approved</Tag>;
+        return <Tag color="success" style={{ margin: 0 }}>Approved</Tag>;
       case "ปฏิเสธ":
       case "Rejected":
-        return <Tag color="error">Rejected</Tag>;
+        return <Tag color="error" style={{ margin: 0 }}>Rejected</Tag>;
       default:
-        return <Tag color="blue">{status || "Processing"}</Tag>;
+        return <Tag color="blue" style={{ margin: 0 }}>{status || "Processing"}</Tag>;
     }
   };
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen flex flex-col gap-6">
-      {/* 1. Header Greeting */}
-      <div>
-        <h1 className="text-3xl font-bold mb-1 text-slate-800">
-          สวัสดี, คุณสมชาย
-        </h1>
-        <p className="text-gray-500 text-sm">
-          วันนี้คุณต้องการความช่วยเหลือเกี่ยวกับรายการไหนบ้าง?
-        </p>
-      </div>
-
-      {/* 2. Banner แจ้งเคลมใหม่ (แก้กล่องล้นเรียบร้อย) */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-6 md:p-8 rounded-2xl shadow-sm text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="space-y-1">
-          <h3 className="text-xl font-bold text-white">
-            แจ้งเคลมสินค้าใหม่ได้ทันที
-          </h3>
-          <p className="text-sm opacity-90 text-emerald-50">
-            ใช้เวลาเพียงไม่กี่นาที เพื่อเริ่มต้นกระบวนการเคลมสินค้าของคุณ
+    <div 
+      className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6"
+      style={{ boxSizing: "border-box", width: "100%" }}
+    >
+      {/* Container หลัก: ขยายเต็มพื้นที่อย่างสมดุล */}
+      <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
+        
+        {/* 1. Header Greeting */}
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
+            สวัสดี, คุณสมชาย
+          </h1>
+          <p className="text-gray-500 text-sm m-0">
+            วันนี้คุณต้องการความช่วยเหลือเกี่ยวกับรายการไหนบ้าง?
           </p>
         </div>
-        <Button
-          type="default"
-          size="large"
-          icon={<PlusCircleOutlined />}
-          onClick={() => navigate("/claim/new")}
-          className="bg-white text-emerald-800 font-bold border-none hover:bg-emerald-50 rounded-full flex items-center shadow-sm shrink-0"
-        >
-          แจ้งเคลมสินค้าใหม่
-        </Button>
-      </div>
 
-      {/* 3. รายการเคลมล่าสุด */}
-      <section>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-slate-800">รายการเคลมล่าสุด</h2>
+        {/* 2. Banner แจ้งเคลมใหม่ (แก้ระยะห่าง Margin/Padding ป้องกันการติดขอบ) */}
+        <div 
+          style={{
+            boxSizing: "border-box",
+            padding: "24px 28px", // กำหนด ระยะห่างขอบใน (Padding) ให้ชัดเจน
+            overflow: "hidden",
+          }}
+          className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl shadow-sm text-white flex flex-col sm:flex-row justify-between items-center gap-4 w-full"
+        >
+          <div className="flex flex-col gap-1 text-center sm:text-left">
+            <h3 className="text-lg sm:text-xl font-bold text-white m-0">
+              แจ้งเคลมสินค้าใหม่ได้ทันที
+            </h3>
+            <p className="text-sm opacity-90 text-emerald-50 m-0">
+              ใช้เวลาเพียงไม่กี่นาที เพื่อเริ่มต้นกระบวนการเคลมสินค้าของคุณ
+            </p>
+          </div>
           <Button
-            type="link"
-            onClick={() => navigate("/history")}
-            className="text-emerald-700 font-semibold p-0 flex items-center gap-1 hover:text-emerald-800"
+            type="default"
+            size="large"
+            icon={<PlusCircleOutlined />}
+            onClick={() => navigate("/claim/new")}
+            className="bg-white text-emerald-800 font-bold border-none hover:bg-emerald-50 rounded-full flex items-center justify-center shadow-sm shrink-0 h-11 px-6"
           >
-            ดูทั้งหมด <RightOutlined style={{ fontSize: "12px" }} />
+            แจ้งเคลมสินค้าใหม่
           </Button>
         </div>
 
-        {/* Card List ธีมเดียวกับ ClaimList */}
-        {latestClaims.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {latestClaims.map((claim) => (
-              <Card
-                key={claim.claimId}
-                hoverable
-                onClick={() => navigate(`/claim/summary/${claim.claimId}`)}
-                className="rounded-xl shadow-sm border-gray-200"
-                bodyStyle={{ padding: "16px 20px" }}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-bold text-base text-slate-800 mb-1">
+        {/* 3. รายการเคลมล่าสุด */}
+        <section className="flex flex-col gap-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">
+              รายการเคลมล่าสุด
+            </h2>
+            <Button
+              type="link"
+              onClick={() => navigate("/history")}
+              className="text-emerald-700 font-semibold p-0 flex items-center gap-1 hover:text-emerald-800"
+            >
+              ดูทั้งหมด <RightOutlined style={{ fontSize: "11px" }} />
+            </Button>
+          </div>
+
+          {/* Card List ธีมเดียวกับ ClaimList */}
+          {latestClaims.length > 0 ? (
+            <div className="flex flex-col gap-3.5 w-full">
+              {latestClaims.map((claim) => (
+                <div
+                  key={claim.claimId}
+                  onClick={() => navigate(`/history/${claim.claimId}`)}
+                  style={{
+                    boxSizing: "border-box",
+                    padding: "20px", // ระยะห่างขอบในการ์ดรายการ
+                    overflow: "hidden",
+                  }}
+                  className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500 transition-all cursor-pointer flex justify-between items-center gap-4 w-full"
+                >
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <h4 className="font-bold text-base text-slate-800 m-0 truncate">
                       {claim.productName}
                     </h4>
-                    <p className="text-xs text-gray-400 font-mono">
+                    <p className="text-xs text-gray-400 font-mono m-0 truncate">
                       ID: {claim.claimId}
                     </p>
                   </div>
 
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
                     {getStatusTag(claim.status)}
                     <span className="text-xs text-gray-400">
                       {claim.createdDate}
                     </span>
                   </div>
                 </div>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          /* Empty State กรณีไม่มีข้อมูล */
-          <Card className="rounded-xl text-center py-8 text-gray-400 border-dashed border-gray-300">
-            <InboxOutlined className="text-4xl text-gray-300 mb-2" />
-            <p className="m-0 text-sm">ยังไม่มีรายการเคลมสินค้า</p>
-          </Card>
-        )}
-      </section>
+              ))}
+            </div>
+          ) : (
+            /* Empty State กรณีไม่มีข้อมูล */
+            <Card className="rounded-2xl text-center py-10 text-gray-400 border-dashed border-gray-300">
+              <InboxOutlined className="text-4xl text-gray-300 mb-2" />
+              <p className="m-0 text-sm">ยังไม่มีรายการเคลมสินค้า</p>
+            </Card>
+          )}
+        </section>
+
+      </div>
     </div>
   );
 };

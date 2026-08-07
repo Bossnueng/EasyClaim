@@ -21,12 +21,9 @@ function Sidebar({ collapsed, setCollapsed }) {
           setCollapsed(true);
         }
       }}
-
       className="sidebar"
     >
       
-       <Logo />
-
       <MenuList />
     </Sider>
   );

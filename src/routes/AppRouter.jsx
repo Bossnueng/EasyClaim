@@ -11,22 +11,22 @@ function AppRouter() {
 
       <Route
         path="/"
-        element={<Home />}
+        element={<Home/>}
       />
 
       <Route
         path="/claim"
-        element={<NewClaim />}
+        element={<NewClaim/>}
       />
 
       <Route
         path="/history"
-        element={<History />}
+        element={<History/>}
       />
 
       <Route
         path="/chat"
-        element={<Chatbox />}
+        element={<Chatbox/>}
       />
 
     </Routes>

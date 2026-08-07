@@ -29,10 +29,15 @@ function HeaderBar({ collapsed, setCollapsed }) {
         }
         onClick={() => setCollapsed(!collapsed)}
       />
+      <div className="flex items-center gap-3">
+        
+        <Logo />
 
-      <h2 style={{ margin: 0 }}>
-        Dashboard
-      </h2>
+        <h2 className="text-xl m-2">
+          <span className="font-extrabold">EASY CLAIM</span>
+          <span className="text-gray-500 font-normal text-base ml-1"> by TBL</span>
+        </h2>
+      </div>      
 
       <Avatar icon={<UserOutlined />} />
     </Header>

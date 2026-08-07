@@ -6,187 +6,330 @@ import {
   InputNumber,
   Upload,
   Button,
-  Card
+  Card,
+  Row,
+  Col,
+  Select,
+  Space
 } from "antd";
+
 import {
-  UploadOutlined
+  UploadOutlined,
 } from "@ant-design/icons";
+
 import dayjs from "dayjs";
 
 const { TextArea } = Input;
 
 const productOptions = [
-  { value: "Pepsi 550 ml" },
-  { value: "Pepsi Max 550 ml" },
-  { value: "Mirinda Orange" },
-  { value: "7UP" },
-  { value: "Lipton Lemon Tea" },
+  { value: "Est" },
+  { value: "Beer" },
+  { value: "100Plus" },
+  { value: "Oishi Corn" },
+  { value: "Oishi Grape" },
+];
+
+const claimType = [
+  {
+    value: "Packaging",
+    label: "บรรจุภัณฑ์เสียหาย",
+  },
+  {
+    value: "Leak",
+    label: "สินค้ารั่ว",
+  },
+  {
+    value: "Expired",
+    label: "หมดอายุ",
+  },
+  {
+    value: "Quality",
+    label: "คุณภาพสินค้า",
+  },
+  {
+    value: "Other",
+    label: "อื่น ๆ",
+  },
 ];
 
 const NewClaim = () => {
 
+  const onFinish = (values) => {
+    console.log(values);
+  };
+
   return (
 
-    <div className="p-6">
+    <div className="p-6 bg-gray-100 min-h-screen">
 
       <Card>
 
-        <h1 className="text-2xl font-bold mb-2">
-          เคลมสินค้า
+        <h1 className="text-3xl font-bold mb-1">
+          New Claim
         </h1>
 
-        <p className="text-gray-500 mb-6">
-          กรุณากรอกรายละเอียดสินค้าให้ครบถ้วน
+        <p className="text-gray-500 mb-8">
+          กรุณากรอกข้อมูลการเคลมสินค้าให้ครบถ้วน
         </p>
 
         <Form
           layout="vertical"
+          onFinish={onFinish}
         >
 
-          {/* วันที่ */}
+          <Space
+            direction="vertical"
+            size={24}
+            className="w-full"
+          >
+                {/* ------------------------- */}
+                {/* ข้อมูลผู้แจ้ง */}
+                {/* ------------------------- */}
 
-          <Form.Item label="วันที่">
+                <Card
+                  title="ข้อมูลผู้แจ้ง"
+                >
 
-            <DatePicker
+                  <Row gutter={16}>
 
-              className="w-full"
+                    <Col xs={24} md={12}>
+                      <Form.Item label="วันที่แจ้ง">
 
-              defaultValue={dayjs()}
+                        <DatePicker
+                          className="w-full"
+                          defaultValue={dayjs()}
+                          disabled
+                        />
 
-              disabled
+                      </Form.Item>
+                    </Col>
 
-            />
+                    <Col xs={24} md={12}>
+                      <Form.Item label="ผู้แจ้ง">
 
-          </Form.Item>
+                        <Input
+                          value="Phonnapha Kaenmueang"
+                          disabled
+                        />
 
-          {/* ชื่อสินค้า */}
+                      </Form.Item>
+                    </Col>
 
-          <Form.Item label="ชื่อสินค้า">
+                  </Row>
 
-            <AutoComplete
+                </Card>
 
-              options={productOptions}
+                {/* ------------------------- */}
+                {/* ข้อมูลสินค้า */}
+                {/* ------------------------- */}
 
-              placeholder="ค้นหาชื่อสินค้า"
+                <Card
+                  title="ข้อมูลสินค้า"
+                >
 
-              filterOption={(inputValue, option) =>
-                option.value
-                  .toUpperCase()
-                  .includes(inputValue.toUpperCase())
-              }
+                  <Row gutter={16}>
 
-            />
+                    <Col xs={24} md={12}>
 
-          </Form.Item>
+                      <Form.Item
+                        label="ชื่อสินค้า"
+                        name="productName"
+                        rules={[
+                          {
+                            required: true,
+                            message: "กรุณาเลือกสินค้า",
+                          },
+                        ]}
+                      >
 
-          {/* Lot */}
+                        <AutoComplete
+                          options={productOptions}
+                          placeholder="ค้นหาชื่อสินค้า"
+                          filterOption={(input, option) =>
+                            option.value
+                              .toLowerCase()
+                              .includes(input.toLowerCase())
+                          }
+                        />
 
-          <Form.Item label="หมายเลข Lot">
+                      </Form.Item>
 
-            <Input
+                    </Col>
 
-              placeholder="เช่น L24080015"
+                    <Col xs={24} md={12}>
 
-            />
+                      <Form.Item
+                        label="Lot Number"
+                        name="lot"
+                      >
 
-          </Form.Item>
+                        <Input
+                          placeholder="เช่น LOT240801"
+                        />
 
-          {/* วันที่ผลิต */}
+                      </Form.Item>
 
-          <Form.Item label="วันที่ผลิต">
+                    </Col>
 
-            <DatePicker
+                  </Row>
 
-              className="w-full"
+                  <Row gutter={16}>
 
-            />
+                    <Col xs={24} md={12}>
 
-          </Form.Item>
+                      <Form.Item
+                        label="วันที่ผลิต"
+                        name="mfg"
+                      >
 
-          {/* วันหมดอายุ */}
+                        <DatePicker className="w-full"/>
 
-          <Form.Item label="วันที่หมดอายุ">
+                      </Form.Item>
 
-            <DatePicker
+                    </Col>
 
-              className="w-full"
+                    <Col xs={24} md={12}>
 
-            />
+                      <Form.Item
+                        label="วันหมดอายุ"
+                        name="exp"
+                      >
 
-          </Form.Item>
+                        <DatePicker className="w-full"/>
 
-          {/* จำนวน */}
+                      </Form.Item>
 
-          <Form.Item label="จำนวน">
+                    </Col>
 
-            <InputNumber
+                  </Row>
 
-              min={1}
+                  <Row gutter={16}>
 
-              addonAfter="ขวด"
+                    <Col xs={24} md={12}>
 
-              className="w-full"
+                      <Form.Item
+                        label="จำนวน"
+                        name="qty"
+                        getValueFromEvent={(e) =>
+                          e.target.value.replace(/[^0-9]/g, "")
+                        }
+                        rules={[
+                          {
+                            required: true,
+                            message: "กรุณาระบุจำนวน",
+                          },
+                          {
+                            pattern: /^[1-9][0-9]*$/,
+                            message: "กรุณากรอกจำนวนเต็มที่มากกว่า 0 เท่านั้น",
+                          },
+                        ]}
+                      >
+                        <Input
+                          placeholder="ระบุจำนวน"
+                          maxLength={6}
+                          addonAfter="ขวด"
+                        />
+                      </Form.Item>
 
-            />
+                    </Col>
 
-          </Form.Item>
+                  </Row>
 
-          {/* รายละเอียด */}
+                </Card>
 
-          <Form.Item label="รายละเอียด">
+                {/* ------------------------- */}
+                {/* รายละเอียดการเคลม */}
+                {/* ------------------------- */}
 
-            <TextArea
+                <Card
+                  title="รายละเอียดการเคลม"
+                >
+                  
+                  {/**
+                  <Form.Item
+                    label="ประเภทการเคลม"
+                    name="claimType"
+                  >
 
-              rows={5}
+                    <Select
+                      options={claimType}
+                      placeholder="เลือกประเภทการเคลม"
+                    />
 
-              placeholder="กรอกรายละเอียดอาการเสีย"
+                  </Form.Item>
+                  * 
+                  */}
 
-            />
 
-          </Form.Item>
+                  <Form.Item
+                    label="รายละเอียด"
+                    name="detail"
+                  >
 
-          {/* Upload */}
+                    <TextArea
+                      rows={6}
+                      placeholder="อธิบายอาการเสียหรือรายละเอียดเพิ่มเติม"
+                    />
 
-          <Form.Item label="รูปภาพประกอบ">
+                  </Form.Item>
 
-            <Upload
+                </Card>
 
-              listType="picture-card"
+                {/* ------------------------- */}
+                {/* รูปภาพ */}
+                {/* ------------------------- */}
 
-              beforeUpload={() => false}
+                <Card
+                  title="รูปภาพประกอบ"
+                >
 
-            >
+                  <Upload
+                    listType="picture-card"
+                    beforeUpload={() => false}
+                    multiple
+                  >
 
-              <div>
+                    <div>
 
-                <UploadOutlined />
+                      <UploadOutlined
+                        style={{
+                          fontSize: 24,
+                        }}
+                      />
 
-                <div className="mt-2">
+                      <div className="mt-2">
+                        Upload
+                      </div>
 
-                  อัปโหลด
+                    </div>
+
+                  </Upload>
+
+                </Card>
+
+                {/* ------------------------- */}
+                {/* Button */}
+                {/* ------------------------- */}
+
+                <div className="flex justify-end gap-3">
+
+                  <Button
+                    size="large"
+                  >
+                    บันทึกร่าง
+                  </Button>
+
+                  <Button
+                    type="primary"
+                    size="large"
+                    htmlType="submit"
+                  >
+                    ส่งข้อมูลการเคลม
+                  </Button>
 
                 </div>
-
-              </div>
-
-            </Upload>
-
-          </Form.Item>
-
-          <Button
-
-            type="primary"
-
-            size="large"
-
-            block
-
-          >
-
-            ส่งข้อมูลการเคลม
-
-          </Button>
-
+          </Space>
+          
         </Form>
 
       </Card>

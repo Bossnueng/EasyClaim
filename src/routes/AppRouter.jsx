@@ -20,9 +20,13 @@ import CustomerHome from "../pages/customer/CustomerHome";
 import CustomerNewClaim from "../pages/customer/CustomerNewClaim";
 import CustomerClaimDatail from "../pages/customer/CustomerClaimDatail";
 
+import Login from "../pages/auth/login";
+
 function AppRouter() {
   return (
     <Routes>
+
+      <Route path="/login" element={<Login />} />
 
       <Route
         path="/"

@@ -8,7 +8,7 @@ const ClaimProcessing =()=>{
 
     useEffect(()=>{
         const timer=setTimeout(()=>{
-            navigate(`/history/${claimId}`);
+            navigate(`/customer/detail-claim/${claimId}`);
         },3000);
 
         return ()=>clearTimeout(timer);

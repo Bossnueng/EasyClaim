@@ -59,7 +59,7 @@ const StaffHome = () => {
                 </h2>
                 <Button
                   type="link"
-                  onClick={() => navigate("/history")}
+                  onClick={() => navigate("/staff/list-claim")}
                   className="text-emerald-700 font-semibold p-0 flex items-center gap-1 hover:text-emerald-800"
                 >
                   ดูทั้งหมด <RightOutlined style={{ fontSize: "11px" }} />

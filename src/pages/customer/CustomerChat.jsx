@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect,} from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Select, Button } from "antd";
 import {
   SendOutlined,
@@ -14,6 +14,9 @@ import {
 
 const CustomerChat = () => {
   const { claimId } = useParams();
+  const navigate = useNavigate();
+  //const data = claims.find((item) => item.claimId === claimId);
+  //onClick={() => navigate(`/customer/chat/${data.claimId}`)}
 
   const [inputText, setInputText] = useState("");
   const [selectedClaim, setSelectedClaim] = useState(null);
@@ -90,6 +93,10 @@ const CustomerChat = () => {
         }
         return prev;
       });
+    } else {
+      // หากไม่มี claimId ใน URL ให้รีเซ็ตกลับเป็นหน้าเลือกเคส
+      setIsClaimSelected(false);
+      setSelectedClaim(null);
     }
   }, [claimId]);
 
@@ -104,39 +111,18 @@ const CustomerChat = () => {
     }
   }, [selectedClaim, isClaimSelected, chatHistory]);
 
-  const handleSelectClaim = (value) => {
-    setSelectedClaim(value);
-  };
-
-  const handleConfirmClaim = () => {
-    if (!selectedClaim) return;
-
-    // ถ้าเป็นเคสใหม่ที่ยังไม่เคยเปิดคุย ให้สร้างชุดข้อความเริ่มต้นไว้ก่อน
-    if (!chatHistory[selectedClaim]) {
-      setChatHistory((prev) => ({
-        ...prev,
-        [selectedClaim]: [
-          {
-            id: Date.now(),
-            senderName: "ระบบอัตโนมัติ",
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            text: `เปิดช่องทางติดต่อสำหรับหมายเลขการเคลม: ${selectedClaim}`,
-            isMe: false,
-            isSystem: true,
-          },
-          {
-            id: Date.now() + 1,
-            senderName: "สมศักดิ์ (คลังสินค้า)",
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            text: `สวัสดีครับ ฝ่ายบริการคลังสินค้าได้รับเรื่องเคลมหมายเลข ${selectedClaim} แล้ว มีอะไรให้ช่วยเพิ่มเติมไหมครับ?`,
-            isMe: false,
-          },
-        ],
-      }));
+  // เมื่อกดเปิดหน้าต่างสนทนา สั่งเปลี่ยน URL path
+  const handleOpenChat = () => {
+    if (selectedClaim) {
+      navigate(`/customer/chat/${selectedClaim}`);
     }
-
-    setIsClaimSelected(true);
   };
+
+  // เมื่อกดสลับเคส ให้ย้อนกลับ URL ไปหน้าเลือกเคส
+  const handleSwitchCase = () => {
+    navigate("/customer/chat");
+  };
+
 
   const handleSend = () => {
     if (!inputText.trim() || !selectedClaim) return;
@@ -274,7 +260,12 @@ const CustomerChat = () => {
               size="large"
               block
               disabled={!selectedClaim}
-              onClick={handleConfirmClaim}
+              //onClick={handleConfirmClaim}
+
+              onClick={handleOpenChat}
+
+
+
               style={{ backgroundColor: "#059669", fontWeight: "600" }}
             >
               เปิดหน้าต่างสนทนา

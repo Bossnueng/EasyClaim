@@ -18,15 +18,26 @@ import CustomerChat from "../pages/customer/CustomerChat";
 import CustomerClaimList from "../pages/customer/CustomerClaimList";
 import CustomerHome from "../pages/customer/CustomerHome";
 import CustomerNewClaim from "../pages/customer/CustomerNewClaim";
-import CustomerClaimDatail from "../pages/customer/CustomerClaimDatail";
+import CustomerClaimDatail from "../pages/customer/CustomerClaimDetail";
 
-import Login from "../pages/auth/login";
+import Login from "../pages/auth/Login";
+import UserSettings from "../pages/auth/UserSettings";
 
 function AppRouter() {
   return (
     <Routes>
 
       <Route path="/login" element={<Login />} />
+
+      <Route
+        path="/staff/setting"
+        element={<UserSettings/>}
+      />
+
+      <Route
+        path="/customer/setting"
+        element={<UserSettings/>}
+      />
 
       <Route
         path="/"
@@ -113,6 +124,11 @@ function AppRouter() {
       <Route
         path="/customer/new-claim"
         element={<CustomerNewClaim/>}
+      />
+
+      <Route
+        path="/customer/new-claim/processing/:claimId"
+        element={<ClaimProcessing/>}
       />
 
       

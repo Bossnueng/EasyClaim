@@ -74,7 +74,7 @@ const CustomerHome = () => {
               type="default"
               size="large"
               icon={<PlusCircleOutlined />}
-              onClick={() => navigate("/claim/new")}
+              onClick={() => navigate("/customer/new-claim")}
               className="bg-white text-emerald-800 font-bold border-none hover:bg-emerald-50 rounded-full flex items-center justify-center shadow-sm shrink-0 h-11 px-6"
             >
               แจ้งเคลมสินค้าใหม่
@@ -89,7 +89,7 @@ const CustomerHome = () => {
               </h2>
               <Button
                 type="link"
-                onClick={() => navigate("/history")}
+                onClick={() => navigate("/customer/list-claim")}
                 className="text-emerald-700 font-semibold p-0 flex items-center gap-1 hover:text-emerald-800"
               >
                 ดูทั้งหมด <RightOutlined style={{ fontSize: "11px" }} />
@@ -102,7 +102,7 @@ const CustomerHome = () => {
                 {latestClaims.map((claim) => (
                   <div
                     key={claim.claimId}
-                    onClick={() => navigate(`/history/${claim.claimId}`)}
+                    onClick={() => navigate(`/customer/detail-claim/${claim.claimId}`)}
                     style={{
                       boxSizing: "border-box",
                       padding: "20px", // ระยะห่างขอบในการ์ดรายการ

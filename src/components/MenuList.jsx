@@ -1,5 +1,5 @@
 import {Menu} from "antd"
-import {HomeOutlined, FileAddOutlined, HistoryOutlined, WechatOutlined, BarsOutlined} from "@ant-design/icons"
+import {HomeOutlined, FileAddOutlined, HistoryOutlined, WechatOutlined, BarsOutlined, SettingFilled} from "@ant-design/icons"
 import { NavLink, useLocation } from "react-router-dom";
 
 
@@ -15,11 +15,19 @@ const MenuList = () => {
 
   const getSelectedKey = () => {
     // Customer
+    if (location.pathname.includes("/customer/setting")) {
+      return "customer-setting";
+    }
+
     if (location.pathname.includes("/customer/new-claim")) {
       return "customer-create-claim";
     }
 
     if (location.pathname.includes("/customer/list-claim")) {
+      return "customer-list-claim";
+    }
+
+    if (location.pathname.includes("/customer/detail-claim")) {
       return "customer-list-claim";
     }
 
@@ -32,7 +40,16 @@ const MenuList = () => {
     }
 
     // Staff
+    if (location.pathname.includes("/staff/setting")) {
+      return "staff-setting";
+    }
+
     if (location.pathname.includes("/staff/list-claim")) {
+      return "staff-list-claim";
+    }
+
+
+     if (location.pathname.includes("/staff/update-claim")) {
       return "staff-list-claim";
     }
 
@@ -72,6 +89,8 @@ const MenuList = () => {
           <Menu.Item key="chat" icon={<WechatOutlined />}>
             <NavLink to="/chat">Chat</NavLink>
           </Menu.Item>
+
+          
         </>
       )}
 
@@ -88,6 +107,10 @@ const MenuList = () => {
 
           <Menu.Item key="staff-chat" icon={<WechatOutlined />}>
             <NavLink to="/staff/chat">Chat</NavLink>
+          </Menu.Item>
+
+           <Menu.Item key="staff-setting" icon={<SettingFilled />}>
+            <NavLink to="/staff/setting">Setting</NavLink>
           </Menu.Item>
         </>
       )}
@@ -109,6 +132,10 @@ const MenuList = () => {
 
           <Menu.Item key="customer-chat" icon={<WechatOutlined />}>
             <NavLink to="/customer/chat">Chat</NavLink>
+          </Menu.Item>
+
+          <Menu.Item key="customer-setting" icon={<SettingFilled />}>
+            <NavLink to="/customer/setting">Setting</NavLink>
           </Menu.Item>
         </>
       )}

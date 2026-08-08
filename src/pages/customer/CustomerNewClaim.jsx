@@ -56,7 +56,7 @@ const CustomerNewClaim = () => {
        oldClaims.push(claimData);
        
        localStorage.setItem("claims",JSON.stringify(oldClaims));
-       navigate(`/claim/processing/${claimData.claimId}`);
+       navigate(`/customer/new-claim/processing/${claimData.claimId}`);
       };
     
   

@@ -1,11 +1,45 @@
-import { Layout, Avatar, Button } from "antd";
-import { MenuOutlined, UserOutlined, MenuUnfoldOutlined, MenuFoldOutlined  } from "@ant-design/icons";
+import { Layout, Avatar, Button, Dropdown } from "antd";
+import { MenuOutlined, UserOutlined, MenuUnfoldOutlined, MenuFoldOutlined,SettingOutlined,
+  LogoutOutlined,  } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import Logo from './Logo';
 
 
 const { Header } = Layout;
 
 function HeaderBar({ collapsed, setCollapsed }) {
+  const navigate = useNavigate();
+
+  // ดึงข้อมูล User จาก localStorage
+  const savedUser = localStorage.getItem("user");
+  const user = savedUser ? JSON.parse(savedUser) : null;
+
+  // ฟังก์ชัน Logout
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    navigate("/login");
+  };
+
+  // รายการเมนูเมื่อกดที่ Profile/Avatar
+  const userMenuItems = [
+    {
+      key: "setting",
+      icon: <SettingOutlined />,
+      label: "User Setting",
+      onClick: () => navigate("/setting-user"),
+    },
+    {
+      type: "divider",
+    },
+    {
+      key: "logout",
+      icon: <LogoutOutlined />,
+      label: "Log out",
+      danger: true,
+      onClick: handleLogout,
+    },
+  ];
+  
   return (
     <Header
       style={{

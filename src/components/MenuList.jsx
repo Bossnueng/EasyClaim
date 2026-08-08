@@ -8,6 +8,11 @@ const MenuList = () => {
 
   const location = useLocation();
 
+  // 1. ดึงข้อมูล User จาก localStorage
+  const savedUser = localStorage.getItem("user");
+  const user = savedUser ? JSON.parse(savedUser) : null;
+  const role = user?.role; // 'staff' หรือ 'customer'
+
   const getSelectedKey = () => {
     // Customer
     if (location.pathname.includes("/customer/new-claim")) {
@@ -48,57 +53,66 @@ const MenuList = () => {
       selectedKeys={[getSelectedKey()]}
       className="menu-bar">
 
-        <Menu.Item key="home" icon = {<HomeOutlined/>}>
-          <NavLink to="/">Home</NavLink>
-        </Menu.Item>
+        {/* ==================== GENERAL / GUEST MENUS ==================== */}
+      {/* แสดงเมื่อไม่มี Role หรือยังไม่ได้ตั้งค่า User */}
+      {!role && (
+        <>
+          <Menu.Item key="home" icon={<HomeOutlined />}>
+            <NavLink to="/">Home</NavLink>
+          </Menu.Item>
 
-        <Menu.Item key="newclaim" icon = {<FileAddOutlined/>}>
-          <NavLink to="/claim/new">New Claim</NavLink>
-        </Menu.Item>
+          <Menu.Item key="newclaim" icon={<FileAddOutlined />}>
+            <NavLink to="/claim/new">New Claim</NavLink>
+          </Menu.Item>
 
-        <Menu.Item key="history" icon = {<HistoryOutlined/>}>
-          <NavLink to="/history">Claim List</NavLink>
-        </Menu.Item>
-       
-        <Menu.Item key="chat" icon = {<WechatOutlined/>}>
-          <NavLink to="/chat">Chat</NavLink>
-        </Menu.Item>
+          <Menu.Item key="history" icon={<HistoryOutlined />}>
+            <NavLink to="/history">Claim List</NavLink>
+          </Menu.Item>
 
-        {/* ------------------------- */}
-        {/* Staff Route */}
-        {/* ------------------------- */}
+          <Menu.Item key="chat" icon={<WechatOutlined />}>
+            <NavLink to="/chat">Chat</NavLink>
+          </Menu.Item>
+        </>
+      )}
 
-        <Menu.Item key="staff-home" icon = {<HomeOutlined/>}>
-          <NavLink to="/staff">Home</NavLink>
-        </Menu.Item>
+        {/* ==================== STAFF MENUS ==================== */}
+      {role === "staff" && (
+        <>
+          <Menu.Item key="staff-home" icon={<HomeOutlined />}>
+            <NavLink to="/staff">Home</NavLink>
+          </Menu.Item>
 
-        <Menu.Item key="staff-list-claim" icon = {<HistoryOutlined/>}>
-          <NavLink to="/staff/list-claim">Claim List</NavLink>
-        </Menu.Item>
-       
-        <Menu.Item key="staff-chat" icon = {<WechatOutlined/>}>
-          <NavLink to="/staff/chat">Chat</NavLink>
-        </Menu.Item>
+          <Menu.Item key="staff-list-claim" icon={<HistoryOutlined />}>
+            <NavLink to="/staff/list-claim">Claim List</NavLink>
+          </Menu.Item>
+
+          <Menu.Item key="staff-chat" icon={<WechatOutlined />}>
+            <NavLink to="/staff/chat">Chat</NavLink>
+          </Menu.Item>
+        </>
+      )}
    
-        {/* ------------------------- */}
-        {/* Customer Route */}
-        {/* ------------------------- */}
+        {/* ==================== CUSTOMER MENUS ==================== */}
+      {role === "customer" && (
+        <>
+          <Menu.Item key="customer-home" icon={<HomeOutlined />}>
+            <NavLink to="/customer">Home</NavLink>
+          </Menu.Item>
 
-        <Menu.Item key="customer-home" icon = {<HomeOutlined/>}>
-          <NavLink to="/customer">Home</NavLink>
-        </Menu.Item>
+          <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
+            <NavLink to="/customer/new-claim">New Claim</NavLink>
+          </Menu.Item>
 
-        <Menu.Item key="customer-create-claim" icon = {<FileAddOutlined/>}>
-          <NavLink to="/customer/new-claim">New Claim</NavLink>
-        </Menu.Item>
+          <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>
+            <NavLink to="/customer/list-claim">Claim List</NavLink>
+          </Menu.Item>
 
-        <Menu.Item key="customer-list-claim" icon = {<HistoryOutlined/>}>
-          <NavLink to="/customer/list-claim">Claim List</NavLink>
-        </Menu.Item>
-       
-        <Menu.Item key="customer-chat" icon = {<WechatOutlined/>}>
-          <NavLink to="/customer/chat">Chat</NavLink>
-        </Menu.Item>
+          <Menu.Item key="customer-chat" icon={<WechatOutlined />}>
+            <NavLink to="/customer/chat">Chat</NavLink>
+          </Menu.Item>
+        </>
+      )}
+
 
     </Menu>
   );

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Layout } from 'antd'
+import { useLocation } from 'react-router-dom';
 //import Logo from './components/Logo';
 //import MenuList from './components/MenuList';
 import Sidebar from "./components/Sidebar";
@@ -12,7 +13,16 @@ const{Content} = Layout;
 function App() {
 
   const [collapsed, setCollapsed] = useState(true);
-  
+  const location = useLocation();
+
+  // 3. ตรวจสอบว่าเป็นหน้า /login หรือไม่
+  const isLoginPage = location.pathname === "/login";
+
+  // หากเป็นหน้า /login ให้แสดงแค่เนื้อหา Router (ไม่มี Sidebar/Header)
+  if (isLoginPage) {
+    return <AppRouter />;
+  }
+
    return (
     <Layout style={{ height: "100vh", overflow: "hidden" }}>
       <Sidebar 

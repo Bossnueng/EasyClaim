@@ -1,33 +1,47 @@
-import {Card,Tag,Descriptions,Button,Space} from "antd";
+import {
+  Card,
+  Tag,
+  Descriptions,
+  Button,
+  Space,
+  Steps,
+  Divider,
+  Image,
+} from "antd";
+
+import {
+  CheckCircleOutlined,
+  FileSearchOutlined,
+  InboxOutlined,
+  CarOutlined,
+  SmileOutlined,
+} from "@ant-design/icons";
+
 import { useNavigate, useParams } from "react-router-dom";
 
 const ClaimSummary=()=>{
+
     const navigate=useNavigate();
+
     const { claimId } = useParams();
 
     const claims = JSON.parse(localStorage.getItem("claims")) || [];
 
-    const data = claims.find(
-    (item) => item.claimId === claimId
-    );
+    const data = claims.find((item) => item.claimId === claimId);
 
     if (!data) {
-    return (
-        <div className="p-6">
-        <Card>
-            <h2>ไม่พบข้อมูลการเคลม</h2>
-
-            <Button
-            type="primary"
-            onClick={() => navigate("/claim")}
-            >
-            กลับ
-            </Button>
-        </Card>
-        </div>
-    );
+        return (
+            <div className="p-6">
+                <Card>
+                    <h2>ไม่พบข้อมูลการเคลม</h2>
+                    <Button type="primary" onClick={() => navigate("/claim")}>กลับ</Button>
+                </Card>
+            </div>
+        );
     }
     
+    // ตัวอย่างสถานะ
+    const currentStep = 1;
 
     return (
         <div className="p-6 bg-gray-100 min-h-screen">

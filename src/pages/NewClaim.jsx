@@ -38,43 +38,26 @@ const claimType = [
 
 
 const NewClaim = () => {
+
   const navigate = useNavigate();
   
-
   const onFinish = (values)=>{
-    
-      const claimData = {
-        claimId:
-          "CLM-" + Date.now(),
-        createdDate:
-          dayjs().format("DD/MM/YYYY"),
-        reporter:
-          "Phonnapha Kaenmueang",
-        ...values,
-        status:"Processing"
-    };       
+
+    const claimData = {
+      claimId:"CLM-" + Date.now(),
+      createdDate:dayjs().format("DD/MM/YYYY"),
+      reporter: "Phonnapha Kaenmueang",
+      ...values, 
+      status:"Processing"
+      };       
       
+     const oldClaims = JSON.parse(localStorage.getItem("claims")) || [];
+
+     oldClaims.push(claimData);
      
-
-      const oldClaims =
-        JSON.parse(
-        localStorage.getItem("claims")
-        ) || [];
-
-
-    oldClaims.push(claimData);
-
-
-    localStorage.setItem(
-      "claims",
-      JSON.stringify(oldClaims)
-    );
-
-    navigate(
-      `/claim/processing/${claimData.claimId}`
-    );
-
-  };
+     localStorage.setItem("claims",JSON.stringify(oldClaims));
+     navigate(`/claim/processing/${claimData.claimId}`);
+    };
   
 
   return (

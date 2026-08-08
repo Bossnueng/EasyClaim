@@ -8,11 +8,10 @@ import {
 } from "@ant-design/icons";
 
 const ClaimList = () => {
+
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
-
   const claims = JSON.parse(localStorage.getItem("claims")) || [];
-
   const filteredClaims = claims.filter((claim) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesProduct = claim.productName?.toLowerCase().includes(searchLower);

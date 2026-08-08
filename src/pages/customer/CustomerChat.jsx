@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect,} from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Select, Button } from "antd";
 import {
@@ -15,8 +15,6 @@ import {
 const CustomerChat = () => {
   const { claimId } = useParams();
   const navigate = useNavigate();
-  //const data = claims.find((item) => item.claimId === claimId);
-  //onClick={() => navigate(`/customer/chat/${data.claimId}`)}
 
   const [inputText, setInputText] = useState("");
   const [selectedClaim, setSelectedClaim] = useState(null);
@@ -24,83 +22,115 @@ const CustomerChat = () => {
   const [claimOptions, setClaimOptions] = useState([]);
   const messagesEndRef = useRef(null);
 
-  // ดึงรายการเคลมจาก localStorage เพื่อสร้าง claimOptions
-  useEffect(() => {
-    const localClaims = JSON.parse(localStorage.getItem("claims")) || [];
-    const options = localClaims.map((claim) => ({
-      value: claim.claimId,
-      label: `${claim.claimId}: ${claim.productName || "ไม่ระบุชื่อสินค้า"} (${claim.status || "รอการตรวจสอบ"})`,
-    }));
-    setClaimOptions(options);
-  }, []);
-
-  // 1. เปลี่ยนการเก็บข้อมูลแชทเป็น Object โดยมี Key เป็น Claim ID
-  const [chatHistory, setChatHistory] = useState({
+  // Initial Chat History
+  const initialChatHistory = {
     "CLM-2026-001": [
       {
         id: 1,
         senderName: "สมศักดิ์ (คลังสินค้า)",
+        senderRole: "STAFF",
         time: "10:30 AM",
         text: "สวัสดีครับ ฝ่ายบริการคลังสินค้ายินดีให้บริการครับ ไม่ทราบว่าต้องการสอบถามเรื่องอะไรครับ?",
-        isMe: false,
       },
       {
         id: 2,
         senderName: "คุณ (ลูกค้า)",
+        senderRole: "CUSTOMER",
         time: "10:32 AM",
         text: "สอบถามเรื่องสถานะการเคลมสินค้า หมายเลขอ้างอิง CLM-2026-001 ครับ ตอนนี้ถึงขั้นตอนไหนแล้วครับ?",
-        isMe: true,
       },
       {
         id: 3,
         senderName: "กมลวรรณ (ตรวจสอบสินค้า)",
+        senderRole: "STAFF",
         time: "10:35 AM",
         text: "รับเรื่องเรียบร้อยค่ะ ทางฝ่ายตรวจสอบได้รับพัสดุเคลมของคุณแล้ว กำลังดำเนินเรื่องตรวจเช็กสภาพสินค้าอยู่นะคะ คาดว่าจะใช้เวลาประมาณ 1-2 วันทำการ แล้วจะแจ้งผลอนุมัติให้อีกครั้งผ่านแชทนี้ค่ะ",
-        isMe: false,
       },
     ],
+  };
+
+  // ดึง chatHistory จาก localStorage หรือใช้ค่าเริ่มต้น
+  const [chatHistory, setChatHistory] = useState(() => {
+    const saved = localStorage.getItem("chatHistory");
+    return saved ? JSON.parse(saved) : initialChatHistory;
   });
 
-  // 3. เพิ่ม useEffect ตรวจจับ claimId จาก URL และสั่งเปิดแชทให้อัตโนมัติ
+  // ซิงก์ chatHistory ลง localStorage ทุกครั้งที่มีการอัปเดต
+  useEffect(() => {
+    localStorage.setItem("chatHistory", JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  // คอยตรวจจับ event "storage" เมื่อ StaffChat อัปเดตข้อมูล
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "chatHistory" && e.newValue) {
+        setChatHistory(JSON.parse(e.newValue));
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  // ดึงรายการเคลมจาก localStorage เพื่อสร้าง claimOptions
+  useEffect(() => {
+    const localClaims = JSON.parse(localStorage.getItem("claims")) || [];
+    const defaultOptions = [
+      { value: "CLM-2026-001", label: "CLM-2026-001: หูฟัง Bluetooth เสียงดี (กำลังดำเนินการ)" },
+      { value: "CLM-2026-002", label: "CLM-2026-002: กล้องติดรถยนต์ FHD (รอการตรวจสอบ)" },
+      { value: "CLM-2026-003", label: "CLM-2026-003: คีย์บอร์ดไร้สาย Mechanical (เสร็จสิ้น)" },
+    ];
+
+    if (localClaims.length > 0) {
+      const options = localClaims.map((claim) => ({
+        value: claim.claimId,
+        label: `${claim.claimId}: ${claim.productName || "ไม่ระบุชื่อสินค้า"} (${claim.status || "รอการตรวจสอบ"})`,
+      }));
+      setClaimOptions(options);
+    } else {
+      setClaimOptions(defaultOptions);
+    }
+  }, []);
+
+  // ตรวจจับ claimId จาก URL
   useEffect(() => {
     if (claimId) {
       setSelectedClaim(claimId);
       setIsClaimSelected(true);
 
-      // สร้าง History เริ่มต้นหากยังไม่มีแชทในระบบ
       setChatHistory((prev) => {
         if (!prev[claimId]) {
-          return {
+          const updated = {
             ...prev,
             [claimId]: [
               {
                 id: Date.now(),
                 senderName: "ระบบอัตโนมัติ",
+                senderRole: "SYSTEM",
                 time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                 text: `เปิดช่องทางติดต่อสำหรับหมายเลขการเคลม: ${claimId}`,
-                isMe: false,
                 isSystem: true,
               },
               {
                 id: Date.now() + 1,
                 senderName: "สมศักดิ์ (คลังสินค้า)",
+                senderRole: "STAFF",
                 time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                 text: `สวัสดีครับ ฝ่ายบริการคลังสินค้าได้รับเรื่องเคลมหมายเลข ${claimId} แล้ว มีอะไรให้ช่วยเพิ่มเติมไหมครับ?`,
-                isMe: false,
               },
             ],
           };
+          localStorage.setItem("chatHistory", JSON.stringify(updated));
+          return updated;
         }
         return prev;
       });
     } else {
-      // หากไม่มี claimId ใน URL ให้รีเซ็ตกลับเป็นหน้าเลือกเคส
       setIsClaimSelected(false);
       setSelectedClaim(null);
     }
   }, [claimId]);
 
-  // เลื่อนลงล่างสุดอัตโนมัติเมื่อเปลี่ยนเคสหรือส่งข้อความใหม่
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -111,40 +141,36 @@ const CustomerChat = () => {
     }
   }, [selectedClaim, isClaimSelected, chatHistory]);
 
-  // เมื่อกดเปิดหน้าต่างสนทนา สั่งเปลี่ยน URL path
   const handleOpenChat = () => {
     if (selectedClaim) {
       navigate(`/customer/chat/${selectedClaim}`);
     }
   };
 
-  // เมื่อกดสลับเคส ให้ย้อนกลับ URL ไปหน้าเลือกเคส
-  const handleSwitchCase = () => {
-    navigate("/customer/chat");
-  };
-
-
+  // ส่งข้อความฝั่ง Customer
   const handleSend = () => {
     if (!inputText.trim() || !selectedClaim) return;
 
     const newMsg = {
       id: Date.now(),
       senderName: "คุณ (ลูกค้า)",
+      senderRole: "CUSTOMER", // ระบุสิทธิ์ชัดเจน
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       text: inputText,
-      isMe: true,
     };
 
-    // บันทึกข้อความลงใน Key ของเคสปัจจุบัน
-    setChatHistory((prev) => ({
-      ...prev,
-      [selectedClaim]: [...(prev[selectedClaim] || []), newMsg],
-    }));
+    setChatHistory((prev) => {
+      const updatedHistory = {
+        ...prev,
+        [selectedClaim]: [...(prev[selectedClaim] || []), newMsg],
+      };
+      localStorage.setItem("chatHistory", JSON.stringify(updatedHistory));
+      return updatedHistory;
+    });
 
     setInputText("");
   };
 
-  // ดึงรายการข้อความของเคสปัจจุบันมาแสดงผล
   const currentMessages = selectedClaim ? chatHistory[selectedClaim] || [] : [];
 
   return (
@@ -195,7 +221,7 @@ const CustomerChat = () => {
           <Button 
             size="small" 
             icon={<HistoryOutlined />}
-            onClick={() => setIsClaimSelected(false)}
+            onClick={() => navigate("/customer/chat")}
             style={{ fontSize: "12px" }}
           >
             สลับเคสเคลม
@@ -203,7 +229,7 @@ const CustomerChat = () => {
         )}
       </div>
 
-      {/* 2. BODY (หน้าเลือกเคส / หน้าต่างสนทนา) */}
+      {/* 2. BODY */}
       {!isClaimSelected ? (
         <div 
           style={{
@@ -247,9 +273,9 @@ const CustomerChat = () => {
               size="large"
               options={claimOptions}
               value={selectedClaim}
-              onSearch={(val) => setSelectedClaim(val)} // บันทึกสิ่งที่พิมพ์ลงใน state ทันที
-              onSelect={(val) => setSelectedClaim(val)} // เมื่อกดเลือกจาก dropdown
-              onChange={(val) => !val && setSelectedClaim(null)} // เมื่อกดปุ่ม clear (x)
+              onSearch={(val) => setSelectedClaim(val)}
+              onSelect={(val) => setSelectedClaim(val)}
+              onChange={(val) => !val && setSelectedClaim(null)}
               filterOption={(input, option) =>
                 (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
               }
@@ -260,12 +286,7 @@ const CustomerChat = () => {
               size="large"
               block
               disabled={!selectedClaim}
-              //onClick={handleConfirmClaim}
-
               onClick={handleOpenChat}
-
-
-
               style={{ backgroundColor: "#059669", fontWeight: "600" }}
             >
               เปิดหน้าต่างสนทนา
@@ -285,12 +306,15 @@ const CustomerChat = () => {
           }}
         >
           {currentMessages.map((msg, index) => {
+            // เช็กฝั่งผู้ส่ง: CUSTOMER แสดงด้านขวา (isMe = true)
+            const isMe = msg.senderRole === "CUSTOMER";
+
             const isPrevSameSender =
               index > 0 &&
-              currentMessages[index - 1].isMe === msg.isMe &&
+              currentMessages[index - 1].senderRole === msg.senderRole &&
               currentMessages[index - 1].senderName === msg.senderName;
 
-            if (msg.isSystem) {
+            if (msg.isSystem || msg.senderRole === "SYSTEM") {
               return (
                 <div key={msg.id} style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
                   <span style={{ backgroundColor: "#e2e8f0", color: "#475569", padding: "4px 12px", borderRadius: "12px", fontSize: "11px" }}>
@@ -306,7 +330,7 @@ const CustomerChat = () => {
                 style={{
                   display: "flex",
                   width: "100%",
-                  justifyContent: msg.isMe ? "flex-end" : "flex-start",
+                  justifyContent: isMe ? "flex-end" : "flex-start",
                 }}
               >
                 <div
@@ -314,11 +338,11 @@ const CustomerChat = () => {
                     display: "flex",
                     gap: "12px",
                     maxWidth: "65%",
-                    marginLeft: msg.isMe ? "auto" : "0",
-                    flexDirection: msg.isMe ? "row-reverse" : "row",
+                    marginLeft: isMe ? "auto" : "0",
+                    flexDirection: isMe ? "row-reverse" : "row",
                   }}
                 >
-                  {!msg.isMe && (
+                  {!isMe && (
                     <div style={{ flexShrink: 0 }}>
                       {!isPrevSameSender ? (
                         <Avatar
@@ -336,7 +360,7 @@ const CustomerChat = () => {
                     style={{
                       display: "flex",
                       flexDirection: "column",
-                      alignItems: msg.isMe ? "flex-end" : "flex-start",
+                      alignItems: isMe ? "flex-end" : "flex-start",
                     }}
                   >
                     {!isPrevSameSender && (
@@ -356,18 +380,18 @@ const CustomerChat = () => {
                         lineHeight: "1.5",
                         wordBreak: "break-word",
                         overflowWrap: "anywhere",
-                        backgroundColor: msg.isMe ? "#059669" : "#ffffff",
-                        color: msg.isMe ? "#ffffff" : "#1e293b",
-                        border: msg.isMe ? "none" : "1px solid #e2e8f0",
-                        borderTopRightRadius: msg.isMe ? "2px" : "16px",
-                        borderTopLeftRadius: !msg.isMe ? "2px" : "16px",
+                        backgroundColor: isMe ? "#059669" : "#ffffff",
+                        color: isMe ? "#ffffff" : "#1e293b",
+                        border: isMe ? "none" : "1px solid #e2e8f0",
+                        borderTopRightRadius: isMe ? "2px" : "16px",
+                        borderTopLeftRadius: !isMe ? "2px" : "16px",
                         boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
                       }}
                     >
                       {msg.text}
                     </div>
 
-                    {msg.isMe && (
+                    {isMe && (
                       <span style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px", display: "flex", alignItems: "center", gap: "2px" }}>
                         <CheckOutlined style={{ color: "#059669" }} /> ส่งแล้ว {msg.time}
                       </span>
@@ -404,15 +428,7 @@ const CustomerChat = () => {
           >
             <button
               type="button"
-              style={{
-                background: "none",
-                border: "none",
-                color: "#94a3b8",
-                cursor: "pointer",
-                padding: "4px",
-                display: "flex",
-                alignItems: "center",
-              }}
+              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center" }}
             >
               <PaperClipOutlined style={{ fontSize: "18px" }} />
             </button>
@@ -436,15 +452,7 @@ const CustomerChat = () => {
 
             <button
               type="button"
-              style={{
-                background: "none",
-                border: "none",
-                color: "#94a3b8",
-                cursor: "pointer",
-                padding: "4px",
-                display: "flex",
-                alignItems: "center",
-              }}
+              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center" }}
             >
               <SmileOutlined style={{ fontSize: "18px" }} />
             </button>
@@ -475,6 +483,6 @@ const CustomerChat = () => {
       )}
     </div>
   );
-}
+};
 
-export default CustomerChat
+export default CustomerChat;

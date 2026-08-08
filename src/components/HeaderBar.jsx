@@ -14,44 +14,12 @@ function HeaderBar({ collapsed, setCollapsed }) {
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
 
-  // ฟังก์ชัน Logout
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    navigate("/login");
-  };
-
-  // รายการเมนูเมื่อกดที่ Profile/Avatar
-  const userMenuItems = [
-    {
-      key: "setting",
-      icon: <SettingOutlined />,
-      label: "User Setting",
-      onClick: () => navigate("/setting-user"),
-    },
-    {
-      type: "divider",
-    },
-    {
-      key: "logout",
-      icon: <LogoutOutlined />,
-      label: "Log out",
-      danger: true,
-      onClick: handleLogout,
-    },
-  ];
   
   return (
-    <Header
-      style={{
-        background: "#fff",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "0 24px",
-      }}
-    >
+    <Header className="!bg-white grid grid-cols-[1fr_auto_1fr] items-center px-4 h-16 shadow-sm border-b border-slate-100">
       
-      <Button
+      <div className="flex items-center">
+        <Button
         type="text"
         className="lg:hidden"
         icon={
@@ -63,17 +31,25 @@ function HeaderBar({ collapsed, setCollapsed }) {
         }
         onClick={() => setCollapsed(!collapsed)}
       />
-      <div className="flex items-center gap-3">
-        
-        <Logo />
+      </div>
 
-        <h2 className="text-xl m-2">
-          <span className="font-extrabold">EASY CLAIM</span>
-          <span className="text-gray-500 font-normal text-base ml-1"> by TBL</span>
-        </h2>
-      </div>      
+      {/* ฝั่งตรงกลาง: Logo SVG ขนาดใหญ่ ชัดเจน + กดกลับหน้าหลัก */}
+      <div
+        className="flex items-center justify-center cursor-pointer select-none transition-all duration-200 hover:opacity-85 active:scale-95"
+        onClick={() => {
+          // เช็กบทบาทผู้ใช้ (ปรับ key เช่น user.role ให้ตรงกับโครงสร้างข้อมูลใน localStorage ของคุณ)
+          const targetPath = user?.role === "customer" ? "/customer" : "/staff";
+          navigate(targetPath);
+        }}
+      >
+        <Logo className="h-9 sm:h-10 w-auto" />
+      </div>
+          
 
-      <Avatar icon={<UserOutlined />} />
+      {/* ฝั่งขวา: พื้นที่ว่างสมดุลเพื่อให้ Logo กลางสมบูรณ์ */}
+      <div className="flex justify-end items-center">
+        {/* สามารถเพิ่ม Notification หรือ Profile Menu ฝั่งขวาตรงนี้ได้ */}
+      </div>
     </Header>
   );
 }

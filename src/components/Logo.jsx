@@ -1,17 +1,14 @@
 import {SafetyCertificateFilled} from "@ant-design/icons"
+import LogoIcon from "../assets/logo.svg?react";
 
 
 import React from 'react'
 
-const Logo = () => {
+const Logo = ({ className = "h-9 w-auto" }) => {
   return (
-    <div className="logo p-4">
-            <div className="logo-icon flex items-center gap-3">
-
-                <SafetyCertificateFilled />
-              
-            </div>
-        </div>
+    <div className="flex items-center justify-center shrink-0">
+      <LogoIcon className={className} />
+    </div>
   );
 };
 

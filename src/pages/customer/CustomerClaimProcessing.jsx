@@ -2,7 +2,7 @@ import { Card, Steps, Spin} from "antd";
 import { useEffect} from "react";
 import { useNavigate, useParams} from "react-router-dom";
 
-const ClaimProcessing =()=>{
+const CustomerClaimProcessing =()=>{
     const navigate = useNavigate();
     const {claimId}=useParams();
 
@@ -33,4 +33,4 @@ const ClaimProcessing =()=>{
     )
 }
 
-export default ClaimProcessing;
+export default CustomerClaimProcessing;

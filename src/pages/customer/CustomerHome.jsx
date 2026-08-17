@@ -1,39 +1,36 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Tag, Button } from "antd";
-import {
-  PlusCircleOutlined,
-  InboxOutlined,
-  RightOutlined,
-} from "@ant-design/icons";
+import {  PlusCircleOutlined,  InboxOutlined,  RightOutlined,} from "@ant-design/icons";
 
 const CustomerHome = () => {
+
   const navigate = useNavigate();
-    const [latestClaims, setLatestClaims] = useState([]);
+  const [latestClaims, setLatestClaims] = useState([]);
   
-    useEffect(() => {
-      // ดึงข้อมูลรายการเคลมจาก localStorage
-      const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
-      // ดึงเฉพาะ 3 รายการล่าสุด
-      setLatestClaims(savedClaims.slice(0, 3));
-    }, []);
+  useEffect(() => {
+    // ดึงข้อมูลรายการเคลมจาก localStorage
+    const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
+    // ดึงเฉพาะ 3 รายการล่าสุด
+    setLatestClaims(savedClaims.slice(0, 3));
+  }, []);
   
-    // กำหนดสี Tag ให้ตรงกับ Ant Design Theme
-    const getStatusTag = (status) => {
-      switch (status) {
-        case "รอการตรวจสอบ":
-        case "Processing":
-          return <Tag color="processing" style={{ margin: 0 }}>Processing</Tag>;
-        case "อนุมัติ":
-        case "Approved":
-          return <Tag color="success" style={{ margin: 0 }}>Approved</Tag>;
-        case "ปฏิเสธ":
-        case "Rejected":
-          return <Tag color="error" style={{ margin: 0 }}>Rejected</Tag>;
-        default:
-          return <Tag color="blue" style={{ margin: 0 }}>{status || "Processing"}</Tag>;
-      }
-    };
+  // กำหนดสี Tag ให้ตรงกับ Ant Design Theme
+  const getStatusTag = (status) => {
+    switch (status) {
+      case "รอการตรวจสอบ":
+      case "Processing":
+        return <Tag color="processing" style={{ margin: 0 }}>Processing</Tag>;
+      case "อนุมัติ":
+      case "Approved":
+        return <Tag color="success" style={{ margin: 0 }}>Approved</Tag>;
+      case "ปฏิเสธ":
+      case "Rejected":
+        return <Tag color="error" style={{ margin: 0 }}>Rejected</Tag>;
+      default:
+        return <Tag color="blue" style={{ margin: 0 }}>{status || "Processing"}</Tag>;
+    }
+  };
   
     return (
       <div 

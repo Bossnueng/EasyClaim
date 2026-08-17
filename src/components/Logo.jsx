@@ -1,7 +1,4 @@
-import {SafetyCertificateFilled} from "@ant-design/icons"
 import LogoIcon from "../assets/logo.svg?react";
-
-
 import React from 'react'
 
 const Logo = ({ className = "h-9 w-auto" }) => {

@@ -1,6 +1,5 @@
-import { Layout, Avatar, Button, Dropdown } from "antd";
-import { MenuOutlined, UserOutlined, MenuUnfoldOutlined, MenuFoldOutlined,SettingOutlined,
-  LogoutOutlined,  } from "@ant-design/icons";
+import { Layout, Button, Dropdown } from "antd";
+import { MenuUnfoldOutlined, MenuFoldOutlined, } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import Logo from './Logo';
 
@@ -19,10 +18,7 @@ function HeaderBar({ collapsed, setCollapsed }) {
     <Header className="!bg-white grid grid-cols-[1fr_auto_1fr] items-center px-4 h-16 shadow-sm border-b border-slate-100">
       
       <div className="flex items-center">
-        <Button
-        type="text"
-        className="lg:hidden"
-        icon={
+        <Button type="text" className="lg:hidden" icon={
           collapsed ? (
             <MenuUnfoldOutlined style={{ fontSize: 24 }}/>
           ) : (
@@ -37,6 +33,7 @@ function HeaderBar({ collapsed, setCollapsed }) {
       <div
         className="flex items-center justify-center cursor-pointer select-none transition-all duration-200 hover:opacity-85 active:scale-95"
         onClick={() => {
+          
           // เช็กบทบาทผู้ใช้ (ปรับ key เช่น user.role ให้ตรงกับโครงสร้างข้อมูลใน localStorage ของคุณ)
           const targetPath = user?.role === "customer" ? "/customer" : "/staff";
           navigate(targetPath);

@@ -1,28 +1,12 @@
 import React from "react";
-import {
-  Card,
-  Tag,
-  Descriptions,
-  Button,
-  Steps,
-  Image,
-  ConfigProvider,
-  Alert,
-} from "antd";
-import {
-  CheckCircleOutlined,
-  FileSearchOutlined,
-  CloseCircleOutlined,
-  MessageOutlined,
-  ArrowLeftOutlined,
-} from "@ant-design/icons";
+import { Card, Tag, Descriptions, Button, Steps, Image, ConfigProvider, Alert,} from "antd";
+import {  CheckCircleOutlined,  FileSearchOutlined,  CloseCircleOutlined,  MessageOutlined,  ArrowLeftOutlined,} from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 
 
 const CustomerClaimDetail = () => {
   const navigate = useNavigate();
   const { claimId } = useParams();
-
   const claims = JSON.parse(localStorage.getItem("claims")) || [];
   const data = claims.find((item) => item.claimId === claimId);
 
@@ -33,11 +17,7 @@ const CustomerClaimDetail = () => {
           <h2 className="text-xl font-bold text-slate-800 mb-4">
             ไม่พบข้อมูลการเคลม
           </h2>
-          <Button
-            type="primary"
-            className="bg-emerald-600 hover:bg-emerald-700 rounded-lg px-6"
-            onClick={() => navigate("/customer/list-claim")}
-          >
+          <Button type="primary" className="bg-emerald-600 hover:bg-emerald-700 rounded-lg px-6" onClick={() => navigate("/customer/list-claim")}>
             กลับหน้ารายการ
           </Button>
         </Card>

@@ -1,23 +1,18 @@
 import React, { useState } from "react";
 import { Tag, Input, Empty } from "antd";
 import { useNavigate } from "react-router-dom";
-import {
-  SearchOutlined,
-  RightOutlined,
-  CodeSandboxOutlined,
-} from "@ant-design/icons";
+import {  SearchOutlined,  RightOutlined,  CodeSandboxOutlined,} from "@ant-design/icons";
 
 const CustomerClaimList = () => {
- 
- 
-   const navigate = useNavigate();
-   const [searchTerm, setSearchTerm] = useState("");
-   const claims = JSON.parse(localStorage.getItem("claims")) || [];
-   const filteredClaims = claims.filter((claim) => {
-     const searchLower = searchTerm.toLowerCase();
-     const matchesProduct = claim.productName?.toLowerCase().includes(searchLower);
-     const matchesId = claim.claimId?.toLowerCase().includes(searchLower);
-     return matchesProduct || matchesId;
+    const navigate = useNavigate();
+    const [searchTerm, setSearchTerm] = useState("");
+    const claims = JSON.parse(localStorage.getItem("claims")) || [];
+    const filteredClaims = claims.filter((claim) => {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesProduct = claim.productName?.toLowerCase().includes(searchLower);
+      const matchesId = claim.claimId?.toLowerCase().includes(searchLower);
+      
+      return matchesProduct || matchesId;
    });
  
    const getStatusTag = (status) => {

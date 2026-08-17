@@ -1,6 +1,6 @@
 import {Menu} from "antd"
-import {HomeOutlined, FileAddOutlined, HistoryOutlined, WechatOutlined, BarsOutlined, SettingFilled} from "@ant-design/icons"
-import { NavLink, useLocation } from "react-router-dom";
+import {HomeOutlined, FileAddOutlined, HistoryOutlined, WechatOutlined, SettingFilled} from "@ant-design/icons"
+import {NavLink, useLocation } from "react-router-dom";
 
 
 
@@ -65,36 +65,8 @@ const MenuList = () => {
   };
 
   return (
-    <Menu theme="dark"
-      mode="inline"
-      selectedKeys={[getSelectedKey()]}
-      className="menu-bar">
-
-        {/* ==================== GENERAL / GUEST MENUS ==================== */}
-      {/* แสดงเมื่อไม่มี Role หรือยังไม่ได้ตั้งค่า User */}
-      {!role && (
-        <>
-          <Menu.Item key="home" icon={<HomeOutlined />}>
-            <NavLink to="/">Home</NavLink>
-          </Menu.Item>
-
-          <Menu.Item key="newclaim" icon={<FileAddOutlined />}>
-            <NavLink to="/claim/new">New Claim</NavLink>
-          </Menu.Item>
-
-          <Menu.Item key="history" icon={<HistoryOutlined />}>
-            <NavLink to="/history">Claim List</NavLink>
-          </Menu.Item>
-
-          <Menu.Item key="chat" icon={<WechatOutlined />}>
-            <NavLink to="/chat">Chat</NavLink>
-          </Menu.Item>
-
-          
-        </>
-      )}
-
-        {/* ==================== STAFF MENUS ==================== */}
+    <Menu theme="dark" mode="inline" selectedKeys={[getSelectedKey()]} className="menu-bar">
+      {/* ==================== STAFF MENUS ==================== */}
       {role === "staff" && (
         <>
           <Menu.Item key="staff-home" icon={<HomeOutlined />}>
@@ -115,7 +87,7 @@ const MenuList = () => {
         </>
       )}
    
-        {/* ==================== CUSTOMER MENUS ==================== */}
+      {/* ==================== CUSTOMER MENUS ==================== */}
       {role === "customer" && (
         <>
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
@@ -139,8 +111,6 @@ const MenuList = () => {
           </Menu.Item>
         </>
       )}
-
-
     </Menu>
   );
 };

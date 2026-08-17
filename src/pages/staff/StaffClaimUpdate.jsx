@@ -1,28 +1,6 @@
 import React, { useState } from "react";
-import {
-  Card,
-  Tag,
-  Descriptions,
-  Button,
-  Steps,
-  Image,
-  ConfigProvider,
-  Select,
-  Input,
-  DatePicker,
-  Modal,
-  message,
-} from "antd";
-import {
-  CheckCircleOutlined,
-  FileSearchOutlined,
-  CloseCircleOutlined,
-  InboxOutlined,
-  CarOutlined,
-  SmileOutlined,
-  SaveOutlined,
-  ArrowLeftOutlined,
-} from "@ant-design/icons";
+import {  Card,  Tag,  Descriptions,  Button,  Steps,  Image,  ConfigProvider,  Select,  Input,  DatePicker,  Modal,  message,} from "antd";
+import {  CheckCircleOutlined,  FileSearchOutlined,  CloseCircleOutlined,  InboxOutlined,  CarOutlined,  SmileOutlined,  SaveOutlined,  ArrowLeftOutlined,} from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 
@@ -80,25 +58,6 @@ const StaffClaimUpdate = () => {
   );
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  if (!data) {
-    return (
-      <div className="w-full flex justify-center items-center py-12">
-        <Card className="w-full max-w-md text-center rounded-2xl shadow-sm">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">
-            ไม่พบข้อมูลรายการเคลมนี้
-          </h2>
-          <Button
-            type="primary"
-            className="bg-emerald-600 hover:bg-emerald-700 rounded-lg px-6"
-            onClick={() => navigate("/staff/list-claim")}
-          >
-            กลับหน้ารายการคลังสินค้า
-          </Button>
-        </Card>
-      </div>
-    );
-  }
 
   // ดึง/กำหนด ค่าประวัติเวลาของแต่ละสถานะ ( statusTimestamps )
   const statusTimestamps = data.statusTimestamps || {
@@ -237,12 +196,12 @@ const StaffClaimUpdate = () => {
 
   return (
     <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
-      {/* 1. Header Card */}
+      {/* ==================== Header Card ==================== */}
       <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-800 m-0">จัดการรายการเคลม</h1>
+              <h1 className="text-2xl font-bold text-slate-800 m-0">จัดการการเคลม</h1>
             </div>
             <p className="text-sm text-gray-500 mt-1 mb-0">
               Claim ID : <b className="text-slate-800 font-mono">{data.claimId}</b>
@@ -267,38 +226,22 @@ const StaffClaimUpdate = () => {
         </div>
       </Card>
 
-      {/* 2. Timeline Status พร้อมแสดงวันเวลาในแต่ละ Step */}
+      {/* ==================== Timeline Status ==================== */}
       <Card
         title={<span className="font-bold text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
         className="rounded-2xl shadow-sm border-gray-200 w-full"
         bodyStyle={{ padding: "24px 20px" }}
       >
         <ConfigProvider
-          theme={{
-            token: {
-              colorPrimary: isRejected ? "#ef4444" : "#059669",
-            },
-          }}
-        >
+          theme={{token: {colorPrimary: isRejected ? "#ef4444" : "#059669",},}}>
           <Steps
             current={getCurrentStep()}
             status={isRejected ? "error" : "process"}
             responsive
-            items={
-              isRejected
-                ? [
-                    {
-                      title: "สร้างรายการเคลม",
-                      description: statusTimestamps["สร้างรายการเคลม"] || "-",
-                      icon: <FileSearchOutlined />,
-                    },
-                    {
-                      title: "รอการพิจารณา",
-                      description: statusTimestamps["รอการพิจารณา"] || "-",
-                      icon: <FileSearchOutlined />,
-                    },
-                    {
-                      title: status === "ไม่มีสิทธิ์เคลม" ? "ไม่มีสิทธิ์เคลม" : "ไม่อนุมัติเคลมสินค้า",
+            items={isRejected ? [
+                    {title: "สร้างรายการเคลม", description: statusTimestamps["สร้างรายการเคลม"] || "-",icon: <FileSearchOutlined />,},
+                    {title: "รอการพิจารณา", description: statusTimestamps["รอการพิจารณา"] || "-", icon: <FileSearchOutlined />,},
+                    {title: status === "ไม่มีสิทธิ์เคลม" ? "ไม่มีสิทธิ์เคลม" : "ไม่อนุมัติเคลมสินค้า",
                       description: (
                         <div className="text-xs">
                           <div>{statusTimestamps[status] || "-"}</div>
@@ -308,72 +251,29 @@ const StaffClaimUpdate = () => {
                       icon: <CloseCircleOutlined />,
                     },
                   ]
-                : [
-                    {
-                      title: "สร้างรายการ",
-                      description: statusTimestamps["สร้างรายการเคลม"] || "-",
-                      icon: <CheckCircleOutlined />,
-                    },
-                    {
-                      title: "รอการพิจารณา",
-                      description: statusTimestamps["รอการพิจารณา"] || "-",
-                      icon: <FileSearchOutlined />,
-                    },
-                    {
-                      title: "มีสิทธิ์เคลม",
-                      description: statusTimestamps["มีสิทธิ์เคลม"] || "-",
-                      icon: <CheckCircleOutlined />,
-                    },
-                    {
-                      title: "รับสินค้าแล้ว",
-                      description: statusTimestamps["รับสินค้าจริงแล้ว"] || "-",
-                      icon: <InboxOutlined />,
-                    },
-                    {
-                      title: "อนุมัติเคลม",
-                      description: statusTimestamps["อนุมัติเคลมสินค้า"] || "-",
-                      icon: <CheckCircleOutlined />,
-                    },
-                    {
-                      title: "กำลังเปลี่ยนสินค้า",
-                      description: statusTimestamps["กำลังดำเนินการเปลี่ยนสินค้า"] || "-",
-                      icon: <FileSearchOutlined />,
-                    },
-                    {
-                      title: "กำลังจัดส่ง",
-                      description: statusTimestamps["กำลังจัดส่งสินค้าเคลม"] || "-",
-                      icon: <CarOutlined />,
-                    },
-                    {
-                      title: "จัดส่งสำเร็จ",
-                      description: statusTimestamps["จัดส่งสินค้าเคลมสำเร็จ"] || "-",
-                      icon: <SmileOutlined />,
-                    },
-                  ]
+                : [{title: "สร้างรายการ",description: statusTimestamps["สร้างรายการเคลม"] || "-",icon: <CheckCircleOutlined />,},
+                    {title: "รอการพิจารณา",description: statusTimestamps["รอการพิจารณา"] || "-",icon: <FileSearchOutlined />,},
+                    {title: "มีสิทธิ์เคลม",description: statusTimestamps["มีสิทธิ์เคลม"] || "-",icon: <CheckCircleOutlined />,},
+                    {title: "รับสินค้าแล้ว",description: statusTimestamps["รับสินค้าจริงแล้ว"] || "-",icon: <InboxOutlined />,},
+                    {title: "อนุมัติเคลม",description: statusTimestamps["อนุมัติเคลมสินค้า"] || "-",icon: <CheckCircleOutlined />,},
+                    {title: "กำลังเปลี่ยนสินค้า",description: statusTimestamps["กำลังดำเนินการเปลี่ยนสินค้า"] || "-",icon: <FileSearchOutlined />,},
+                    {title: "กำลังจัดส่ง",description: statusTimestamps["กำลังจัดส่งสินค้าเคลม"] || "-",icon: <CarOutlined />,},
+                    {title: "จัดส่งสำเร็จ",description: statusTimestamps["จัดส่งสินค้าเคลมสำเร็จ"] || "-",icon: <SmileOutlined />,},]
             }
           />
         </ConfigProvider>
       </Card>
 
-      {/* 3. Section 2 คอลัมน์ */}
+      {/* ==================== ข้อมูล ==================== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full">
+        {/* ==================== ข้อมูลสินค้า และรายละเอียดคำร้องขอเคลม ==================== */}
         <div className="lg:col-span-2">
           <Card
             title={<span className="font-bold text-slate-800">ข้อมูลสินค้า และรายละเอียดคำร้องขอเคลม</span>}
             className="rounded-2xl shadow-sm border-gray-200 h-full"
             bodyStyle={{ padding: "24px" }}
           >
-            <Descriptions
-              column={1}
-              bordered
-              size="middle"
-              labelStyle={{
-                fontWeight: "600",
-                color: "#334155",
-                width: "180px",
-                backgroundColor: "#f8fafc",
-              }}
-            >
+            <Descriptions column={1} bordered size="middle" labelStyle={{fontWeight: "600",color: "#334155",width: "180px",backgroundColor: "#f8fafc",}}>
               <Descriptions.Item label="วันที่แจ้ง">{data.createdDate || "-"}</Descriptions.Item>
               <Descriptions.Item label="ผู้แจ้ง">{data.reporter || "-"}</Descriptions.Item>
               <Descriptions.Item label="สินค้า"><span className="font-bold text-slate-800">{data.productName}</span></Descriptions.Item>
@@ -383,9 +283,21 @@ const StaffClaimUpdate = () => {
               <Descriptions.Item label="จำนวน"><span className="font-bold text-emerald-700">{data.qty}</span> ขวด/กระป๋อง</Descriptions.Item>
               <Descriptions.Item label="รายละเอียดเพิ่มเติม">{`${data.claimType || ''}: ${data.detail || ''}`|| "-"}</Descriptions.Item>
 
-              {/* แสดงข้อมูล พขร. หากมีข้อมูลบันทึกไว้ */}
-              {data.driverName && (
-                <>
+            
+            </Descriptions>
+          </Card>
+        </div>
+
+        
+        {/* ==================== แสดงข้อมูล พขร. ผู้ที่ไปรับสินค้า ==================== */}       
+        {data.driverName && (
+        <div className="lg:col-span-2">
+          <Card
+            title={<span className="font-bold text-slate-800">ข้อมูลการรับสินค้าเคลม</span>}
+            className="rounded-2xl shadow-sm border-gray-200 h-full"
+            bodyStyle={{ padding: "24px" }}
+          >
+            <Descriptions column={1} bordered size="middle" labelStyle={{fontWeight: "600",color: "#334155",width: "180px",backgroundColor: "#f8fafc",}}>
                   <Descriptions.Item label="พนักงานขับรถ (พขร.)">
                     <span className="font-semibold text-slate-800">{data.driverName}</span>
                   </Descriptions.Item>
@@ -398,12 +310,21 @@ const StaffClaimUpdate = () => {
                   <Descriptions.Item label="จำนวนที่รับคืนสินค้าแตก">
                     <span className="font-mono">{data.fullReceive || "-"}</span>
                   </Descriptions.Item>
-                </>
-              )}
 
-              {/* แสดงข้อมูลการเบิกเปลี่ยนสินค้า หากมีข้อมูลบันทึกไว้ */}
-              {data.withdrawDate && (
-                <>
+
+            </Descriptions>
+          </Card>
+        </div>)}
+
+        {/* ==================== แสดงข้อมูลการเบิกเปลี่ยนสินค้า หากมีข้อมูลบันทึกไว้ ==================== */}
+        {data.withdrawDate && (
+        <div className="lg:col-span-2">
+          <Card
+            title={<span className="font-bold text-slate-800">ข้อมูลการเบิกเปลี่ยนสินค้า</span>}
+            className="rounded-2xl shadow-sm border-gray-200 h-full"
+            bodyStyle={{ padding: "24px" }}
+          >
+            <Descriptions column={1} bordered size="middle" labelStyle={{fontWeight: "600",color: "#334155",width: "180px",backgroundColor: "#f8fafc",}}>
                   <Descriptions.Item label="วันที่เบิกสินค้าจากคลัง">
                     <span className="font-mono">{dayjs(data.withdrawDate).format("DD/MM/YYYY")}</span>
                   </Descriptions.Item>
@@ -413,12 +334,19 @@ const StaffClaimUpdate = () => {
                   <Descriptions.Item label="จำนวนแตกที่รับรองการเปลี่ยน">
                     <span className="font-bold text-emerald-700">{data.approvedQty}</span> ขวด/กระป๋อง
                   </Descriptions.Item>
-                </>
-              )}
+            </Descriptions>
+          </Card>
+        </div>)}
 
-              {/* แสดงข้อมูลการจัดส่งสินค้าเคลม หากมีข้อมูลบันทึกไว้ */}
-              {data.deliveryDriver && (
-                <>
+        {/* ==================== แสดงข้อมูลการจัดส่งสินค้าเคลม หากมีข้อมูลบันทึกไว้ ==================== */}
+        {data.deliveryDriver && (
+        <div className="lg:col-span-2">
+          <Card
+            title={<span className="font-bold text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>}
+            className="rounded-2xl shadow-sm border-gray-200 h-full"
+            bodyStyle={{ padding: "24px" }}
+          >
+            <Descriptions column={1} bordered size="middle" labelStyle={{fontWeight: "600",color: "#334155",width: "180px",backgroundColor: "#f8fafc",}}>
                   <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม">
                     <span className="font-semibold text-slate-800">{data.deliveryDriver}</span>
                   </Descriptions.Item>
@@ -430,13 +358,11 @@ const StaffClaimUpdate = () => {
                       {dayjs(data.estimatedDeliveryDate).format("DD/MM/YYYY")}
                     </span>
                   </Descriptions.Item>
-                </>
-              )}
             </Descriptions>
           </Card>
-        </div>
+        </div>)}
 
-        {/* รูปภาพ + ประวัติเวลาที่อัปเดตแต่ละสถานะ + ปุ่มย้อนกลับ */}
+        {/* ==================== รูปภาพ + ประวัติเวลาที่อัปเดตแต่ละสถานะ + ปุ่มย้อนกลับ ==================== */}
         <div className="flex flex-col gap-6 lg:col-span-1">
           <Card
             title={<span className="font-bold text-slate-800">รูปภาพหลักฐานจากลูกค้า</span>}
@@ -466,25 +392,13 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          {/* การแสดงผลประวัติวันเวลาที่อัปเดตของแต่ละสถานะ */}
+          {/* === การแสดงประวัติวันเวลาที่อัปเดตล่าสุด === */}
           <Card
             title={<span className="font-bold text-slate-800">ประวัติการบันทึกสถานะ</span>}
             className="rounded-2xl shadow-sm border-gray-200"
             bodyStyle={{ padding: "16px 24px" }}
           >
-            <Descriptions
-              column={1}
-              bordered
-              size="small"
-              labelStyle={{
-                fontWeight: "600",
-                color: "#334155",
-                width: "150px",
-                backgroundColor: "#f8fafc",
-                fontSize: "12px",
-              }}
-              contentStyle={{ fontSize: "12px" }}
-            >
+            <Descriptions column={1} bordered size="small" labelStyle={{ fontWeight: "600",color: "#334155",width: "150px",backgroundColor: "#f8fafc",fontSize: "12px",}} contentStyle={{ fontSize: "12px" }}>
               <Descriptions.Item label="อัปเดตล่าสุด ณ เวลา">
                 <span className="font-mono">
                   {data.statusTimestamps?.[data.status] || data.updateAt || "-"}
@@ -493,6 +407,7 @@ const StaffClaimUpdate = () => {
             </Descriptions>
           </Card>
 
+          {/* === ปุ่มกลับ Claim List === */}
           <Card className="rounded-2xl shadow-sm border-gray-200" bodyStyle={{ padding: "20px" }}>
             <Button
               size="large"
@@ -506,7 +421,7 @@ const StaffClaimUpdate = () => {
         </div>
       </div>
 
-      {/* Modal ปรับเปลี่ยนสถานะ */}
+      {/* ==================== Modal ในการเปลี่ยนสถานะต่างๆ ==================== */}
       <Modal
         title={<span className="font-bold text-slate-800">อัปเดตสถานะการเคลมสินค้า</span>}
         open={isModalOpen}
@@ -517,6 +432,7 @@ const StaffClaimUpdate = () => {
         okButtonProps={{ className: "bg-emerald-600 hover:bg-emerald-700 font-semibold" }}
       >
         <div className="flex flex-col gap-4 py-3">
+          {/* ======= ฟิลด์เลือกสถานะอัพเดต ======= */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">
               เลือกสถานะใหม่:
@@ -543,7 +459,7 @@ const StaffClaimUpdate = () => {
             />
           </div>
 
-          {/* ฟิลด์ระบุข้อมูล พขร. เพิ่มเติมเมื่อเลือกสถานะ รับสินค้าจริงแล้ว */}
+          {/* ======= ฟิลด์ระบุข้อมูล พขร. เพิ่มเติมเมื่อเลือกสถานะ รับสินค้าจริงแล้ว ======= */}
           {status === "รับสินค้าจริงแล้ว" && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
               <span className="text-sm font-bold text-slate-800">ข้อมูลที่เข้ารับสินค้า</span>
@@ -582,7 +498,7 @@ const StaffClaimUpdate = () => {
             </div>
           )}
 
-          {/* ฟิลด์ระบุข้อมูลการดำเนินการเปลี่ยนสินค้า */}
+          {/* ======= ฟิลด์ระบุข้อมูลการดำเนินการเปลี่ยนสินค้า ======= */}
           {status === "กำลังดำเนินการเปลี่ยนสินค้า" && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
               <span className="text-sm font-bold text-slate-800">ข้อมูลการเบิกและรับรองเปลี่ยนสินค้า</span>
@@ -617,7 +533,7 @@ const StaffClaimUpdate = () => {
             </div>
           )}
 
-          {/* ฟิลด์ระบุข้อมูลการจัดส่งสินค้าเคลม */}
+          {/* ======= ฟิลด์ระบุข้อมูลการจัดส่งสินค้าเคลม ======= */}
           {status === "กำลังจัดส่งสินค้าเคลม" && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
               <span className="text-sm font-bold text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>
@@ -652,7 +568,7 @@ const StaffClaimUpdate = () => {
             </div>
           )}
 
-          {/* ฟิลด์ระบุเหตุผลเมื่อเลือกไม่อนุมัติ/ไม่มีสิทธิ์ */}
+          {/* ======= ฟิลด์ระบุเหตุผลเมื่อเลือกไม่อนุมัติ/ไม่มีสิทธิ์ ======= */}
           {isRejected && (
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">

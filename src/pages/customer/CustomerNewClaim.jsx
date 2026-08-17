@@ -1,10 +1,12 @@
-import {Form,  Input,  DatePicker,  AutoComplete,  InputNumber,  Upload,  Button,  Card, Row, Col,  Select,  Space} from "antd";
+import React, { useState } from "react";
+import { Form, Input, DatePicker, AutoComplete, InputNumber, Upload, Button, Card, Row, Col, Select, Space, message } from "antd";
 import { UploadOutlined} from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
 
 const { TextArea } = Input;
 
+//Backend Connected
 const productOptions = [
   { value: "Est" },
   { value: "Beer" },
@@ -14,59 +16,69 @@ const productOptions = [
 ];
 
 const claimType = [
-  {
-    value: "Packaging",
-    label: "บรรจุภัณฑ์เสียหาย",
-  },
-  {
-    value: "Leak",
-    label: "สินค้ารั่ว",
-  },
-  {
-    value: "Expired",
-    label: "หมดอายุ",
-  },
-  {
-    value: "Quality",
-    label: "คุณภาพสินค้า",
-  },
-  {
-    value: "Other",
-    label: "อื่น ๆ",
-  },
+  { value: "แตกจากการขนส่ง",label: "แตกจากการขนส่ง",},
+  { value: "แตกแห้งหลังการส่งสินค้า",label: "แตกแห้งหลังการส่งสินค้า",},
+  { value: "ฝากเปลี่ยน", label: "ฝากเปลี่ยน",},
 ];
 
 const CustomerNewClaim = () => {
-  
-  
     const navigate = useNavigate();
-    
-    const onFinish = (values)=>{
-  
-      const claimData = {
-        claimId:"CLM-" + Date.now(),
-        createdDate:dayjs().format("DD/MM/YYYY"),
-        reporter: "Phonnapha Kaenmueang",
-        ...values, 
-        status:"Processing"
-        };       
-        
-       const oldClaims = JSON.parse(localStorage.getItem("claims")) || [];
-  
-       oldClaims.push(claimData);
-       
-       localStorage.setItem("claims",JSON.stringify(oldClaims));
-       navigate(`/customer/new-claim/processing/${claimData.claimId}`);
-      };
-    
+
+    const [form] = Form.useForm();
+    const [fileList, setFileList] = useState([]);
+
+    const savedUser = localStorage.getItem("user");
+    const user = savedUser ? JSON.parse(savedUser) : null;
+
+    // ปรับฟังก์ชันการจัดการรูปภาพ ไม่ต้องแปลงเป็น Base64 ทั้งหมด 
+    // เพื่อป้องกัน localStorage เต็ม
+    const processImages = async () => {
+      return fileList.map((file) => {
+        if (file.originFileObj) {
+          return URL.createObjectURL(file.originFileObj);
+        }
+        return file.url || "";
+      });
+    };
+
+    // 1. ฟังก์ชันส่งข้อมูลการเคลม (Submit)
+    const onFinish = async (values) => {
+      try {
+        const base64Images = await processImages();
+
+        const claimData = {
+          claimId: "CLM-" + Date.now(),
+          createdDate: dayjs().format("DD/MM/YYYY"),
+          reporter: user?.name || "-",
+          ...values,
+          images: base64Images, // บันทึกเป็น Array ของ Base64
+          image: base64Images[0] || null, // สำหรับแมปเข้า StaffClaimUpdate
+          status: "สร้างรายการเคลม",
+          updateAt: dayjs(Date.now()).format("DD/MM/YYYY")
+        };
+
+        //Backend Connected
+        const oldClaims = JSON.parse(localStorage.getItem("claims")) || [];
+        oldClaims.push(claimData);
+        localStorage.setItem("claims", JSON.stringify(oldClaims));
+
+        message.success("สร้างรายการขอเคลมสินค้าสำเร็จ");
+        navigate(`/customer/new-claim/processing/${claimData.claimId}`);
+      } catch (error) {
+        message.error("เกิดข้อผิดพลาดในการแปลงไฟล์รูปภาพ");
+      }
+    };
   
     return (
       <div className="p-6 bg-gray-100 min-h-screen">
         <Card>
-          <h1 className="text-3xl font-bold mb-1">New Claim</h1>
-          <p className="text-gray-500 mb-8">กรุณากรอกข้อมูลการเคลมสินค้าให้ครบถ้วน</p>
+          
+          <div className="border-l-4 border-blue-600 pl-4 mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">สร้างรายการเคลม</h1>
+            <p className="text-sm text-gray-500 mt-1">กรุณากรอกข้อมูลการเคลมสินค้าให้ครบถ้วน</p>
+          </div>
   
-          <Form layout="vertical" onFinish={onFinish}>
+          <Form form={form} layout="vertical" onFinish={onFinish}>
             <Space direction="vertical" size={24} className="w-full">
   
                   {/* ------------------------- */}
@@ -82,7 +94,8 @@ const CustomerNewClaim = () => {
   
                       <Col xs={24} md={12}>
                         <Form.Item label="ผู้แจ้ง">
-                          <Input value="Phonnapha Kaenmueang" disabled/>
+                          {/**Backend : ไปดูว่าฐานข้อมูลเก็บชื่ออย่างไร แล้วตอนที่จะขันทึกข้อมูลจะใช้ User ใคร */}
+                          <Input value={user?.name || "-"} disabled/>
                         </Form.Item>
                       </Col>
                     </Row>
@@ -114,8 +127,13 @@ const CustomerNewClaim = () => {
                         </Form.Item>
                       </Col>
   
+                      {/* 3. แปลง Lot Number เป็นตัวพิมพ์ใหญ่อัตโนมัติ */}
                       <Col xs={24} md={12}>
-                        <Form.Item label="Lot Number" name="lot">
+                        <Form.Item label="หมายเลข Lot"
+                                  name="lot" 
+                                  getValueFromEvent={(e) => e.target.value.toUpperCase()}
+                                  rules={[{required: true,message: "กรุณาใส่เลข Lot",},]}
+                        >
                           <Input placeholder="เช่น LOT240801"/>
                         </Form.Item>
                       </Col>
@@ -123,13 +141,13 @@ const CustomerNewClaim = () => {
   
                     <Row gutter={16}>
                       <Col xs={24} md={12}>
-                        <Form.Item label="วันที่ผลิต" name="mfg">
+                        <Form.Item label="วันที่ผลิต" name="mfg" rules={[{required: true,message: "กรุณาเลือกวันที่",},]}>
                           <DatePicker className="w-full"/>
                         </Form.Item>
                       </Col>
   
                       <Col xs={24} md={12}>
-                        <Form.Item label="วันหมดอายุ" name="exp">
+                        <Form.Item label="วันหมดอายุ" name="exp" rules={[{required: true,message: "กรุณาเลือกวันที่",},]}>
                           <DatePicker className="w-full"/>
                         </Form.Item>
                       </Col>
@@ -154,7 +172,7 @@ const CustomerNewClaim = () => {
                             },
                           ]}
                         >
-                          <Input placeholder="ระบุจำนวน" maxLength={6} addonAfter="ขวด"/>
+                          <Input placeholder="ระบุจำนวน" maxLength={6} addonAfter="ขวด/กระป๋อง"/>
                         </Form.Item>
                       </Col>
                     </Row>
@@ -163,25 +181,13 @@ const CustomerNewClaim = () => {
                   {/* ------------------------- */}
                   {/* รายละเอียดการเคลม */}
                   {/* ------------------------- */}
-                  <Card title="รายละเอียดการเคลม">
-                    
-                    {/**
-                    * <Form.Item
-                    *   label="ประเภทการเคลม"
-                    *   name="claimType"
-                    * >
-                    *
-                    *  <Select
-                    *    options={claimType}
-                    *    placeholder="เลือกประเภทการเคลม"
-                    *  />
-                    *   
-                    * </Form.Item>
-                    * 
-                    */}
-  
-                    <Form.Item label="รายละเอียด" name="detail">
-                      <TextArea rows={6} placeholder="อธิบายอาการเสียหรือรายละเอียดเพิ่มเติม"/>
+                  <Card title="รายละเอียดการเคลม">                    
+                    <Form.Item label="ประเภทการเคลม" name="claimType" rules={[{required: true,message: "กรุณาประเภทการเคลม",},]} >
+                      <Select options={claimType} placeholder="เลือกประเภทการเคลม"/>
+                    </Form.Item>
+                
+                    <Form.Item label="รายละเอียด" name="detail" rules={[{required: true,message: "กรุณาใส่รายละเอียดสาเหตุเพิ่มเติม",},]}>
+                      <TextArea rows={6} placeholder="อธิบายอาการเสียหรือรายละเอียดสาเหตุเพิ่มเติม"/>
                     </Form.Item>
                   </Card>
   
@@ -189,12 +195,32 @@ const CustomerNewClaim = () => {
                   {/* รูปภาพ */}
                   {/* ------------------------- */}
                   <Card title="รูปภาพประกอบ">
-                    <Upload listType="picture-card" beforeUpload={() => false} multiple>
-                      <div>
-                        <UploadOutlined style={{fontSize: 24,}}/>
-                        <div className="mt-2">Upload</div>
-                      </div>
-                    </Upload>
+                    <Form.Item
+                      name="images"
+                      rules={[
+                        {
+                          validator: () => {
+                            if (fileList.length > 0) {
+                              return Promise.resolve();
+                            }
+                            return Promise.reject(new Error("กรุณาอัปโหลดรูปภาพประกอบอย่างน้อย 1 รูป"));
+                          },
+                        },
+                      ]}
+                    >
+                      <Upload
+                        listType="picture-card"
+                        beforeUpload={() => false}
+                        fileList={fileList}
+                        onChange={({ fileList }) => setFileList(fileList)}
+                        multiple
+                      >
+                        <div>
+                          <UploadOutlined style={{ fontSize: 24 }} />
+                          <div className="mt-2">Upload</div>
+                        </div>
+                      </Upload>
+                    </Form.Item>
                   </Card>
   
                   {/* ------------------------- */}
@@ -202,7 +228,6 @@ const CustomerNewClaim = () => {
                   {/* ------------------------- */}
   
                   <div className="flex justify-end gap-3">
-                    <Button size="large">บันทึกร่าง</Button>
                     <Button type="primary" size="large" htmlType="submit">
                       ส่งข้อมูลการเคลม
                     </Button>

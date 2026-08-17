@@ -1,16 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Select, Button } from "antd";
-import {
-  SendOutlined,
-  SmileOutlined,
-  PaperClipOutlined,
-  CustomerServiceOutlined,
-  UserOutlined,
-  CheckOutlined,
-  FileTextOutlined,
-  HistoryOutlined,
-} from "@ant-design/icons";
+import { SendOutlined,  SmileOutlined,  PaperClipOutlined,  CustomerServiceOutlined,  UserOutlined,  CheckOutlined,  FileTextOutlined,  HistoryOutlined,} from "@ant-design/icons";
 
 const CustomerChat = () => {
   const { claimId } = useParams();

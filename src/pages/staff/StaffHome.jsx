@@ -11,12 +11,15 @@ const StaffHome = () => {
 
   const navigate = useNavigate();
   const [latestClaims, setLatestClaims] = useState([]);
+
+  const savedUser = localStorage.getItem("user");
+  const user = savedUser ? JSON.parse(savedUser) : null;
   
   useEffect(() => {
       // ดึงข้อมูลรายการเคลมจาก localStorage
       const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
       // ดึงเฉพาะ 3 รายการล่าสุด
-      setLatestClaims(savedClaims.slice(0, 3));
+      setLatestClaims(savedClaims.slice(0, 8));
   }, []);
 
   // กำหนดสี Tag ให้ตรงกับ Ant Design Theme
@@ -46,9 +49,11 @@ const StaffHome = () => {
             
             {/* 1. Header Greeting */}
             <div className="flex flex-col gap-1">
+              
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-                สวัสดี, Staff
-              </h1>           
+              สวัสดี, คุณ {user?.name || "-"}
+            </h1>     
+            
             </div>
     
             {/* 3. รายการเคลมล่าสุด */}

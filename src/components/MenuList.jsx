@@ -1,11 +1,14 @@
-import {Menu} from "antd"
-import {HomeOutlined, FileAddOutlined, HistoryOutlined, WechatOutlined, SettingFilled} from "@ant-design/icons"
-import {NavLink, useLocation } from "react-router-dom";
-
-
+import { Menu } from "antd";
+import {
+  HomeOutlined,
+  FileAddOutlined,
+  HistoryOutlined,
+  WechatOutlined,
+  SettingFilled,
+} from "@ant-design/icons";
+import { NavLink, useLocation } from "react-router-dom";
 
 const MenuList = () => {
-
   const location = useLocation();
 
   // 1. ดึงข้อมูล User จาก localStorage
@@ -48,8 +51,7 @@ const MenuList = () => {
       return "staff-list-claim";
     }
 
-
-     if (location.pathname.includes("/staff/update-claim")) {
+    if (location.pathname.includes("/staff/update-claim")) {
       return "staff-list-claim";
     }
 
@@ -65,49 +67,54 @@ const MenuList = () => {
   };
 
   return (
-    <Menu theme="dark" mode="inline" selectedKeys={[getSelectedKey()]} className="menu-bar">
+    <Menu
+      theme="dark"
+      mode="inline"
+      selectedKeys={[getSelectedKey()]}
+      className="menu-bar"
+    >
       {/* ==================== STAFF MENUS ==================== */}
       {role === "staff" && (
         <>
           <Menu.Item key="staff-home" icon={<HomeOutlined />}>
-            <NavLink to="/staff">Home</NavLink>
+            <NavLink to="/staff">หน้าแรก</NavLink>
           </Menu.Item>
 
           <Menu.Item key="staff-list-claim" icon={<HistoryOutlined />}>
-            <NavLink to="/staff/list-claim">Claim List</NavLink>
+            <NavLink to="/staff/list-claim">รายการเคลม</NavLink>
           </Menu.Item>
 
           <Menu.Item key="staff-chat" icon={<WechatOutlined />}>
-            <NavLink to="/staff/chat">Chat</NavLink>
+            <NavLink to="/staff/chat">สนทนาเคส</NavLink>
           </Menu.Item>
 
-           <Menu.Item key="staff-setting" icon={<SettingFilled />}>
-            <NavLink to="/staff/setting">Setting</NavLink>
+          <Menu.Item key="staff-setting" icon={<SettingFilled />}>
+            <NavLink to="/staff/setting">ตั้งค่า</NavLink>
           </Menu.Item>
         </>
       )}
-   
+
       {/* ==================== CUSTOMER MENUS ==================== */}
       {role === "customer" && (
         <>
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
-            <NavLink to="/customer">Home</NavLink>
+            <NavLink to="/customer">หน้าแรก</NavLink>
           </Menu.Item>
 
           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">New Claim</NavLink>
+            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
           </Menu.Item>
 
           <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>
-            <NavLink to="/customer/list-claim">Claim List</NavLink>
+            <NavLink to="/customer/list-claim">รายการเคลม</NavLink>
           </Menu.Item>
 
           <Menu.Item key="customer-chat" icon={<WechatOutlined />}>
-            <NavLink to="/customer/chat">Chat</NavLink>
+            <NavLink to="/customer/chat">สนทนาเคส</NavLink>
           </Menu.Item>
 
           <Menu.Item key="customer-setting" icon={<SettingFilled />}>
-            <NavLink to="/customer/setting">Setting</NavLink>
+            <NavLink to="/customer/setting">ตั้งค่า</NavLink>
           </Menu.Item>
         </>
       )}
@@ -115,4 +122,4 @@ const MenuList = () => {
   );
 };
 
-export default MenuList
+export default MenuList;

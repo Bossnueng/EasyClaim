@@ -1,5 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Avatar, Badge, Input, Tag, List, Button, Dropdown, Space, Empty } from "antd";
+import {
+  Avatar,
+  Badge,
+  Input,
+  Tag,
+  List,
+  Button,
+  Dropdown,
+  Space,
+  Empty,
+} from "antd";
 import {
   SendOutlined,
   SmileOutlined,
@@ -64,7 +74,12 @@ const StaffChat = () => {
         customerName: c.customerName || "ลูกค้าทั่วไป",
         productName: c.productName || "ไม่ระบุชื่อสินค้า",
         status: c.status || "รอการตรวจสอบ",
-        statusColor: c.status === "เสร็จสิ้น" ? "success" : c.status === "กำลังดำเนินการ" ? "processing" : "warning",
+        statusColor:
+          c.status === "เสร็จสิ้น"
+            ? "success"
+            : c.status === "กำลังดำเนินการ"
+              ? "processing"
+              : "warning",
         lastMessage: "เปิดเคสเคลมสินค้า",
         lastTime: "เพิ่งเมื่อครู่",
       }));
@@ -97,7 +112,10 @@ const StaffChat = () => {
   const handleSend = () => {
     if (!inputText.trim() || !activeClaimId) return;
 
-    const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const currentTime = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
     const newMsg = {
       id: Date.now(),
@@ -124,8 +142,8 @@ const StaffChat = () => {
               lastMessage: inputText,
               lastTime: currentTime,
             }
-          : claim
-      )
+          : claim,
+      ),
     );
 
     setInputText("");
@@ -137,13 +155,19 @@ const StaffChat = () => {
       claim.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       claim.productName.toLowerCase().includes(searchTerm.toLowerCase());
 
-    if (statusFilter === "UNREAD") return matchesSearch && (unreadCounts[claim.claimId] || 0) > 0;
-    if (statusFilter === "IN_PROGRESS") return matchesSearch && claim.status === "กำลังดำเนินการ";
-    if (statusFilter === "CLOSED") return matchesSearch && claim.status === "เสร็จสิ้น";
+    if (statusFilter === "UNREAD")
+      return matchesSearch && (unreadCounts[claim.claimId] || 0) > 0;
+    if (statusFilter === "IN_PROGRESS")
+      return matchesSearch && claim.status === "กำลังดำเนินการ";
+    if (statusFilter === "CLOSED")
+      return matchesSearch && claim.status === "เสร็จสิ้น";
     return matchesSearch;
   });
 
-  const totalUnread = Object.values(unreadCounts).reduce((acc, curr) => acc + curr, 0);
+  const totalUnread = Object.values(unreadCounts).reduce(
+    (acc, curr) => acc + curr,
+    0,
+  );
   const activeClaimInfo = claimsList.find((c) => c.claimId === activeClaimId);
   const currentMessages = activeClaimId ? chatHistory[activeClaimId] || [] : [];
   const hasNoClaims = claimsList.length === 0;
@@ -183,21 +207,55 @@ const StaffChat = () => {
             gap: "12px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "700", color: "#0f172a" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "18px",
+                  fontWeight: "700",
+                  color: "#0f172a",
+                }}
+              >
                 รายการการเคลม
               </h3>
-              {totalUnread > 0 && <Badge count={totalUnread} style={{ backgroundColor: "#ef4444" }} />}
+              {totalUnread > 0 && (
+                <Badge
+                  count={totalUnread}
+                  style={{ backgroundColor: "#ef4444" }}
+                />
+              )}
             </div>
 
             <Dropdown
               menu={{
                 items: [
-                  { key: "ALL", label: "เคสทั้งหมด", onClick: () => setStatusFilter("ALL") },
-                  { key: "UNREAD", label: "ข้อความใหม่", onClick: () => setStatusFilter("UNREAD") },
-                  { key: "IN_PROGRESS", label: "กำลังดำเนินการ", onClick: () => setStatusFilter("IN_PROGRESS") },
-                  { key: "CLOSED", label: "เคสที่จบแล้ว", onClick: () => setStatusFilter("CLOSED") },
+                  {
+                    key: "ALL",
+                    label: "เคสทั้งหมด",
+                    onClick: () => setStatusFilter("ALL"),
+                  },
+                  {
+                    key: "UNREAD",
+                    label: "ข้อความใหม่",
+                    onClick: () => setStatusFilter("UNREAD"),
+                  },
+                  {
+                    key: "IN_PROGRESS",
+                    label: "กำลังดำเนินการ",
+                    onClick: () => setStatusFilter("IN_PROGRESS"),
+                  },
+                  {
+                    key: "CLOSED",
+                    label: "เคสที่จบแล้ว",
+                    onClick: () => setStatusFilter("CLOSED"),
+                  },
                 ],
               }}
             >
@@ -220,7 +278,11 @@ const StaffChat = () => {
             <div style={{ padding: "32px 16px", textAlign: "center" }}>
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={<span style={{ color: "#94a3b8", fontSize: "13px" }}>ยังไม่มีรายการสนทนาใหม่เข้าระบบ</span>}
+                description={
+                  <span style={{ color: "#94a3b8", fontSize: "13px" }}>
+                    ยังไม่มีรายการสนทนาใหม่เข้าระบบ
+                  </span>
+                }
               />
             </div>
           ) : (
@@ -238,29 +300,69 @@ const StaffChat = () => {
                     style={{
                       padding: "14px 16px",
                       cursor: "pointer",
-                      backgroundColor: isActive && !isMobile ? "#f0fdf4" : "#ffffff",
-                      borderLeft: isActive && !isMobile ? "4px solid #059669" : "4px solid transparent",
+                      backgroundColor:
+                        isActive && !isMobile ? "#f0fdf4" : "#ffffff",
+                      borderLeft:
+                        isActive && !isMobile
+                          ? "4px solid #059669"
+                          : "4px solid transparent",
                       borderBottom: "1px solid #f1f5f9",
                       transition: "all 0.2s",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontWeight: "700", fontSize: "14px", color: "#0f172a" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: "700",
+                          fontSize: "14px",
+                          color: "#0f172a",
+                        }}
+                      >
                         {item.claimId}
                       </span>
-                      <span style={{ fontSize: "11px", color: "#94a3b8" }}>{item.lastTime}</span>
+                      <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                        {item.lastTime}
+                      </span>
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#334155" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: "600",
+                          color: "#334155",
+                        }}
+                      >
                         {item.customerName}
                       </span>
-                      <Tag color={item.statusColor} style={{ marginRight: 0, fontSize: "10px" }}>
+                      <Tag
+                        color={item.statusColor}
+                        style={{ marginRight: 0, fontSize: "10px" }}
+                      >
                         {item.status}
                       </Tag>
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
                       <span
                         style={{
                           fontSize: "12px",
@@ -274,7 +376,12 @@ const StaffChat = () => {
                       >
                         {item.lastMessage}
                       </span>
-                      {unread > 0 && <Badge count={unread} style={{ backgroundColor: "#059669" }} />}
+                      {unread > 0 && (
+                        <Badge
+                          count={unread}
+                          style={{ backgroundColor: "#059669" }}
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -308,10 +415,22 @@ const StaffChat = () => {
             }}
           >
             <Empty
-              image={<MessageOutlined style={{ fontSize: "48px", color: "#cbd5e1" }} />}
+              image={
+                <MessageOutlined
+                  style={{ fontSize: "48px", color: "#cbd5e1" }}
+                />
+              }
               description={
                 <div style={{ textAlign: "center" }}>
-                  <h4 style={{ margin: "8px 0 4px 0", color: "#475569", fontSize: "16px" }}>ยังไม่มีรายการสนทนาใหม่</h4>
+                  <h4
+                    style={{
+                      margin: "8px 0 4px 0",
+                      color: "#475569",
+                      fontSize: "16px",
+                    }}
+                  >
+                    ยังไม่มีรายการสนทนาใหม่
+                  </h4>
                   <p style={{ margin: 0, color: "#94a3b8", fontSize: "13px" }}>
                     เมื่อมีการยื่นคำร้องเคลมสินค้า รายการสนทนาจะปรากฏในช่องนี้
                   </p>
@@ -335,7 +454,15 @@ const StaffChat = () => {
             >
               {activeClaimInfo ? (
                 <>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
                     {isMobile && (
                       <Button
                         type="text"
@@ -344,17 +471,49 @@ const StaffChat = () => {
                         style={{ padding: "4px 8px" }}
                       />
                     )}
-                    <Avatar size={isMobile ? 36 : 40} icon={<UserOutlined />} style={{ backgroundColor: "#3b82f6", flexShrink: 0 }} />
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <h3 style={{ margin: 0, fontSize: isMobile ? "14px" : "16px", fontWeight: "700", color: "#1e293b", whiteSpace: "nowrap" }}>
+                    <Avatar
+                      size={isMobile ? 36 : 40}
+                      icon={<UserOutlined />}
+                      style={{ backgroundColor: "#3b82f6", flexShrink: 0 }}
+                    />
+                    <div
+                      style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <h3
+                          style={{
+                            margin: 0,
+                            fontSize: isMobile ? "14px" : "16px",
+                            fontWeight: "700",
+                            color: "#1e293b",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {activeClaimInfo.customerName}
                         </h3>
-                        <Tag color="blue" style={{ fontSize: "10px", marginRight: 0 }}>
+                        <Tag
+                          color="blue"
+                          style={{ fontSize: "10px", marginRight: 0 }}
+                        >
                           {activeClaimInfo.claimId}
                         </Tag>
                       </div>
-                      <div style={{ fontSize: "11px", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#64748b",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
                         สินค้า: {activeClaimInfo.productName}
                       </div>
                     </div>
@@ -371,9 +530,14 @@ const StaffChat = () => {
                       type="primary"
                       icon={<CheckCircleOutlined />}
                       danger={activeClaimInfo.status === "เสร็จสิ้น"}
-                      style={{ fontSize: isMobile ? "11px" : "12px", padding: isMobile ? "0 8px" : undefined }}
+                      style={{
+                        fontSize: isMobile ? "11px" : "12px",
+                        padding: isMobile ? "0 8px" : undefined,
+                      }}
                     >
-                      {activeClaimInfo.status === "เสร็จสิ้น" ? "ปิดเคสแล้ว" : "เสร็จสิ้น"}
+                      {activeClaimInfo.status === "เสร็จสิ้น"
+                        ? "ปิดเคสแล้ว"
+                        : "เสร็จสิ้น"}
                     </Button>
                   </Space>
                 </>
@@ -395,8 +559,17 @@ const StaffChat = () => {
               }}
             >
               {currentMessages.length === 0 ? (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ color: "#94a3b8", fontSize: "13px" }}>ยังไม่มีข้อความในเคสนี้ เริ่มต้นพิมพ์ส่งข้อความได้เลย</span>
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <span style={{ color: "#94a3b8", fontSize: "13px" }}>
+                    ยังไม่มีข้อความในเคสนี้ เริ่มต้นพิมพ์ส่งข้อความได้เลย
+                  </span>
                 </div>
               ) : (
                 currentMessages.map((msg, index) => {
@@ -409,7 +582,14 @@ const StaffChat = () => {
 
                   if (msg.isSystem || msg.senderRole === "SYSTEM") {
                     return (
-                      <div key={msg.id} style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
+                      <div
+                        key={msg.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          margin: "8px 0",
+                        }}
+                      >
                         <span
                           style={{
                             backgroundColor: "#e2e8f0",
@@ -449,10 +629,15 @@ const StaffChat = () => {
                               <Avatar
                                 size={isMobile ? 32 : 36}
                                 icon={<UserOutlined />}
-                                style={{ backgroundColor: "#94a3b8", color: "#ffffff" }}
+                                style={{
+                                  backgroundColor: "#94a3b8",
+                                  color: "#ffffff",
+                                }}
                               />
                             ) : (
-                              <div style={{ width: isMobile ? "32px" : "36px" }} />
+                              <div
+                                style={{ width: isMobile ? "32px" : "36px" }}
+                              />
                             )}
                           </div>
                         )}
@@ -465,11 +650,28 @@ const StaffChat = () => {
                           }}
                         >
                           {!isPrevSameSender && (
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                              <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  fontWeight: "600",
+                                  color: "#475569",
+                                }}
+                              >
                                 {msg.senderName}
                               </span>
-                              <span style={{ fontSize: "10px", color: "#94a3b8" }}>{msg.time}</span>
+                              <span
+                                style={{ fontSize: "10px", color: "#94a3b8" }}
+                              >
+                                {msg.time}
+                              </span>
                             </div>
                           )}
 
@@ -502,7 +704,8 @@ const StaffChat = () => {
                                 gap: "2px",
                               }}
                             >
-                              <CheckOutlined style={{ color: "#059669" }} /> ส่งแล้ว {msg.time}
+                              <CheckOutlined style={{ color: "#059669" }} />{" "}
+                              ส่งแล้ว {msg.time}
                             </span>
                           )}
                         </div>
@@ -535,9 +738,17 @@ const StaffChat = () => {
               >
                 <button
                   type="button"
-                  style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px" }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
                 >
-                  <PaperClipOutlined style={{ fontSize: isMobile ? "16px" : "18px" }} />
+                  <PaperClipOutlined
+                    style={{ fontSize: isMobile ? "16px" : "18px" }}
+                  />
                 </button>
 
                 <input
@@ -552,7 +763,11 @@ const StaffChat = () => {
                     color: "#0f172a",
                     minWidth: 0,
                   }}
-                  placeholder={activeClaimId ? `ตอบกลับ ${activeClaimId}...` : "เลือกเคสเพื่อพิมพ์ข้อความ..."}
+                  placeholder={
+                    activeClaimId
+                      ? `ตอบกลับ ${activeClaimId}...`
+                      : "เลือกเคสเพื่อพิมพ์ข้อความ..."
+                  }
                   value={inputText}
                   disabled={!activeClaimId}
                   onChange={(e) => setInputText(e.target.value)}
@@ -562,7 +777,13 @@ const StaffChat = () => {
                 {!isMobile && (
                   <button
                     type="button"
-                    style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px" }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      padding: "4px",
+                    }}
                   >
                     <SmileOutlined style={{ fontSize: "18px" }} />
                   </button>
@@ -580,8 +801,12 @@ const StaffChat = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    cursor: inputText.trim() && activeClaimId ? "pointer" : "not-allowed",
-                    backgroundColor: inputText.trim() && activeClaimId ? "#059669" : "#cbd5e1",
+                    cursor:
+                      inputText.trim() && activeClaimId
+                        ? "pointer"
+                        : "not-allowed",
+                    backgroundColor:
+                      inputText.trim() && activeClaimId ? "#059669" : "#cbd5e1",
                     color: "#ffffff",
                     transition: "background-color 0.2s",
                     flexShrink: 0,

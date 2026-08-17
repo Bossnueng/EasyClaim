@@ -1,7 +1,17 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Select, Button, Empty } from "antd";
-import { SendOutlined, SmileOutlined,  PaperClipOutlined,  CustomerServiceOutlined,  UserOutlined,  CheckOutlined,  FileTextOutlined,  HistoryOutlined,  PlusCircleOutlined,} from "@ant-design/icons";
+import {
+  SendOutlined,
+  SmileOutlined,
+  PaperClipOutlined,
+  CustomerServiceOutlined,
+  UserOutlined,
+  CheckOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  PlusCircleOutlined,
+} from "@ant-design/icons";
 
 const CustomerChat = () => {
   const { claimId } = useParams();
@@ -67,7 +77,10 @@ const CustomerChat = () => {
                 id: Date.now(),
                 senderName: "ระบบอัตโนมัติ",
                 senderRole: "SYSTEM",
-                time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                time: new Date().toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
                 text: `เปิดช่องทางสนทนาสำหรับรายการเคลมหมายเลข: ${claimId}`,
                 isSystem: true,
               },
@@ -75,7 +88,10 @@ const CustomerChat = () => {
                 id: Date.now() + 1,
                 senderName: "เจ้าหน้าที่ฝ่ายเคลม",
                 senderRole: "STAFF",
-                time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                time: new Date().toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
                 text: `สวัสดีครับ เจ้าหน้ารับเรื่องเคลมหมายเลข ${claimId} เรียบร้อยแล้วครับ สามารถพิมพ์ข้อความสอบถามหรือแนบรูปภาพเพิ่มเติมทิ้งไว้ในแชทนี้ได้เลยครับ`,
               },
             ],
@@ -115,7 +131,10 @@ const CustomerChat = () => {
       id: Date.now(),
       senderName: "คุณ (ลูกค้า)",
       senderRole: "CUSTOMER",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
       text: inputText,
     };
 
@@ -148,7 +167,7 @@ const CustomerChat = () => {
         boxSizing: "border-box",
       }}
     >
-      {/* 1. HEADER */}
+      {/* ===== HEADER ===== */}
       <div
         style={{
           display: "flex",
@@ -169,11 +188,28 @@ const CustomerChat = () => {
             />
           </Badge>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700", color: "#1e293b", lineHeight: "1.2" }}>
+            <h3
+              style={{
+                margin: 0,
+                fontSize: "16px",
+                fontWeight: "700",
+                color: "#1e293b",
+                lineHeight: "1.2",
+              }}
+            >
               ฝ่ายบริการคลังสินค้า (Warehouse Support)
             </h3>
-            <span style={{ fontSize: "12px", color: "#059669", fontWeight: "500", marginTop: "4px" }}>
-              {isClaimSelected ? `● สนทนาเคส: ${selectedClaim}` : "● เลือกรายการเคลมเพื่อเริ่มสนทนา"}
+            <span
+              style={{
+                fontSize: "12px",
+                color: "#059669",
+                fontWeight: "500",
+                marginTop: "4px",
+              }}
+            >
+              {isClaimSelected
+                ? `● สนทนาเคส: ${selectedClaim}`
+                : "● เลือกรายการเคลมเพื่อเริ่มสนทนา"}
             </span>
           </div>
         </div>
@@ -190,7 +226,7 @@ const CustomerChat = () => {
         )}
       </div>
 
-      {/* 2. BODY */}
+      {/* ===== BODY =====*/}
       {!isClaimSelected ? (
         <div
           style={{
@@ -217,8 +253,15 @@ const CustomerChat = () => {
             }}
           >
             {hasNoClaims ? (
-              /* กรณีไม่มีคำร้องยื่นเคลมสินค้าเลย */
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+              /* --- กรณีไม่มีคำร้องยื่นเคลมสินค้าเลย --- */
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "12px",
+                }}
+              >
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
@@ -231,21 +274,43 @@ const CustomerChat = () => {
                   type="primary"
                   icon={<PlusCircleOutlined />}
                   onClick={() => navigate("/customer/new-claim")}
-                  style={{ backgroundColor: "#059669", borderRadius: "8px", marginTop: "8px" }}
+                  style={{
+                    backgroundColor: "#059669",
+                    borderRadius: "8px",
+                    marginTop: "8px",
+                  }}
                 >
                   ยื่นคำร้องเคลมสินค้าใหม่
                 </Button>
               </div>
             ) : (
-              /* กรณีมีคำร้องยื่นเคลมในระบบ */
+              /* --- กรณีมีคำร้องยื่นเคลมในระบบ --- */
               <>
-                <div style={{ fontSize: "32px", color: "#059669", marginBottom: "12px" }}>
+                <div
+                  style={{
+                    fontSize: "32px",
+                    color: "#059669",
+                    marginBottom: "12px",
+                  }}
+                >
                   <FileTextOutlined />
                 </div>
-                <h4 style={{ margin: "0 0 8px 0", fontSize: "18px", color: "#1e293b" }}>
+                <h4
+                  style={{
+                    margin: "0 0 8px 0",
+                    fontSize: "18px",
+                    color: "#1e293b",
+                  }}
+                >
                   เลือกรายการเคลมสินค้า
                 </h4>
-                <p style={{ margin: "0 0 20px 0", fontSize: "13px", color: "#64748b" }}>
+                <p
+                  style={{
+                    margin: "0 0 20px 0",
+                    fontSize: "13px",
+                    color: "#64748b",
+                  }}
+                >
                   โปรดเลือกรายการที่คุณต้องการติดต่อสอบถามกับเจ้าหน้าที่
                 </p>
 
@@ -253,8 +318,14 @@ const CustomerChat = () => {
                   showSearch
                   allowClear
                   placeholder="-- เลือกเลขอ้างอิงการเคลม --"
-                  notFoundContent={<span style={{ color: "#94a3b8" }}>ไม่พบรายการเคลม</span>}
-                  style={{ width: "100%", marginBottom: "16px", textAlign: "left" }}
+                  notFoundContent={
+                    <span style={{ color: "#94a3b8" }}>ไม่พบรายการเคลม</span>
+                  }
+                  style={{
+                    width: "100%",
+                    marginBottom: "16px",
+                    textAlign: "left",
+                  }}
                   size="large"
                   options={claimOptions}
                   value={selectedClaim}
@@ -262,7 +333,9 @@ const CustomerChat = () => {
                   onSelect={(val) => setSelectedClaim(val)}
                   onChange={(val) => !val && setSelectedClaim(null)}
                   filterOption={(input, option) =>
-                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                    (option?.label ?? "")
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
                   }
                 />
 
@@ -281,7 +354,7 @@ const CustomerChat = () => {
           </div>
         </div>
       ) : (
-        /* ส่วนแสดงกล่องข้อความสนทนา */
+        /* --- ส่วนแสดงกล่องข้อความสนทนา ---*/
         <div
           style={{
             flex: 1,
@@ -303,8 +376,23 @@ const CustomerChat = () => {
 
             if (msg.isSystem || msg.senderRole === "SYSTEM") {
               return (
-                <div key={msg.id} style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
-                  <span style={{ backgroundColor: "#e2e8f0", color: "#475569", padding: "4px 12px", borderRadius: "12px", fontSize: "11px" }}>
+                <div
+                  key={msg.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    margin: "8px 0",
+                  }}
+                >
+                  <span
+                    style={{
+                      backgroundColor: "#e2e8f0",
+                      color: "#475569",
+                      padding: "4px 12px",
+                      borderRadius: "12px",
+                      fontSize: "11px",
+                    }}
+                  >
                     {msg.text}
                   </span>
                 </div>
@@ -335,7 +423,10 @@ const CustomerChat = () => {
                         <Avatar
                           size={36}
                           icon={<UserOutlined />}
-                          style={{ backgroundColor: "#cbd5e1", color: "#475569" }}
+                          style={{
+                            backgroundColor: "#cbd5e1",
+                            color: "#475569",
+                          }}
                         />
                       ) : (
                         <div style={{ width: "36px" }} />
@@ -351,11 +442,26 @@ const CustomerChat = () => {
                     }}
                   >
                     {!isPrevSameSender && (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                        <span style={{ fontSize: "12px", fontWeight: "600", color: "#475569" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            color: "#475569",
+                          }}
+                        >
                           {msg.senderName}
                         </span>
-                        <span style={{ fontSize: "10px", color: "#94a3b8" }}>{msg.time}</span>
+                        <span style={{ fontSize: "10px", color: "#94a3b8" }}>
+                          {msg.time}
+                        </span>
                       </div>
                     )}
 
@@ -379,8 +485,18 @@ const CustomerChat = () => {
                     </div>
 
                     {isMe && (
-                      <span style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px", display: "flex", alignItems: "center", gap: "2px" }}>
-                        <CheckOutlined style={{ color: "#059669" }} /> ส่งแล้ว {msg.time}
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          color: "#94a3b8",
+                          marginTop: "4px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2px",
+                        }}
+                      >
+                        <CheckOutlined style={{ color: "#059669" }} /> ส่งแล้ว{" "}
+                        {msg.time}
                       </span>
                     )}
                   </div>
@@ -392,7 +508,7 @@ const CustomerChat = () => {
         </div>
       )}
 
-      {/* 3. INPUT FOOTER */}
+      {/* ===== INPUT FOOTER ===== */}
       {isClaimSelected && (
         <div
           style={{
@@ -415,7 +531,15 @@ const CustomerChat = () => {
           >
             <button
               type="button"
-              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center" }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#94a3b8",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                alignItems: "center",
+              }}
             >
               <PaperClipOutlined style={{ fontSize: "18px" }} />
             </button>
@@ -439,7 +563,15 @@ const CustomerChat = () => {
 
             <button
               type="button"
-              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px", display: "flex", alignItems: "center" }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#94a3b8",
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                alignItems: "center",
+              }}
             >
               <SmileOutlined style={{ fontSize: "18px" }} />
             </button>

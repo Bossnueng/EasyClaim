@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, Tag, Button,Empty } from "antd";
+import { Card, Tag, Button, Empty } from "antd";
 import { InboxOutlined, RightOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 // 1. กำหนดลำดับความสำคัญของสถานะ (รายการที่ต้องดำเนินการเร่งด่วนจะขึ้นก่อน)
 const STATUS_PRIORITY = {
-  "สร้างรายการเคลม": 1,
-  "รอการพิจารณา": 2,
-  "มีสิทธิ์เคลม": 3,
-  "รับสินค้าจริงแล้ว": 4,
-  "อนุมัติเคลมสินค้า": 5,
-  "กำลังดำเนินการเปลี่ยนสินค้า": 6,
-  "กำลังจัดส่งสินค้าเคลม": 7,
-  "จัดส่งสินค้าเคลมสำเร็จ": 8,
-  "ไม่มีสิทธิ์เคลม": 9,
-  "ไม่อนุมัติเคลมสินค้า": 10,
+  สร้างรายการเคลม: 1,
+  รอการพิจารณา: 2,
+  มีสิทธิ์เคลม: 3,
+  รับสินค้าจริงแล้ว: 4,
+  อนุมัติเคลมสินค้า: 5,
+  กำลังดำเนินการเปลี่ยนสินค้า: 6,
+  กำลังจัดส่งสินค้าเคลม: 7,
+  จัดส่งสินค้าเคลมสำเร็จ: 8,
+  ไม่มีสิทธิ์เคลม: 9,
+  ไม่อนุมัติเคลมสินค้า: 10,
 };
 
 const StaffHome = () => {
@@ -59,38 +59,81 @@ const StaffHome = () => {
   const getStatusTag = (currentStatus) => {
     switch (currentStatus) {
       case "สร้างรายการเคลม":
-        return <Tag color="default" style={{ margin: 0 }}>สร้างรายการเคลม</Tag>;
+        return (
+          <Tag color="default" style={{ margin: 0 }}>
+            สร้างรายการเคลม
+          </Tag>
+        );
       case "รอการพิจารณา":
-        return <Tag color="processing" style={{ margin: 0 }}>รอการพิจารณา</Tag>;
+        return (
+          <Tag color="processing" style={{ margin: 0 }}>
+            รอการพิจารณา
+          </Tag>
+        );
       case "มีสิทธิ์เคลม":
-        return <Tag color="cyan" style={{ margin: 0 }}>มีสิทธิ์เคลม</Tag>;
+        return (
+          <Tag color="cyan" style={{ margin: 0 }}>
+            มีสิทธิ์เคลม
+          </Tag>
+        );
       case "รับสินค้าจริงแล้ว":
-        return <Tag color="purple" style={{ margin: 0 }}>รับสินค้าจริงแล้ว</Tag>;
+        return (
+          <Tag color="purple" style={{ margin: 0 }}>
+            รับสินค้าจริงแล้ว
+          </Tag>
+        );
       case "อนุมัติเคลมสินค้า":
-        return <Tag color="success" style={{ margin: 0 }}>อนุมัติเคลมสินค้า</Tag>;
+        return (
+          <Tag color="success" style={{ margin: 0 }}>
+            อนุมัติเคลมสินค้า
+          </Tag>
+        );
       case "กำลังดำเนินการเปลี่ยนสินค้า":
-        return <Tag color="blue" style={{ margin: 0 }}>กำลังดำเนินการเปลี่ยนสินค้า</Tag>;
+        return (
+          <Tag color="blue" style={{ margin: 0 }}>
+            กำลังดำเนินการเปลี่ยนสินค้า
+          </Tag>
+        );
       case "กำลังจัดส่งสินค้าเคลม":
-        return <Tag color="warning" style={{ margin: 0 }}>กำลังจัดส่งสินค้าเคลม</Tag>;
+        return (
+          <Tag color="warning" style={{ margin: 0 }}>
+            กำลังจัดส่งสินค้าเคลม
+          </Tag>
+        );
       default:
-        return <Tag color="default" style={{ margin: 0 }}>{currentStatus}</Tag>;
+        return (
+          <Tag color="default" style={{ margin: 0 }}>
+            {currentStatus}
+          </Tag>
+        );
     }
   };
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6" style={{ boxSizing: "border-box", width: "100%" }}>
-      <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
-        
+    <div
+      className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6"
+      style={{ boxSizing: "border-box", width: "100%" }}
+    >
+      <div
+        className="w-full flex flex-col gap-6"
+        style={{ boxSizing: "border-box" }}
+      >
         {/* ==================== Header ==================== */}
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">สวัสดี, คุณ {user?.name || "-"}</h1>
-          <p className="text-gray-500 text-sm m-0">ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
+            สวัสดี, คุณ {user?.name || "-"}
+          </h1>
+          <p className="text-gray-500 text-sm m-0">
+            ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่
+          </p>
         </header>
 
         {/* ==================== รายการการเคลมล่าสุด ==================== */}
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">รายการเคลมล่าสุด</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">
+              รายการเคลมล่าสุด
+            </h2>
             <Button
               type="link"
               onClick={() => navigate("/staff/list-claim")}
@@ -107,7 +150,9 @@ const StaffHome = () => {
               {latestClaims.map((claim) => (
                 <div
                   key={claim.claimId}
-                  onClick={() => navigate(`/staff/update-claim/${claim.claimId}`)}
+                  onClick={() =>
+                    navigate(`/staff/update-claim/${claim.claimId}`)
+                  }
                   style={{
                     boxSizing: "border-box",
                     padding: "20px",
@@ -140,7 +185,6 @@ const StaffHome = () => {
             </div>
           )}
         </section>
-
       </div>
     </div>
   );

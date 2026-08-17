@@ -1,21 +1,25 @@
 import React, { useState } from "react";
 import { Tag, Input, Empty } from "antd";
 import { useNavigate } from "react-router-dom";
-import { SearchOutlined, RightOutlined, CodeSandboxOutlined } from "@ant-design/icons";
+import {
+  SearchOutlined,
+  RightOutlined,
+  CodeSandboxOutlined,
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 
 //ลำดับความสำคัญในการเรียงลำดับรายการ
 const STATUS_PRIORITY = {
-  "สร้างรายการเคลม": 1,
-  "รอการพิจารณา": 2,
-  "มีสิทธิ์เคลม": 3,
-  "รับสินค้าจริงแล้ว": 4,
-  "อนุมัติเคลมสินค้า": 5,
-  "กำลังดำเนินการเปลี่ยนสินค้า": 6,
-  "กำลังจัดส่งสินค้าเคลม": 7,
-  "จัดส่งสินค้าเคลมสำเร็จ": 8,
-  "ไม่มีสิทธิ์เคลม": 9,
-  "ไม่อนุมัติเคลมสินค้า": 10,
+  สร้างรายการเคลม: 1,
+  รอการพิจารณา: 2,
+  มีสิทธิ์เคลม: 3,
+  รับสินค้าจริงแล้ว: 4,
+  อนุมัติเคลมสินค้า: 5,
+  กำลังดำเนินการเปลี่ยนสินค้า: 6,
+  กำลังจัดส่งสินค้าเคลม: 7,
+  จัดส่งสินค้าเคลมสำเร็จ: 8,
+  ไม่มีสิทธิ์เคลม: 9,
+  ไม่อนุมัติเคลมสินค้า: 10,
 };
 
 // ตัวเลือกสำหรับแถบ Filter
@@ -42,7 +46,8 @@ const CustomerClaimList = () => {
 
   // ฟังก์ชันแปลงสถานะเป็นขั้นตอนการทำงาน
   const getCustomerStepInfo = (status) => {
-    const isRejected = status === "ไม่มีสิทธิ์เคลม" || status === "ไม่อนุมัติเคลมสินค้า";
+    const isRejected =
+      status === "ไม่มีสิทธิ์เคลม" || status === "ไม่อนุมัติเคลมสินค้า";
     if (isRejected) return { step: 2, text: status };
 
     switch (status) {
@@ -76,7 +81,9 @@ const CustomerClaimList = () => {
         selectedStatus === "ทั้งหมด" || claim.status === selectedStatus;
 
       const searchLower = searchTerm.toLowerCase();
-      const matchesProduct = claim.productName?.toLowerCase().includes(searchLower);
+      const matchesProduct = claim.productName
+        ?.toLowerCase()
+        .includes(searchLower);
       const matchesId = claim.claimId?.toLowerCase().includes(searchLower);
 
       return matchesStatus && (matchesProduct || matchesId);
@@ -98,37 +105,86 @@ const CustomerClaimList = () => {
   const getStatusTag = (currentStatus) => {
     switch (currentStatus) {
       case "สร้างรายการเคลม":
-        return <Tag color="default" style={{ margin: 0 }}>สร้างรายการเคลม</Tag>;
+        return (
+          <Tag color="default" style={{ margin: 0 }}>
+            สร้างรายการเคลม
+          </Tag>
+        );
       case "รอการพิจารณา":
-        return <Tag color="processing" style={{ margin: 0 }}>รอการพิจารณา</Tag>;
+        return (
+          <Tag color="processing" style={{ margin: 0 }}>
+            รอการพิจารณา
+          </Tag>
+        );
       case "มีสิทธิ์เคลม":
-        return <Tag color="cyan" style={{ margin: 0 }}>มีสิทธิ์เคลม</Tag>;
+        return (
+          <Tag color="cyan" style={{ margin: 0 }}>
+            มีสิทธิ์เคลม
+          </Tag>
+        );
       case "รับสินค้าจริงแล้ว":
-        return <Tag color="purple" style={{ margin: 0 }}>รับสินค้าจริงแล้ว</Tag>;
+        return (
+          <Tag color="purple" style={{ margin: 0 }}>
+            รับสินค้าจริงแล้ว
+          </Tag>
+        );
       case "อนุมัติเคลมสินค้า":
-        return <Tag color="success" style={{ margin: 0 }}>อนุมัติเคลมสินค้า</Tag>;
+        return (
+          <Tag color="success" style={{ margin: 0 }}>
+            อนุมัติเคลมสินค้า
+          </Tag>
+        );
       case "กำลังดำเนินการเปลี่ยนสินค้า":
-        return <Tag color="blue" style={{ margin: 0 }}>กำลังดำเนินการเปลี่ยนสินค้า</Tag>;
+        return (
+          <Tag color="blue" style={{ margin: 0 }}>
+            กำลังดำเนินการเปลี่ยนสินค้า
+          </Tag>
+        );
       case "กำลังจัดส่งสินค้าเคลม":
-        return <Tag color="warning" style={{ margin: 0 }}>กำลังจัดส่งสินค้าเคลม</Tag>;
+        return (
+          <Tag color="warning" style={{ margin: 0 }}>
+            กำลังจัดส่งสินค้าเคลม
+          </Tag>
+        );
       case "จัดส่งสินค้าเคลมสำเร็จ":
-        return <Tag color="green" style={{ margin: 0 }}>จัดส่งสินค้าเคลมสำเร็จ</Tag>;
+        return (
+          <Tag color="green" style={{ margin: 0 }}>
+            จัดส่งสินค้าเคลมสำเร็จ
+          </Tag>
+        );
       case "ไม่มีสิทธิ์เคลม":
       case "ไม่อนุมัติเคลมสินค้า":
-        return <Tag color="error" style={{ margin: 0 }}>{currentStatus}</Tag>;
+        return (
+          <Tag color="error" style={{ margin: 0 }}>
+            {currentStatus}
+          </Tag>
+        );
       default:
-        return <Tag color="default" style={{ margin: 0 }}>{currentStatus}</Tag>;
+        return (
+          <Tag color="default" style={{ margin: 0 }}>
+            {currentStatus}
+          </Tag>
+        );
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-6 md:p-8 overflow-hidden" style={{ boxSizing: "border-box", width: "100%" }}>
-      <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
-        
+    <div
+      className="min-h-screen bg-gray-100 p-4 sm:p-6 md:p-8 overflow-hidden"
+      style={{ boxSizing: "border-box", width: "100%" }}
+    >
+      <div
+        className="w-full flex flex-col gap-6"
+        style={{ boxSizing: "border-box" }}
+      >
         {/* ==================== Header รายการเคลมสินค้า ==================== */}
         <header className="flex flex-col gap-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">รายการการเคลมสินค้า</h1>
-          <p className="text-sm text-gray-500 m-0">ตรวจสอบและติดตามสถานะรายการเคลมทั้งหมดของคุณ</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
+            รายการการเคลมสินค้า
+          </h1>
+          <p className="text-sm text-gray-500 m-0">
+            ตรวจสอบและติดตามสถานะรายการเคลมทั้งหมดของคุณ
+          </p>
         </header>
 
         {/* ==================== Search Bar & Filter Controls ==================== */}
@@ -147,7 +203,7 @@ const CustomerClaimList = () => {
 
           {/* แถบกรองสถานะ */}
           <div className="w-full relative">
-            <div 
+            <div
               className="w-full overflow-x-auto flex items-center gap-2 py-1"
               style={{
                 scrollbarWidth: "none", // Firefox
@@ -177,20 +233,24 @@ const CustomerClaimList = () => {
                       gap: "10px",
                       lineHeight: "1.5",
                       cursor: "pointer",
-                      border: isActive ? "1px solid #059669" : "1px solid #e5e7eb",
+                      border: isActive
+                        ? "1px solid #059669"
+                        : "1px solid #e5e7eb",
                       backgroundColor: isActive ? "#059669" : "#ffffff",
                       color: isActive ? "#ffffff" : "#334155",
                     }}
                   >
                     <span style={{ whiteSpace: "nowrap" }}>{status}</span>
-                    
+
                     <span
                       style={{
                         padding: "2px 8px",
                         borderRadius: "12px",
                         fontSize: "12px",
                         fontWeight: "bold",
-                        backgroundColor: isActive ? "rgba(255, 255, 255, 0.2)" : "#f1f5f9",
+                        backgroundColor: isActive
+                          ? "rgba(255, 255, 255, 0.2)"
+                          : "#f1f5f9",
                         color: isActive ? "#ffffff" : "#64748b",
                       }}
                     >
@@ -205,7 +265,6 @@ const CustomerClaimList = () => {
 
         {/* ==================== Claim Cards Grid List ==================== */}
         {filteredClaims.length > 0 ? (
-          
           //ถ้ามีรายการแสดง
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 w-full">
             {filteredClaims.map((claim) => {
@@ -215,7 +274,9 @@ const CustomerClaimList = () => {
                 //Claim Card Component
                 <div
                   key={claim.claimId}
-                  onClick={() => navigate(`/customer/detail-claim/${claim.claimId}`)}
+                  onClick={() =>
+                    navigate(`/customer/detail-claim/${claim.claimId}`)
+                  }
                   style={{
                     boxSizing: "border-box",
                     padding: "20px",
@@ -233,7 +294,9 @@ const CustomerClaimList = () => {
 
                   {/* รายละเอียดสินค้า */}
                   <div className="flex flex-col gap-1.5 min-w-0">
-                    <h3 className="font-bold text-lg text-slate-800 m-0 truncate">{claim.productName}</h3>
+                    <h3 className="font-bold text-lg text-slate-800 m-0 truncate">
+                      {claim.productName}
+                    </h3>
                     <div className="flex justify-between items-center text-xs text-gray-400 font-mono flex-wrap gap-1">
                       <span className="truncate">ID: {claim.claimId}</span>
                       <span className="shrink-0">{claim.createdDate}</span>
@@ -241,8 +304,13 @@ const CustomerClaimList = () => {
                   </div>
 
                   {/* Footer การ์ด: จำนวนสินค้า + ปุ่มนำทาง */}
-                  <div className="pt-3 border-t border-gray-100 flex justify-between items-center gap-2" style={{ marginTop: "4px" }}>
-                    <span className="font-bold text-slate-700 text-sm shrink-0">จำนวน: {claim.qty} ขวด</span>
+                  <div
+                    className="pt-3 border-t border-gray-100 flex justify-between items-center gap-2"
+                    style={{ marginTop: "4px" }}
+                  >
+                    <span className="font-bold text-slate-700 text-sm shrink-0">
+                      จำนวน: {claim.qty} ขวด
+                    </span>
                     <div className="flex items-center gap-1 text-emerald-600 font-semibold text-sm shrink-0">
                       <span>ดูรายละเอียด</span>
                       <RightOutlined style={{ fontSize: "11px" }} />
@@ -258,7 +326,6 @@ const CustomerClaimList = () => {
             <Empty description="ไม่พบรายการเคลมสินค้า" />
           </div>
         )}
-
       </div>
     </div>
   );

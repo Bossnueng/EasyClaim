@@ -1,15 +1,10 @@
 import React from "react";
 import { Form, Input, Button, message } from "antd";
 import { useNavigate } from "react-router-dom";
-import {
-  SafetyCertificateFilled,
-  UserOutlined,
-  LockOutlined,
-} from "@ant-design/icons";
+import {SafetyCertificateFilled,UserOutlined,LockOutlined,} from "@ant-design/icons";
 
 const Login = () => {
   const navigate = useNavigate();
-
   const onFinish = async (values) => {
     const { username, password } = values;
 

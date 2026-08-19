@@ -6,25 +6,20 @@ import dayjs from "dayjs";
 
 const ClaimPrintModal = ({ open, onClose, data, isStaff = true }) => {
   const printRef = useRef(null);
-
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     documentTitle: "ใบรับ-เบิก-ส่ง_สินค้าแตกเอเย่นต์",
   });
 
   return (
-    <Modal
-      title="ตัวอย่างเอกสารใบรับ-เบิก-ส่ง สินค้าแตกเอเย่นต์"
+    <Modal title="ตัวอย่างเอกสารใบรับ-เบิก-ส่ง สินค้าแตกเอเย่นต์"
       open={open}
       onCancel={onClose}
       width={900}
       centered
       footer={[
-        <Button key="close" onClick={onClose} className="rounded-lg">
-          ปิด
-        </Button>,
-        <Button
-          key="print"
+        <Button key="close" onClick={onClose} className="rounded-lg">ปิด</Button>,
+        <Button key="print"
           type="primary"
           icon={<PrinterOutlined />}
           className="bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium"
@@ -34,35 +29,10 @@ const ClaimPrintModal = ({ open, onClose, data, isStaff = true }) => {
         </Button>,
       ]}
     >
-      <style>{`
-        @media print {
-          @page {
-            size: A5 landscape;
-            margin: 0;
-          }
-          body * {
-            visibility: hidden;
-          }
-          #printable-area, #printable-area * {
-            visibility: visible;
-          }
-          #printable-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100% !important;
-            height: 100% !important;
-            border: 1.5px solid #000 !important;
-            box-shadow: none !important;
-            padding: 5mm !important;
-          }
-        }
-      `}</style>
 
       {/* Preview Container */}
       <div className="flex justify-center bg-slate-100 p-2 overflow-x-auto">
-        <div
-          ref={printRef}
+        <div ref={printRef}
           id="printable-area"
           className="w-[200mm] min-h-[138mm] bg-white p-3.5 font-sans text-slate-900 text-[10px] leading-tight shadow-md box-border flex flex-col justify-start gap-1.5"
           style={{ border: "1.5px solid #000" }}

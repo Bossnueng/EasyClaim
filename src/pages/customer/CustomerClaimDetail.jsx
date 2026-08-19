@@ -1,25 +1,7 @@
 import React, { useState } from "react";
-import {
-  Card,
-  Tag,
-  Descriptions,
-  Button,
-  Steps,
-  Image,
-  ConfigProvider,
-  Alert,
-  Popconfirm,
-  message,
-} from "antd";
-import {
-  CheckCircleOutlined,
-  FileSearchOutlined,
-  CloseCircleOutlined,
-  MessageOutlined,
-  ArrowLeftOutlined,
-  CarOutlined,
-  SmileOutlined,
-} from "@ant-design/icons";
+import {Card,Tag,Descriptions,Button,Steps,Image,ConfigProvider,Alert,Popconfirm,message,} from "antd";
+import {CheckCircleOutlined,FileSearchOutlined,CloseCircleOutlined,MessageOutlined,ArrowLeftOutlined,
+  CarOutlined,SmileOutlined,} from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 

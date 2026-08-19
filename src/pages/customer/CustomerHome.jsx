@@ -1,22 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, Tag, Button, Empty } from "antd";
-import {  PlusCircleOutlined,  InboxOutlined,  RightOutlined,} from "@ant-design/icons";
+import { Button, Empty, message } from "antd";
+import { PlusCircleOutlined, RightOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-
-// ลำดับความสำคัญในการเรียงลำดับรายการ
-const STATUS_PRIORITY = {
-  สร้างรายการเคลม: 1,
-  รอการพิจารณา: 2,
-  มีสิทธิ์เคลม: 3,
-  รับสินค้าจริงแล้ว: 4,
-  อนุมัติเคลมสินค้า: 5,
-  กำลังดำเนินการเปลี่ยนสินค้า: 6,
-  กำลังจัดส่งสินค้าเคลม: 7,
-  จัดส่งสินค้าเคลมสำเร็จ: 8,
-  ไม่มีสิทธิ์เคลม: 9,
-  ไม่อนุมัติเคลมสินค้า: 10,
-};
+import CustomerClaimCard from "../../components/CustomerClaimCard";
+import { STATUS_PRIORITY } from "../../constants/claimStatus";
 
 const CustomerHome = () => {
   const navigate = useNavigate();
@@ -24,11 +12,10 @@ const CustomerHome = () => {
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
 
-  useEffect(() => {
-    // 1. ดึงข้อมูลรายการเคลมจาก localStorage
+  // โหลดข้อมูลและจัดเรียง
+  const loadClaims = () => {
     const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
 
-    // 2. เรียงลำดับตามความสำคัญของสถานะ -> หากเท่ากัน ให้เรียงตามวันที่สร้าง (ล่าสุดขึ้นก่อน)
     const sortedClaims = [...savedClaims].sort((a, b) => {
       const priorityA = STATUS_PRIORITY[a.status] || 99;
       const priorityB = STATUS_PRIORITY[b.status] || 99;
@@ -42,75 +29,24 @@ const CustomerHome = () => {
       return dateB.valueOf() - dateA.valueOf();
     });
 
-    // 3. ดึงรายการหลังจาก Sort เรียบร้อยแล้ว
     setLatestClaims(sortedClaims.slice(0, 8));
+  };
+
+  useEffect(() => {
+    loadClaims();
   }, []);
 
-  // ใส่สี Card ตามสถานะงานเคลม
-  const getStatusTag = (currentStatus) => {
-    switch (currentStatus) {
-      case "สร้างรายการเคลม":
-        return (
-          <Tag color="default" style={{ margin: 0 }}>
-            สร้างรายการเคลม
-          </Tag>
-        );
-      case "รอการพิจารณา":
-        return (
-          <Tag color="processing" style={{ margin: 0 }}>
-            รอการพิจารณา
-          </Tag>
-        );
-      case "มีสิทธิ์เคลม":
-        return (
-          <Tag color="cyan" style={{ margin: 0 }}>
-            มีสิทธิ์เคลม
-          </Tag>
-        );
-      case "รับสินค้าจริงแล้ว":
-        return (
-          <Tag color="purple" style={{ margin: 0 }}>
-            รับสินค้าจริงแล้ว
-          </Tag>
-        );
-      case "อนุมัติเคลมสินค้า":
-        return (
-          <Tag color="success" style={{ margin: 0 }}>
-            อนุมัติเคลมสินค้า
-          </Tag>
-        );
-      case "กำลังดำเนินการเปลี่ยนสินค้า":
-        return (
-          <Tag color="blue" style={{ margin: 0 }}>
-            กำลังดำเนินการเปลี่ยนสินค้า
-          </Tag>
-        );
-      case "กำลังจัดส่งสินค้าเคลม":
-        return (
-          <Tag color="warning" style={{ margin: 0 }}>
-            กำลังจัดส่งสินค้าเคลม
-          </Tag>
-        );
-      case "จัดส่งสินค้าเคลมสำเร็จ":
-        return (
-          <Tag color="green" style={{ margin: 0 }}>
-            จัดส่งสินค้าเคลมสำเร็จ
-          </Tag>
-        );
-      case "ไม่มีสิทธิ์เคลม":
-      case "ไม่อนุมัติเคลมสินค้า":
-        return (
-          <Tag color="error" style={{ margin: 0 }}>
-            {currentStatus}
-          </Tag>
-        );
-      default:
-        return (
-          <Tag color="default" style={{ margin: 0 }}>
-            {currentStatus}
-          </Tag>
-        );
-    }
+  // ฟังก์ชั่นจัดการการลบรายการ
+  const handleDeleteClaim = (e, claimId) => {
+    e.stopPropagation();
+
+    const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
+    const updatedClaims = savedClaims.filter((item) => item.claimId !== claimId);
+
+    localStorage.setItem("claims", JSON.stringify(updatedClaims));
+    message.success("ลบรายการเคลมเรียบร้อยแล้ว");
+
+    loadClaims();
   };
 
   return (
@@ -149,7 +85,7 @@ const CustomerHome = () => {
               ใช้เวลาเพียงไม่กี่นาที เพื่อเริ่มต้นกระบวนการเคลมสินค้าของคุณ
             </p>
           </div>
-          {/* ปุ่มแจ้งเคลมใหม่ */}
+          {/* ปุ่มแจ้งเคลมใหม่ */}
           <Button
             type="default"
             size="large"
@@ -161,7 +97,7 @@ const CustomerHome = () => {
           </Button>
         </div>
 
-        {/* ==================== รายการเคลมล่าสุด (8)==================== */}
+        {/* ==================== รายการเคลมล่าสุด (8) ==================== */}
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">
@@ -176,43 +112,20 @@ const CustomerHome = () => {
             </Button>
           </div>
 
-          {/* === Card List === */}
+          {/* === Card List แนวตั้งแบบเดิม (flex flex-col gap-3.5) === */}
           {latestClaims.length > 0 ? (
-            //=== ถ้ามีรายการให้แสดง ===
             <div className="flex flex-col gap-3.5 w-full">
               {latestClaims.map((claim) => (
-                <div
+                <CustomerClaimCard
                   key={claim.claimId}
-                  onClick={() =>
-                    navigate(`/customer/detail-claim/${claim.claimId}`)
-                  }
-                  style={{
-                    boxSizing: "border-box",
-                    padding: "20px",
-                    overflow: "hidden",
-                  }}
-                  className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500 transition-all cursor-pointer flex justify-between items-center gap-4 w-full"
-                >
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <h4 className="font-bold text-base text-slate-800 m-0 truncate">
-                      {claim.productName}
-                    </h4>
-                    <p className="text-xs text-gray-400 font-mono m-0 truncate">
-                      ID: {claim.claimId}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-1.5 shrink-0">
-                    {getStatusTag(claim.status)}
-                    <span className="text-xs text-gray-400">
-                      {claim.createdDate}
-                    </span>
-                  </div>
-                </div>
+                  claim={claim}
+                  onDelete={handleDeleteClaim}
+                  hideDeleteWhenDisabled={true}
+                  layout="horizontal"
+                />
               ))}
             </div>
           ) : (
-            //=== ถ้าไม่มีรายการให้แสดง ===
             <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center my-4 w-full">
               <Empty description="ไม่พบรายการเคลมสินค้า" />
             </div>

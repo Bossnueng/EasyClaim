@@ -1,27 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Avatar,
-  Badge,
-  Input,
-  Tag,
-  List,
-  Button,
-  Dropdown,
-  Space,
-  Empty,
-} from "antd";
-import {
-  SendOutlined,
-  SmileOutlined,
-  PaperClipOutlined,
-  UserOutlined,
-  CheckOutlined,
-  FilterOutlined,
-  FileTextOutlined,
-  CheckCircleOutlined,
-  ArrowLeftOutlined,
-  MessageOutlined,
-} from "@ant-design/icons";
+import {Avatar,Badge,Input,Tag,List,Button,Dropdown,Space,Empty,} from "antd";
+import {SendOutlined,SmileOutlined,PaperClipOutlined,UserOutlined,CheckOutlined,FilterOutlined,
+  FileTextOutlined,CheckCircleOutlined,ArrowLeftOutlined,MessageOutlined,} from "@ant-design/icons";
 
 const { Search } = Input;
 
@@ -173,9 +153,7 @@ const StaffChat = () => {
   const hasNoClaims = claimsList.length === 0;
 
   return (
-    <div
-      style={{
-        display: "flex",
+    <div style={{ display: "flex",
         width: "100%",
         height: isMobile ? "100vh" : "calc(100vh - 112px)",
         backgroundColor: "#ffffff",
@@ -184,58 +162,28 @@ const StaffChat = () => {
         overflow: "hidden",
         boxSizing: "border-box",
         position: "relative",
-      }}
-    >
+      }}>
       {/* SIDEBAR */}
-      <div
-        style={{
-          width: isMobile ? "100%" : "360px",
+      <div style={{ width: isMobile ? "100%" : "360px",
           borderRight: isMobile ? "none" : "1px solid #e2e8f0",
           display: isMobile && showMobileChat ? "none" : "flex",
           flexDirection: "column",
           backgroundColor: "#ffffff",
           flexShrink: 0,
           height: "100%",
-        }}
-      >
-        <div
-          style={{
-            padding: "16px",
-            borderBottom: "1px solid #e2e8f0",
-            display: "flex",
-            flexDirection: "column",
-            gap: "12px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
+        }}>
+        <div style={{padding: "16px",borderBottom: "1px solid #e2e8f0",display: "flex",flexDirection: "column",gap: "12px",}}>
+          <div style={{display: "flex",alignItems: "center",justifyContent: "space-between",}}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: "18px",
-                  fontWeight: "700",
-                  color: "#0f172a",
-                }}
-              >
+              <h3 style={{margin: 0,fontSize: "18px",fontWeight: "700",color: "#0f172a",}}>
                 รายการการเคลม
               </h3>
               {totalUnread > 0 && (
-                <Badge
-                  count={totalUnread}
-                  style={{ backgroundColor: "#ef4444" }}
-                />
+                <Badge count={totalUnread} style={{ backgroundColor: "#ef4444" }}/>
               )}
             </div>
 
-            <Dropdown
-              menu={{
-                items: [
+            <Dropdown menu={{ items: [
                   {
                     key: "ALL",
                     label: "เคสทั้งหมด",
@@ -257,16 +205,12 @@ const StaffChat = () => {
                     onClick: () => setStatusFilter("CLOSED"),
                   },
                 ],
-              }}
-            >
-              <Button icon={<FilterOutlined />} size="small" type="text">
-                ตัวกรอง
-              </Button>
+              }}>
+              <Button icon={<FilterOutlined />} size="small" type="text">ตัวกรอง</Button>
             </Dropdown>
           </div>
 
-          <Search
-            placeholder="ค้นหา Claim ID, ชื่อลูกค้า..."
+          <Search placeholder="ค้นหา Claim ID, ชื่อลูกค้า..."
             allowClear
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ width: "100%" }}
@@ -279,108 +223,53 @@ const StaffChat = () => {
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
                 description={
-                  <span style={{ color: "#94a3b8", fontSize: "13px" }}>
-                    ยังไม่มีรายการสนทนาใหม่เข้าระบบ
-                  </span>
-                }
-              />
+                  <span style={{ color: "#94a3b8", fontSize: "13px" }}>ยังไม่มีรายการสนทนาใหม่เข้าระบบ</span>
+                }/>
             </div>
           ) : (
-            <List
-              itemLayout="horizontal"
+            <List itemLayout="horizontal"
               dataSource={filteredClaims}
               renderItem={(item) => {
                 const isActive = item.claimId === activeClaimId;
                 const unread = unreadCounts[item.claimId] || 0;
 
                 return (
-                  <div
-                    key={item.claimId}
+                  <div key={item.claimId}
                     onClick={() => handleSelectClaim(item.claimId)}
-                    style={{
-                      padding: "14px 16px",
+                    style={{padding: "14px 16px",
                       cursor: "pointer",
-                      backgroundColor:
-                        isActive && !isMobile ? "#f0fdf4" : "#ffffff",
-                      borderLeft:
-                        isActive && !isMobile
-                          ? "4px solid #059669"
-                          : "4px solid transparent",
+                      backgroundColor: isActive && !isMobile ? "#f0fdf4" : "#ffffff",
+                      borderLeft: isActive && !isMobile ? "4px solid #059669" : "4px solid transparent",
                       borderBottom: "1px solid #f1f5f9",
                       transition: "all 0.2s",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: "700",
-                          fontSize: "14px",
-                          color: "#0f172a",
-                        }}
-                      >
-                        {item.claimId}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "#94a3b8" }}>
-                        {item.lastTime}
-                      </span>
+                    }}>
+                    <div style={{ display: "flex",justifyContent: "space-between",marginBottom: "4px",}}>
+                      <span style={{fontWeight: "700",fontSize: "14px",color: "#0f172a",}}>{item.claimId}</span>
+                      <span style={{ fontSize: "11px", color: "#94a3b8" }}>{item.lastTime}</span>
                     </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "13px",
-                          fontWeight: "600",
-                          color: "#334155",
-                        }}
-                      >
+                    <div style={{display: "flex",justifyContent: "space-between",alignItems: "center",marginBottom: "6px",}}>
+                      <span style={{fontSize: "13px",fontWeight: "600",color: "#334155",}}>
                         {item.customerName}
                       </span>
-                      <Tag
-                        color={item.statusColor}
-                        style={{ marginRight: 0, fontSize: "10px" }}
-                      >
+                      <Tag color={item.statusColor} style={{ marginRight: 0, fontSize: "10px" }}>
                         {item.status}
                       </Tag>
                     </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "12px",
+                    <div style={{display: "flex", justifyContent: "space-between", alignItems: "center",}}>
+                      <span style={{ fontSize: "12px",
                           color: unread > 0 ? "#0f172a" : "#64748b",
                           fontWeight: unread > 0 ? "600" : "normal",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           maxWidth: isMobile ? "200px" : "240px",
-                        }}
-                      >
+                        }}>
                         {item.lastMessage}
                       </span>
                       {unread > 0 && (
-                        <Badge
-                          count={unread}
-                          style={{ backgroundColor: "#059669" }}
-                        />
+                        <Badge count={unread} style={{ backgroundColor: "#059669" }}/>
                       )}
                     </div>
                   </div>
@@ -392,43 +281,13 @@ const StaffChat = () => {
       </div>
 
       {/* CHAT MAIN AREA */}
-      <div
-        style={{
-          flex: 1,
-          display: isMobile && !showMobileChat ? "none" : "flex",
-          flexDirection: "column",
-          backgroundColor: "#ffffff",
-          height: "100%",
-        }}
-      >
+      <div style={{ flex: 1, display: isMobile && !showMobileChat ? "none" : "flex", flexDirection: "column",backgroundColor: "#ffffff",height: "100%",}}>
         {hasNoClaims ? (
           /* หน้าจอเปล่าเมื่อยังไม่มีรายการเคลมหรือแชทในระบบ */
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "#f8fafc",
-              padding: "24px",
-            }}
-          >
-            <Empty
-              image={
-                <MessageOutlined
-                  style={{ fontSize: "48px", color: "#cbd5e1" }}
-                />
-              }
-              description={
-                <div style={{ textAlign: "center" }}>
-                  <h4
-                    style={{
-                      margin: "8px 0 4px 0",
-                      color: "#475569",
-                      fontSize: "16px",
-                    }}
-                  >
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc", padding: "24px",}}>
+            <Empty image={ <MessageOutlined style={{ fontSize: "48px", color: "#cbd5e1" }}/>}
+              description={ <div style={{ textAlign: "center" }}>
+                  <h4 style={{ margin: "8px 0 4px 0", color: "#475569", fontSize: "16px",}}>
                     ยังไม่มีรายการสนทนาใหม่
                   </h4>
                   <p style={{ margin: 0, color: "#94a3b8", fontSize: "13px" }}>
@@ -441,79 +300,37 @@ const StaffChat = () => {
         ) : (
           <>
             {/* Chat Header */}
-            <div
-              style={{
-                padding: isMobile ? "12px 16px" : "12px 24px",
+            <div style={{ padding: isMobile ? "12px 16px" : "12px 24px",
                 borderBottom: "1px solid #e2e8f0",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 backgroundColor: "#ffffff",
                 gap: "8px",
-              }}
-            >
+              }}>
               {activeClaimInfo ? (
                 <>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
+                  <div style={{display: "flex",alignItems: "center",gap: "10px",flex: 1,minWidth: 0,}}>
                     {isMobile && (
-                      <Button
-                        type="text"
-                        icon={<ArrowLeftOutlined />}
+                      <Button type="text" icon={<ArrowLeftOutlined />}
                         onClick={() => setShowMobileChat(false)}
                         style={{ padding: "4px 8px" }}
-                      />
-                    )}
-                    <Avatar
-                      size={isMobile ? 36 : 40}
+                      />)
+                    }
+                    <Avatar size={isMobile ? 36 : 40}
                       icon={<UserOutlined />}
                       style={{ backgroundColor: "#3b82f6", flexShrink: 0 }}
                     />
-                    <div
-                      style={{ overflow: "hidden", textOverflow: "ellipsis" }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <h3
-                          style={{
-                            margin: 0,
-                            fontSize: isMobile ? "14px" : "16px",
-                            fontWeight: "700",
-                            color: "#1e293b",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ display: "flex",alignItems: "center",gap: "6px",flexWrap: "wrap",}}>
+                        <h3 style={{margin: 0, fontSize: isMobile ? "14px" : "16px",fontWeight: "700",color: "#1e293b",whiteSpace: "nowrap",}}>
                           {activeClaimInfo.customerName}
                         </h3>
-                        <Tag
-                          color="blue"
-                          style={{ fontSize: "10px", marginRight: 0 }}
-                        >
+                        <Tag color="blue" style={{ fontSize: "10px", marginRight: 0 }}>
                           {activeClaimInfo.claimId}
                         </Tag>
                       </div>
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "#64748b",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
+                      <div style={{fontSize: "11px",color: "#64748b",whiteSpace: "nowrap",overflow: "hidden",textOverflow: "ellipsis",}}>
                         สินค้า: {activeClaimInfo.productName}
                       </div>
                     </div>

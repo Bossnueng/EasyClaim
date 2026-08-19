@@ -1,30 +1,22 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {Form,Input,DatePicker,AutoComplete,InputNumber,Upload,Button,Card,Row,Col,Select,Space,message,} from "antd";
+import {Form,Input,DatePicker,AutoComplete,InputNumber,Upload,Button,
+  Card,Row,Col,Select,Space,message,} from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
-const { TextArea } = Input;
-
-const productOptions = [
-  { value: "Est" },
-  { value: "Beer" },
-  { value: "100Plus" },
-  { value: "Oishi Corn" },
-  { value: "Oishi Grape" },
-];
+const productOptions = [{ value: "Est" },{ value: "Beer" },{ value: "100Plus" },{ value: "Oishi Corn" },{ value: "Oishi Grape" },];
 
 const claimType = [
   { value: "แตกจากการขนส่ง", label: "แตกจากการขนส่ง" },
   { value: "แตกแห้งหลังการส่งสินค้า", label: "แตกแห้งหลังการส่งสินค้า" },
   { value: "ฝากเปลี่ยน", label: "ฝากเปลี่ยน" },
 ];
+const { TextArea } = Input;
 
 const CustomerNewClaim = () => {
-  //ดึงเอาชื่อ User มาแสดง
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
-
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState([]);
@@ -39,14 +31,13 @@ const CustomerNewClaim = () => {
       return file.url || "";
     });
   };
-
-  // 1. ฟังก์ชันส่งข้อมูลการเคลม (Submit)
   const onFinish = async (values) => {
     try {
       const base64Images = await processImages();
 
       const claimData = {
         claimId: "CLM-" + Date.now(),
+        claimNo: "-",
         createdDate: dayjs().format("DD/MM/YYYY"),
         reporter: user?.name || "-",
         ...values,
@@ -92,11 +83,7 @@ const CustomerNewClaim = () => {
                 {/* วันที่ */}
                 <Col xs={24} md={12}>
                   <Form.Item label="วันที่แจ้ง">
-                    <DatePicker
-                      className="w-full"
-                      defaultValue={dayjs()}
-                      disabled
-                    />
+                    <DatePicker className="w-full" defaultValue={dayjs()} disabled/>
                   </Form.Item>
                 </Col>
 
@@ -117,8 +104,7 @@ const CustomerNewClaim = () => {
               <Row gutter={16}>
                 {/* ชื่อสินค้า */}
                 <Col xs={24} md={12}>
-                  <Form.Item
-                    label="ชื่อสินค้า"
+                  <Form.Item label="ชื่อสินค้า"
                     name="productName"
                     rules={[
                       {

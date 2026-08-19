@@ -6,7 +6,8 @@ const roleRoute=require("./src/routes/roleRoute");
 const itemRoute=require("./src/routes/itemRoute");
 const claimRoute=require("./src/routes/claimRoute");
 const agentRoute=require("./src/routes/agentRoute");
-const loginRoute=require("./src/routes/loginRoute")
+const loginRoute=require("./src/routes/loginRoute");
+const deliveryRoute=require("./src/routes/deliveryRoute");
 const app = express();
 
 app.use(cors());
@@ -18,6 +19,7 @@ app.use("/api",itemRoute);
 app.use("/api",claimRoute);
 app.use("/api",agentRoute);
 app.use("/api",loginRoute);
+app.use("/api",deliveryRoute);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {

@@ -1,6 +1,7 @@
 const { sql, connectDB } = require("../config/db");
 
 
+
 // =========================
 // SELECT USERS
 // =========================
@@ -137,3 +138,48 @@ WHERE role_id=@role_id
     }
 }
 
+// =========================
+// DELETE ROLE
+// =========================
+exports.deleteRole = async (req, res) => {
+    try {
+        // รับค่า id จาก req.params (กรณีส่งผ่าน URL เช่น /api/roles/1) 
+        // หรือ req.body (กรณีส่งเป็น JSON body)
+        const role_id = req.params.id || req.body.id;
+
+        if (!role_id) {
+            return res.status(400).json({
+                status: false,
+                message: "Please provide role_id"
+            });
+        }
+
+        const pool = await connectDB();
+
+        const result = await pool.request()
+            .input("role_id", sql.Int, role_id)
+            .query(`
+                DELETE FROM [EasyClaim_Dev].[dbo].[roles]
+                WHERE role_id = @role_id
+            `);
+
+        // ตรวจสอบว่ามีการลบแถวข้อมูลจริงหรือไม่
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                status: false,
+                message: "Role not found"
+            });
+        }
+
+        res.json({
+            status: true,
+            message: "Delete Success"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};

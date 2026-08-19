@@ -1,26 +1,11 @@
 import React, { useState } from "react";
-import {
-  Form,
-  Input,
-  DatePicker,
-  AutoComplete,
-  InputNumber,
-  Upload,
-  Button,
-  Card,
-  Row,
-  Col,
-  Select,
-  Space,
-  message,
-} from "antd";
+import { useNavigate } from "react-router-dom";
+import {Form,Input,DatePicker,AutoComplete,InputNumber,Upload,Button,Card,Row,Col,Select,Space,message,} from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { useNavigate } from "react-router-dom";
 
 const { TextArea } = Input;
 
-//ชื่อสินค้าที่จะขึ้นให้ User เลือก
 const productOptions = [
   { value: "Est" },
   { value: "Beer" },
@@ -29,7 +14,6 @@ const productOptions = [
   { value: "Oishi Grape" },
 ];
 
-//ประเภทการเคลมที่จะมีใน เล่มเคลมใส่ในรายละเอียดการเคลม
 const claimType = [
   { value: "แตกจากการขนส่ง", label: "แตกจากการขนส่ง" },
   { value: "แตกแห้งหลังการส่งสินค้า", label: "แตกแห้งหลังการส่งสินค้า" },
@@ -37,14 +21,13 @@ const claimType = [
 ];
 
 const CustomerNewClaim = () => {
-  const navigate = useNavigate();
-
-  const [form] = Form.useForm();
-  const [fileList, setFileList] = useState([]);
-
   //ดึงเอาชื่อ User มาแสดง
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
+
+  const navigate = useNavigate();
+  const [form] = Form.useForm();
+  const [fileList, setFileList] = useState([]);
 
   // ปรับฟังก์ชันการจัดการรูปภาพ ไม่ต้องแปลงเป็น Base64 ทั้งหมด
   // เพื่อป้องกัน localStorage เต็ม

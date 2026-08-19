@@ -11,5 +11,8 @@ router.get("/role",rolesController.getRole );
 // INSERT
 router.post("/role", rolesController.createRole);
 
+// DELETE
+router.delete("/roles/:id", rolesController.deleteRole);
+
 
 module.exports = router;

@@ -11,11 +11,8 @@ function App() {
 
   const [collapsed, setCollapsed] = useState(true);
   const location = useLocation();
-
-  // 3. ตรวจสอบว่าเป็นหน้า /login หรือไม่
   const isLoginPage = location.pathname === "/login";
 
-  // หากเป็นหน้า /login ให้แสดงแค่เนื้อหา Router (ไม่มี Sidebar/Header)
   if (isLoginPage) {
     return <AppRouter />;
   }

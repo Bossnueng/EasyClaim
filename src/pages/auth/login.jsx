@@ -8,8 +8,7 @@ const Login = () => {
   const onFinish = async (values) => {
     const { username, password } = values;
 
-    // 1. Mock Database / Users List
-    const mockUsers = [
+    /*const mockUsers = [
       {
         username: "staff01",
         password: "1234",
@@ -22,9 +21,65 @@ const Login = () => {
         role: "customer",
         name: "Somsri (Customer)",
       },
+    ];*/
+
+
+    const mockUsers = [
+      {
+        user_id: 1,
+        username: "70133984",
+        password: "1234", // สำหรับจำลองหน้า Login
+        full_name: "Phonna Admin",
+        email: "phonna@example.com",
+        phone: "0812345678",
+        role_id: 1, // กำหนด ID ตามระบบสิทธิ์ เช่น 1 = Staff, 2 = Customer
+        agent_id: 101, // ID ตัวแทนจำหน่าย (ถ้าไม่มีใส่ null ได้)
+        status: 1, // 1 = Active, 0 = Inactive
+      },{
+        user_id: 2,
+        username: "customer01",
+        password: "1234",
+        full_name: "Somsri Customer",
+        email: "somsri@example.com",
+        phone: "0898765432",
+        role_id: 2,
+        agent_id: 202,
+        status: 1,
+      },{
+        user_id: 3,
+        username: "staff01",
+        password: "1234",
+        full_name: "Somsri Customer",
+        email: "somsri@example.com",
+        phone: "0898765432",
+        role_id: 3,
+        agent_id: 303,
+        status: 1,
+      },
+      {
+        user_id: 4,
+        username: "customer02",
+        password: "1234",
+        full_name: "SomSak Customer2",
+        email: "somsak@example.com",
+        phone: "0898765432",
+        role_id: 3,
+        agent_id: 404,
+        status: 1,
+      },
+      {
+        user_id: 5,
+        username: "customer03",
+        password: "1234",
+        full_name: "SriSak Customer2",
+        email: "somsak@example.com",
+        phone: "0898765432",
+        role_id: 3,
+        agent_id: 404,
+        status: 1,
+      },
     ];
 
-    // 2. ค้นหา User จากข้อมูลที่กรอก
     const foundUser = mockUsers.find(
       (u) => u.username === username && u.password === password,
     );
@@ -33,12 +88,12 @@ const Login = () => {
       // บันทึกข้อมูล Session/Token ลงใน LocalStorage (ถ้าต้องการนำไปใช้หน้าอื่นต่อ)
       localStorage.setItem("user", JSON.stringify(foundUser));
 
-      message.success(`ยินดีต้อนรับ ${foundUser.name}`);
+      message.success(`ยินดีต้อนรับ ${foundUser.full_name}`);
 
       // 3. เปลี่ยน Route ตาม Role ที่ตรวจพบ
-      if (foundUser.role === "staff") {
+      if (foundUser.role_id == 3) {
         navigate("/staff");
-      } else if (foundUser.role === "customer") {
+      } else if (foundUser.role_id == 2) {
         navigate("/customer");
       }
     } else {
@@ -47,40 +102,10 @@ const Login = () => {
         "Username หรือ Password ไม่ถูกต้อง (ลองใช้ staff01/1234 หรือ customer01/1234)",
       );
     }
-
-    {
-      /**
-      try {
-      // 1. เรียก API ตรวจสอบการเข้าสู่ระบบ (สมมติการยิง API หรือดึง response)
-      // const response = await loginApi({ username, password });
-      // const userRole = response.data.role; // ได้ค่าเช่น 'staff' หรือ 'customer'
-
-      // ตัวอย่าง Mock Logic สำหรับทดสอบ:
-      // หาก username มีคำว่า "staff" หรือ "admin" ให้ตั้งเป็น staff นอกนั้นเป็น customer
-      const userRole = username.toLowerCase().includes("staff") ? "staff" : "customer";
-
-      message.success("เข้าสู่ระบบสำเร็จ");
-
-      // 2. ตรวจสอบ Role ที่ได้ตอบกลับมาจากระบบแล้ว Navigate ไปยังหน้าที่ถูกต้อง
-      if (userRole === "staff") {
-        navigate("/staff");
-      } else if (userRole === "customer") {
-        navigate("/customer");
-      } else {
-        // กรณีทั่วไป (ถ้ามี)
-        navigate("/");
-      }
-    } catch (error) {
-      message.error("Username หรือ Password ไม่ถูกต้อง");
-    }
-       */
-    }
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
+    <div style={{ minHeight: "100vh", 
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -89,9 +114,7 @@ const Login = () => {
         boxSizing: "border-box",
       }}
     >
-      <div
-        style={{
-          width: "100%",
+      <div style={{width: "100%",
           maxWidth: "400px",
           backgroundColor: "#ffffff",
           borderRadius: "24px",
@@ -103,9 +126,7 @@ const Login = () => {
         }}
       >
         {/* === Shield Icon Header === */}
-        <div
-          style={{
-            display: "inline-flex",
+        <div style={{ display: "inline-flex",
             justifyContent: "center",
             alignItems: "center",
             width: "72px",
@@ -115,20 +136,11 @@ const Login = () => {
             marginBottom: "16px",
           }}
         >
-          <SafetyCertificateFilled
-            style={{ fontSize: "42px", color: "#059669" }}
-          />
+          <SafetyCertificateFilled style={{ fontSize: "42px", color: "#059669" }}/>
         </div>
 
         {/* === Title Section ===*/}
-        <h2
-          style={{
-            fontSize: "24px",
-            fontWeight: "700",
-            color: "#0f172a",
-            margin: "0 0 8px 0",
-          }}
-        >
+        <h2 style={{ fontSize: "24px",fontWeight: "700",color: "#0f172a",margin: "0 0 8px 0",}}>
           Sign In
         </h2>
 
@@ -137,75 +149,40 @@ const Login = () => {
         </p>
 
         {/* === Form Section === */}
-        <Form
-          name="login_form"
-          layout="vertical"
-          onFinish={onFinish}
-          requiredMark={false}
-        >
+        <Form name="login_form" layout="vertical" onFinish={onFinish} requiredMark={false}>
           {/* --- Username --- */}
-          <Form.Item
-            label={
-              <span style={{ fontWeight: "600", color: "#334155" }}>
-                Username
-              </span>
-            }
+          <Form.Item label={<span style={{ fontWeight: "600", color: "#334155" }}>Username</span>}
             name="username"
             rules={[{ required: true, message: "กรุณากรอก Username!" }]}
             style={{ marginBottom: "20px", textAlign: "left" }}
           >
             <Input
-              prefix={
-                <UserOutlined
-                  style={{ color: "#94a3b8", marginRight: "8px" }}
-                />
-              }
+              prefix={<UserOutlined style={{ color: "#94a3b8", marginRight: "8px" }}/>}
               placeholder="Enter your username"
               size="large"
-              style={{
-                borderRadius: "12px",
-                padding: "10px 16px",
-                borderColor: "#cbd5e1",
-              }}
+              style={{borderRadius: "12px",padding: "10px 16px",borderColor: "#cbd5e1",}}
             />
           </Form.Item>
 
           {/* --- Password --- */}
-          <Form.Item
-            label={
-              <span style={{ fontWeight: "600", color: "#334155" }}>
-                Password
-              </span>
-            }
+          <Form.Item label={<span style={{ fontWeight: "600", color: "#334155" }}>Password</span>}
             name="password"
             rules={[{ required: true, message: "กรุณากรอก Password!" }]}
             style={{ marginBottom: "32px", textAlign: "left" }}
           >
-            <Input.Password
-              prefix={
-                <LockOutlined
-                  style={{ color: "#94a3b8", marginRight: "8px" }}
-                />
-              }
+            <Input.Password prefix={
+              <LockOutlined style={{ color: "#94a3b8", marginRight: "8px" }}/>
+            }
               placeholder="Enter your password"
               size="large"
-              style={{
-                borderRadius: "12px",
-                padding: "10px 16px",
-                borderColor: "#cbd5e1",
-              }}
+              style={{borderRadius: "12px",padding: "10px 16px",borderColor: "#cbd5e1",}}
             />
           </Form.Item>
 
           {/* --- Submit Button --- */}
           <Form.Item style={{ marginBottom: 0 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              size="large"
-              style={{
-                height: "48px",
+            <Button type="primary" htmlType="submit" block size="large"
+              style={{height: "48px",
                 borderRadius: "24px",
                 backgroundColor: "#059669",
                 borderColor: "#059669",

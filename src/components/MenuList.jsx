@@ -1,11 +1,5 @@
 import { Menu } from "antd";
-import {
-  HomeOutlined,
-  FileAddOutlined,
-  HistoryOutlined,
-  WechatOutlined,
-  SettingFilled,
-} from "@ant-design/icons";
+import {HomeOutlined,FileAddOutlined,HistoryOutlined,WechatOutlined,SettingFilled,} from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
 
 const MenuList = () => {
@@ -14,7 +8,7 @@ const MenuList = () => {
   // 1. ดึงข้อมูล User จาก localStorage
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
-  const role = user?.role; // 'staff' หรือ 'customer'
+  const role = user?.role_id; // 'staff' หรือ 'customer'
 
   const getSelectedKey = () => {
     // Customer
@@ -67,14 +61,10 @@ const MenuList = () => {
   };
 
   return (
-    <Menu
-      theme="dark"
-      mode="inline"
-      selectedKeys={[getSelectedKey()]}
-      className="menu-bar"
-    >
+    <Menu theme="dark" mode="inline" selectedKeys={[getSelectedKey()]} className="menu-bar">
+
       {/* ==================== STAFF MENUS ==================== */}
-      {role === "staff" && (
+      {role == 3 && (
         <>
           <Menu.Item key="staff-home" icon={<HomeOutlined />}>
             <NavLink to="/staff">หน้าแรก</NavLink>
@@ -95,7 +85,7 @@ const MenuList = () => {
       )}
 
       {/* ==================== CUSTOMER MENUS ==================== */}
-      {role === "customer" && (
+      {role == 2 && (
         <>
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
             <NavLink to="/customer">หน้าแรก</NavLink>

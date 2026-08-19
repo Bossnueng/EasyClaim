@@ -9,8 +9,10 @@ import { STATUS_PRIORITY } from "../../constants/claimStatus";
 const StaffHome = () => {
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
+
   const navigate = useNavigate();
   const [latestClaims, setLatestClaims] = useState([]);
+  
   useEffect(() => {
     const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
     const pendingClaims = savedClaims.filter((item) => {
@@ -45,7 +47,7 @@ const StaffHome = () => {
       >
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, คุณ {user?.name || "-"}
+            สวัสดี, คุณ {user?.full_name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่

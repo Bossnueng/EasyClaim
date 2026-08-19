@@ -8,15 +8,13 @@ const NON_DELETABLE_STATUSES = ["ไม่มีสิทธิ์เคลม",
 
 
 const ClaimCard = ({
-  claim,
-  onDelete,
-  hideDeleteWhenDisabled = true,
-  variant = "grid", // 'grid' ( default ) หรือ 'compact' ( แบบแนวนอน )
+  claim,onDelete,hideDeleteWhenDisabled = true,variant = "grid",
+
 }) => {
   const navigate = useNavigate();
   const isDisableDelete = NON_DELETABLE_STATUSES.includes(claim.status);
 
-  // ==================== Layout 1: Compact (สำหรับหน้า Home แนวนอน) ====================
+  // Home แนวนอน
   if (variant === "compact") {
     return (
       <div
@@ -46,7 +44,7 @@ const ClaimCard = ({
     );
   }
 
-  // ==================== Layout 2: Grid (สำหรับหน้า List แบบการ์ดใหญ่) ====================
+  // Grid (สำหรับหน้า List แบบการ์ดใหญ่)
   return (
     <div
       onClick={() => navigate(`/staff/update-claim/${claim.claimId}`)}

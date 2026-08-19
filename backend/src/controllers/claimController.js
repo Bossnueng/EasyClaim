@@ -342,6 +342,7 @@ exports.creartClaim = async (req, res) => {
             receive_finish_date,
             created_by
         } = req.body;
+        const qtychang = 0;
         const pool = await connectDB();
         const result = await pool.request()
             .input("claim_no", sql.VarChar, claim_no)
@@ -351,6 +352,7 @@ exports.creartClaim = async (req, res) => {
             .input("mfg_date", sql.Date, mfg_date)
             .input("expire_date", sql.Date, expire_date)
             .input("qty", sql.Int, qty)
+            .input("qtychang", sql.Int, qtychang)
             .input("remark", sql.NVarChar(sql.MAX), remark)
             .input("current_status", sql.VarChar, current_status)
             .input("driver_receive_date", sql.DateTime, driver_receive_date)
@@ -370,6 +372,7 @@ exports.creartClaim = async (req, res) => {
             mfg_date,
             expire_date,
             qty,
+            qtychang,
             remark,
             current_status,
             driver_receive_date,
@@ -429,6 +432,7 @@ exports.updateClaim = async (req, res) => {
             mfg_date,
             expire_date,
             qty,
+            qtychang,
             remark,
             current_status,
             driver_receive_date,
@@ -451,6 +455,7 @@ exports.updateClaim = async (req, res) => {
             .input("mfg_date", sql.Date, mfg_date)
             .input("expire_date", sql.Date, expire_date)
             .input("qty", sql.Int, qty)
+            .input("qtychang", sql.Int, qtychang)
             .input("remark", sql.NVarChar(sql.MAX), remark)
             .input("current_status", sql.VarChar, current_status)
             .input("driver_receive_date", sql.DateTime, driver_receive_date || null)
@@ -470,6 +475,7 @@ exports.updateClaim = async (req, res) => {
                     mfg_date = @mfg_date,
                     expire_date = @expire_date,
                     qty = @qty,
+                    qtychang=@qtychang,
                     remark = @remark,
                     current_status = @current_status,
                     driver_receive_date = @driver_receive_date,

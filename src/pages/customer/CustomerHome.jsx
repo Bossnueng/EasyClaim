@@ -5,12 +5,14 @@ import { PlusCircleOutlined, RightOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { STATUS_PRIORITY } from "../../constants/claimStatus";
+import loginService from "../../services/loginService"; // 🟢 1. Import loginService
 
 const CustomerHome = () => {
   const navigate = useNavigate();
   const [latestClaims, setLatestClaims] = useState([]);
-  const savedUser = localStorage.getItem("user");
-  const user = savedUser ? JSON.parse(savedUser) : null;
+
+  // 🟢 2. ดึงข้อมูล User ผ่าน loginService (เหมือนหน้า UserSettings)
+  const user = loginService.getCurrentUser();
 
   // โหลดข้อมูลและจัดเรียง
   const loadClaims = () => {
@@ -61,7 +63,7 @@ const CustomerHome = () => {
         {/* ==================== Header ==================== */}
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, คุณ {user?.name || "-"}
+            สวัสดี, คุณ {user?.full_name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะหรือแจ้งเคลมสินค้าใหม่ได้ง่ายๆ ที่นี่

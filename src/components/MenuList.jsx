@@ -64,7 +64,7 @@ const MenuList = () => {
     <Menu theme="dark" mode="inline" selectedKeys={[getSelectedKey()]} className="menu-bar">
 
       {/* ==================== STAFF MENUS ==================== */}
-      {role == 3 && (
+      {role == 1 && (
         <>
           <Menu.Item key="staff-home" icon={<HomeOutlined />}>
             <NavLink to="/staff">หน้าแรก</NavLink>

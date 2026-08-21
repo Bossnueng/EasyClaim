@@ -4,6 +4,7 @@ import {Form,Input,DatePicker,AutoComplete,InputNumber,Upload,Button,
   Card,Row,Col,Select,Space,message,} from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import loginService from "../../services/loginService";
 
 const productOptions = [{ value: "Est" },{ value: "Beer" },{ value: "100Plus" },{ value: "Oishi Corn" },{ value: "Oishi Grape" },];
 
@@ -15,9 +16,12 @@ const claimType = [
 const { TextArea } = Input;
 
 const CustomerNewClaim = () => {
-  const savedUser = localStorage.getItem("user");
-  const user = savedUser ? JSON.parse(savedUser) : null;
-  const navigate = useNavigate();
+
+  const navigate = useNavigate();  
+  
+  //2. ดึงข้อมูล User ผ่าน loginService (เหมือนหน้า UserSettings)
+  const user = loginService.getCurrentUser();
+
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState([]);
 
@@ -39,7 +43,7 @@ const CustomerNewClaim = () => {
         claimId: "CLM-" + Date.now(),
         claimNo: "-",
         createdDate: dayjs().format("DD/MM/YYYY"),
-        reporter: user?.name || "-",
+        reporter: user?.full_name || "-",
         ...values,
         images: base64Images, // บันทึกเป็น Array ของ Base64
         image: base64Images[0] || null, // สำหรับแมปเข้า StaffClaimUpdate
@@ -91,7 +95,7 @@ const CustomerNewClaim = () => {
                 <Col xs={24} md={12}>
                   <Form.Item label="ผู้แจ้ง">
                     {/**Backend : ไปดูว่าฐานข้อมูลเก็บชื่ออย่างไร แล้วตอนที่จะขันทึกข้อมูลจะใช้ User ใคร */}
-                    <Input value={user?.name || "-"} disabled />
+                    <Input value={user?.full_name || "-"} disabled />
                   </Form.Item>
                 </Col>
               </Row>

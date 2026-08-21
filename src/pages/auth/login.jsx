@@ -1,106 +1,42 @@
-import React from "react";
+import React, { useState } from "react";
 import { Form, Input, Button, message } from "antd";
 import { useNavigate } from "react-router-dom";
 import {SafetyCertificateFilled,UserOutlined,LockOutlined,} from "@ant-design/icons";
+import loginService from "../../services/loginService";
 
 const Login = () => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
   const onFinish = async (values) => {
-    const { username, password } = values;
+    setLoading(true);
+    try {
+      // 🟢 เรียกใช้ API เช็คเข้าสู่ระบบจริง
+      const res = await loginService.login(values);
 
-    /*const mockUsers = [
-      {
-        username: "staff01",
-        password: "1234",
-        role: "staff",
-        name: "Somchai (Staff)",
-      },
-      {
-        username: "customer01",
-        password: "1234",
-        role: "customer",
-        name: "Somsri (Customer)",
-      },
-    ];*/
+      if (res.status) {
+        message.success(res.message || `ยินดีต้อนรับ ${res.data.full_name}`);
 
-
-    const mockUsers = [
-      {
-        user_id: 1,
-        username: "70133984",
-        password: "1234", // สำหรับจำลองหน้า Login
-        full_name: "Phonna Admin",
-        email: "phonna@example.com",
-        phone: "0812345678",
-        role_id: 1, // กำหนด ID ตามระบบสิทธิ์ เช่น 1 = Staff, 2 = Customer
-        agent_id: 101, // ID ตัวแทนจำหน่าย (ถ้าไม่มีใส่ null ได้)
-        status: 1, // 1 = Active, 0 = Inactive
-      },{
-        user_id: 2,
-        username: "customer01",
-        password: "1234",
-        full_name: "Somsri Customer",
-        email: "somsri@example.com",
-        phone: "0898765432",
-        role_id: 2,
-        agent_id: 202,
-        status: 1,
-      },{
-        user_id: 3,
-        username: "staff01",
-        password: "1234",
-        full_name: "Somsri Customer",
-        email: "somsri@example.com",
-        phone: "0898765432",
-        role_id: 3,
-        agent_id: 303,
-        status: 1,
-      },
-      {
-        user_id: 4,
-        username: "customer02",
-        password: "1234",
-        full_name: "SomSak Customer2",
-        email: "somsak@example.com",
-        phone: "0898765432",
-        role_id: 3,
-        agent_id: 404,
-        status: 1,
-      },
-      {
-        user_id: 5,
-        username: "customer03",
-        password: "1234",
-        full_name: "SriSak Customer2",
-        email: "somsak@example.com",
-        phone: "0898765432",
-        role_id: 3,
-        agent_id: 404,
-        status: 1,
-      },
-    ];
-
-    const foundUser = mockUsers.find(
-      (u) => u.username === username && u.password === password,
-    );
-
-    if (foundUser) {
-      // บันทึกข้อมูล Session/Token ลงใน LocalStorage (ถ้าต้องการนำไปใช้หน้าอื่นต่อ)
-      localStorage.setItem("user", JSON.stringify(foundUser));
-
-      message.success(`ยินดีต้อนรับ ${foundUser.full_name}`);
-
-      // 3. เปลี่ยน Route ตาม Role ที่ตรวจพบ
-      if (foundUser.role_id == 3) {
-        navigate("/staff");
-      } else if (foundUser.role_id == 2) {
-        navigate("/customer");
+        // 🟢 ตรวจสอบ role_id แยกหน้า Dashboard
+        const roleId = res.data.role_id;
+        if (roleId === 1) {
+          // Admin (1) หรือ Driver (3)
+          navigate("/staff");
+        } else if (roleId === 2) {
+          // Agent/Customer (2)
+          navigate("/customer");
+        } else {
+          navigate("/staff");
+        }
+      } else {
+        message.error(res.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       }
-    } else {
-      // หากรอกไม่ตรงกับข้อมูล Mock
+    } catch (error) {
       message.error(
-        "Username หรือ Password ไม่ถูกต้อง (ลองใช้ staff01/1234 หรือ customer01/1234)",
+        error.message || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบ Backend"
       );
+    } finally {
+      setLoading(false);
     }
   };
 

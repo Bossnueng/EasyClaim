@@ -1,6 +1,6 @@
 const { sql, connectDB } = require("../config/db");
 
-exports.Delivery = async (res, req) => {
+exports.Delivery = async (req, res) => {
     try {
         const pool = await connectDB();
         const result = await pool.request()
@@ -41,21 +41,21 @@ exports.createDelivery = async (req, res) => {
             claim_id,
             driver_id,
             delivery_status,
-            receive_date,
+            receive_date
         )
         VALUES
         (
             @claim_id,
             @driver_id,
             @delivery_status,
-            GETDATE();
+            GETDATE()
         );
                 SELECT SCOPE_IDENTITY() AS delivery_id;
     `);
         res.json({
             status: true,
             message: "Insert Success",
-            approve_id: result.recordset[0].approve_id
+            delivery_id: result.recordset[0].delivery_id
         });
     } catch (error) {
         res.status(500).json({
@@ -79,13 +79,20 @@ exports.UpdataDelivery = async (req, res) => {
             .query(`
                 UPDATE [EasyClaim_Dev].[dbo].[Delivery]
                 SET 
-                    claim_id,
-                    driver_id,
-                    delivery_status,
-                    receive_date,
+                    claim_id = @claim_id,
+                    driver_id = @driver_id,
+                    delivery_status = @delivery_status,
+                    receive_date = GETDATE()
                 WHERE
                     delivery_id=@delivery_id
                 `);
+                
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                status: false,
+                message: "Delivery not found"
+            });
+        }
         res.json({
             status: true,
             message: "Updata Success"
@@ -107,7 +114,7 @@ exports.DelDelivery = async (req, res) => {
         const pool = await connectDB();
 
         const result = await pool.request()
-            .input("claim_id", sql.Int, claim_id)
+            .input("delivery_id", sql.Int, delivery_id)
             .query(`
                 DELETE FROM [EasyClaim_Dev].[dbo].[Delivery]
                 WHERE delivery_id=@delivery_id
@@ -116,7 +123,7 @@ exports.DelDelivery = async (req, res) => {
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({
                 status: false,
-                message: "Claim not found"
+                message: "Delivery not found"
             });
         }
 

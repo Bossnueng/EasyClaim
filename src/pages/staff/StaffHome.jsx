@@ -1,40 +1,76 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Empty } from "antd";
+import { Button, Empty, message, Spin } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import ClaimCard from "../../components/StaffClaimCard";
 import { STATUS_PRIORITY } from "../../constants/claimStatus";
+import loginService from "../../services/loginService";
+import claimService from "../../services/claimService";
+import itemService from "../../services/itemService";
 
 const StaffHome = () => {
-  const savedUser = localStorage.getItem("user");
-  const user = savedUser ? JSON.parse(savedUser) : null;
-
   const navigate = useNavigate();
   const [latestClaims, setLatestClaims] = useState([]);
-  
+  const [loading, setLoading] = useState(false);
+  const [itemsMap, setItemsMap] = useState({});
+
+  const user = loginService.getCurrentUser();
+
   useEffect(() => {
-    const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
-    const pendingClaims = savedClaims.filter((item) => {
-      const priority = STATUS_PRIORITY[item.status];
-      return priority !== 8 && priority !== 9 && priority !== 10;
-    });
+    fetchClaimsAndItems();
+  }, []);
 
-    const sortedClaims = pendingClaims.sort((a, b) => {
-      const priorityA = STATUS_PRIORITY[a.status] || 99;
-      const priorityB = STATUS_PRIORITY[b.status] || 99;
+  const fetchClaimsAndItems = async () => {
+    setLoading(true);
+    try {
+      // 🟢 ดึงข้อมูลรายการเคลมทั้งหมดของลูกค้าทุกคน และข้อมูลรายการสินค้า
+      const [resClaim, resItems] = await Promise.all([
+        claimService.getClaim(),
+        itemService.getItems(),
+      ]);
 
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
+      // Map ชื่อสินค้า item_id -> item_name
+      const map = {};
+      if (resItems && resItems.data) {
+        resItems.data.forEach((item) => {
+          map[item.item_id] = item.item_name;
+        });
+        setItemsMap(map);
       }
 
-      const dateA = dayjs(a.createdDate);
-      const dateB = dayjs(b.createdDate);
-      return dateB.valueOf() - dateA.valueOf();
-    });
+      if (resClaim && resClaim.data) {
+        // 🟢 กรองเฉพาะรายการที่ยังไม่จบกระบวนการ (ตัด priority 8, 9, 10 ออก)
+        const pendingClaims = resClaim.data.filter((item) => {
+          const currentStatus = item.current_status || item.status;
+          const priority = STATUS_PRIORITY[currentStatus];
+          return priority !== 8 && priority !== 9 && priority !== 10;
+        });
 
-    setLatestClaims(sortedClaims.slice(0, 8));
-  }, []);
+        // จัดเรียงตาม Priority และ วันที่สร้างล่าสุด
+        const sortedClaims = pendingClaims.sort((a, b) => {
+          const statusA = a.current_status || a.status;
+          const statusB = b.current_status || b.status;
+          const priorityA = STATUS_PRIORITY[statusA] || 99;
+          const priorityB = STATUS_PRIORITY[statusB] || 99;
+
+          if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+          }
+
+          const dateA = dayjs(a.claim_date || a.created_at || a.createdDate);
+          const dateB = dayjs(b.claim_date || b.created_at || b.createdDate);
+          return dateB.valueOf() - dateA.valueOf();
+        });
+
+        setLatestClaims(sortedClaims.slice(0, 8));
+      }
+    } catch (error) {
+      message.error("ไม่สามารถดึงข้อมูลรายการเคลมได้: " + (error.message || "เกิดข้อผิดพลาด"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div
@@ -47,7 +83,7 @@ const StaffHome = () => {
       >
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, คุณ {user?.full_name || "-"}
+            สวัสดี, คุณ {user?.full_name || user?.name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่
@@ -69,12 +105,19 @@ const StaffHome = () => {
             </Button>
           </div>
 
-          {latestClaims.length > 0 ? (
+          {loading ? (
+            <div className="bg-white rounded-2xl p-12 text-center w-full">
+              <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+            </div>
+          ) : latestClaims.length > 0 ? (
             <div className="flex flex-col gap-3.5 w-full">
               {latestClaims.map((claim) => (
                 <ClaimCard
-                  key={claim.claimId}
-                  claim={claim}
+                  key={claim.claim_id || claim.claim_no || claim.claimId}
+                  claim={{
+                    ...claim,
+                    item_name: itemsMap[claim.item_id] || claim.item_name || `สินค้า ID: ${claim.item_id}`,
+                  }}
                   variant="compact"
                 />
               ))}

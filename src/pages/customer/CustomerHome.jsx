@@ -1,54 +1,87 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Empty, message } from "antd";
+import { Button, Empty, message, Spin } from "antd";
 import { PlusCircleOutlined, RightOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { STATUS_PRIORITY } from "../../constants/claimStatus";
-import loginService from "../../services/loginService"; // 🟢 1. Import loginService
+import loginService from "../../services/loginService"; //1. Import loginService
+import claimService from "../../services/claimService";
+import itemService from "../../services/itemService";
 
 const CustomerHome = () => {
   const navigate = useNavigate();
   const [latestClaims, setLatestClaims] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [itemsMap, setItemsMap] = useState({});
 
-  // 🟢 2. ดึงข้อมูล User ผ่าน loginService (เหมือนหน้า UserSettings)
+  //2. ดึงข้อมูล User ผ่าน loginService (เหมือนหน้า UserSettings)
   const user = loginService.getCurrentUser();
 
-  // โหลดข้อมูลและจัดเรียง
-  const loadClaims = () => {
-    const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
-
-    const sortedClaims = [...savedClaims].sort((a, b) => {
-      const priorityA = STATUS_PRIORITY[a.status] || 99;
-      const priorityB = STATUS_PRIORITY[b.status] || 99;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
-      const dateA = dayjs(a.createdDate);
-      const dateB = dayjs(b.createdDate);
-      return dateB.valueOf() - dateA.valueOf();
-    });
-
-    setLatestClaims(sortedClaims.slice(0, 8));
-  };
-
   useEffect(() => {
-    loadClaims();
+    fetchClaimsAndItems();
   }, []);
 
-  // ฟังก์ชั่นจัดการการลบรายการ
-  const handleDeleteClaim = (e, claimId) => {
-    e.stopPropagation();
+  // โหลดข้อมูลเคลมและข้อมูลสินค้าจาก API
+  const fetchClaimsAndItems = async () => {
+    setLoading(true);
+    try {
+      const agentId = user?.agent_id;
 
-    const savedClaims = JSON.parse(localStorage.getItem("claims")) || [];
-    const updatedClaims = savedClaims.filter((item) => item.claimId !== claimId);
+      if (!agentId) {
+        message.error("ไม่พบข้อมูลผู้ใช้งาน กรุณาล็อกอินใหม่");
+        return;
+      }
 
-    localStorage.setItem("claims", JSON.stringify(updatedClaims));
-    message.success("ลบรายการเคลมเรียบร้อยแล้ว");
+      const [resClaim, resItems] = await Promise.all([
+        claimService.getClaimByAgent(agentId),
+        itemService.getItems(),
+      ]);
 
-    loadClaims();
+      // Map ข้อมูลชื่อสินค้า
+      const map = {};
+      if (resItems && resItems.data) {
+        resItems.data.forEach((item) => {
+          map[item.item_id] = item.item_name;
+        });
+        setItemsMap(map);
+      }
+
+      // จัดเรียงรายการเคลมและเลือกมา 8 รายการล่าสุด
+      if (resClaim.status && resClaim.data) {
+        const sortedClaims = [...resClaim.data].sort((a, b) => {
+          const priorityA = STATUS_PRIORITY[a.current_status] || 99;
+          const priorityB = STATUS_PRIORITY[b.current_status] || 99;
+
+          if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+          }
+
+          return dayjs(b.claim_date).valueOf() - dayjs(a.claim_date).valueOf();
+        });
+
+        setLatestClaims(sortedClaims.slice(0, 8));
+      }
+    } catch (error) {
+      message.error("ไม่สามารถดึงข้อมูลได้: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteClaim = async (e, claimId) => {
+    if (e) e.stopPropagation();
+
+    try {
+      const response = await claimService.delClaim(claimId);
+      if (response.status) {
+        message.success("ลบรายการเคลมเรียบร้อยแล้ว");
+        // อัปเดต State ลบรายการออกทันที
+        setLatestClaims((prev) => prev.filter((item) => item.claim_id !== claimId));
+      }
+    } catch (error) {
+      message.error(error.message || "เกิดข้อผิดพลาดในการลบรายการ");
+    }
   };
 
   return (
@@ -115,12 +148,19 @@ const CustomerHome = () => {
           </div>
 
           {/* === Card List แนวตั้งแบบเดิม (flex flex-col gap-3.5) === */}
-          {latestClaims.length > 0 ? (
+          {loading ? (
+            <div className="bg-white rounded-2xl p-12 text-center w-full">
+              <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+            </div>
+          ) : latestClaims.length > 0 ? (
             <div className="flex flex-col gap-3.5 w-full">
               {latestClaims.map((claim) => (
                 <CustomerClaimCard
-                  key={claim.claimId}
-                  claim={claim}
+                  key={claim.claim_id}
+                  claim={{
+                    ...claim,
+                    item_name: itemsMap[claim.item_id] || `สินค้า ID: ${claim.item_id}`,
+                  }}
                   onDelete={handleDeleteClaim}
                   hideDeleteWhenDisabled={true}
                   layout="horizontal"

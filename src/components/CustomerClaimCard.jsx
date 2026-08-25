@@ -1,11 +1,7 @@
 import React from "react";
 import { Tag, Popconfirm } from "antd";
 import { useNavigate } from "react-router-dom";
-import {
-  RightOutlined,
-  CodeSandboxOutlined,
-  DeleteOutlined,
-} from "@ant-design/icons";
+import {RightOutlined,CodeSandboxOutlined,DeleteOutlined,} from "@ant-design/icons";
 import ClaimStatusTag from "./ClaimStatusTag";
 
 // รายการสถานะที่ไม่ยินยอมให้ลบ
@@ -15,18 +11,24 @@ const NON_DELETABLE_STATUSES = [
   "จัดส่งสินค้าเคลมสำเร็จ",
 ];
 
-const CustomerClaimCard = ({
-  claim,
-  onDelete,
-  hideDeleteWhenDisabled = true,
-  layout = "vertical", // 'vertical' (สำหรับหน้า List) หรือ 'horizontal' (สำหรับหน้า Home)
-}) => {
+const CustomerClaimCard = ({claim,onDelete,hideDeleteWhenDisabled = true,layout = "vertical", }) => {
   const navigate = useNavigate();
-  const isDisableDelete = NON_DELETABLE_STATUSES.includes(claim.status);
+
+  // 🟢 Map ค่าตัวแปรให้รองรับทั้ง Data จาก API และ Props เดิม
+  const claim_no = claim?.claim_no;
+  const status = claim?.current_status;
+  const productName = claim?.item_name;
+  const createdDate = claim?.claim_date || claim?.createdDate;
+  const qty = claim?.qty;
+
+  const isDisableDelete = NON_DELETABLE_STATUSES.includes(status);
 
   // ส่วนแสดงปุ่มลบ
   const renderDeleteButton = () => {
     if (!onDelete) return null;
+
+    // 🟢 ดึง targetClaimId ให้เป็นตัวเลข claim_id เสมอ (ป้องกันการเผลอส่ง claim_no)
+    const targetClaimId = claim?.claim_id || claim_id;
 
     if (isDisableDelete) {
       return !hideDeleteWhenDisabled ? (
@@ -45,7 +47,8 @@ const CustomerClaimCard = ({
       <Popconfirm
         title="ยืนยันการลบรายการ"
         description="คุณต้องการลบรายการเคลมนี้ใช่หรือไม่?"
-        onConfirm={(e) => onDelete(e, claim.claimId)}
+        /* 🟢 ส่ง e (event) และ targetClaimId (ที่เป็นตัวเลข claim_id) ไปให้ฟังก์ชัน onDelete */
+        onConfirm={(e) => onDelete(e, targetClaimId)}
         onCancel={(e) => e.stopPropagation()}
         okText="ลบ"
         cancelText="ยกเลิก"
@@ -53,7 +56,7 @@ const CustomerClaimCard = ({
       >
         <button
           onClick={(e) => e.stopPropagation()}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors border-0 bg-transparent cursor-pointer"
+          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors border-0 bg-transparent cursor-pointer flex items-center justify-center"
           title="ลบรายการ"
         >
           <DeleteOutlined className="text-base" />
@@ -62,11 +65,11 @@ const CustomerClaimCard = ({
     );
   };
 
-  // Layout แนวนอน (เหมือนใน CustomerHome ดั้งเดิม)
+  // Layout แนวนอน
   if (layout === "horizontal") {
     return (
       <div
-        onClick={() => navigate(`/customer/detail-claim/${claim.claimId}`)}
+        onClick={() => navigate(`/customer/detail-claim/${claim_no}`)}
         style={{
           boxSizing: "border-box",
           padding: "20px",
@@ -76,20 +79,19 @@ const CustomerClaimCard = ({
       >
         <div className="flex flex-col gap-1 min-w-0">
           <h4 className="font-bold text-base text-slate-800 m-0 truncate">
-            {claim.productName}
+            {productName}
           </h4>
           <p className="text-xs text-gray-400 font-mono m-0 truncate">
-            ID: {claim.claimId}
+            ID: {claim_no}
           </p>
         </div>
 
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           <div className="flex items-center gap-2">
-            {/**{getStatusTag(claim.status)} */}
-            <ClaimStatusTag status={claim.status} />
+            <ClaimStatusTag status={status} />
             {renderDeleteButton()}
           </div>
-          <span className="text-xs text-gray-400">{claim.createdDate}</span>
+          <span className="text-xs text-gray-400">{createdDate}</span>
         </div>
       </div>
     );
@@ -98,7 +100,7 @@ const CustomerClaimCard = ({
   // Layout แนวตั้ง (สำหรับ CustomerClaimList)
   return (
     <div
-      onClick={() => navigate(`/customer/detail-claim/${claim.claimId}`)}
+      onClick={() => navigate(`/customer/detail-claim/${claim_no}`)}
       style={{
         boxSizing: "border-box",
         padding: "20px",
@@ -111,19 +113,18 @@ const CustomerClaimCard = ({
           <CodeSandboxOutlined className="text-xl" />
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/**{getStatusTag(claim.status)} */}
-          <ClaimStatusTag status={claim.status} />
+          <ClaimStatusTag status={status} />
           {renderDeleteButton()}
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5 min-w-0">
         <h3 className="font-bold text-lg text-slate-800 m-0 truncate">
-          {claim.productName}
+          {productName}
         </h3>
         <div className="flex justify-between items-center text-xs text-gray-400 font-mono flex-wrap gap-1">
-          <span className="truncate">ID: {claim.claimId}</span>
-          <span className="shrink-0">{claim.createdDate}</span>
+          <span className="truncate">ID: {claim_no}</span>
+          <span className="shrink-0">{createdDate}</span>
         </div>
       </div>
 
@@ -132,7 +133,7 @@ const CustomerClaimCard = ({
         style={{ marginTop: "4px" }}
       >
         <span className="font-bold text-slate-700 text-sm shrink-0">
-          จำนวน: {claim.qty} ขวด
+          จำนวน: {qty} ขวด
         </span>
         <div className="flex items-center gap-1 text-emerald-600 font-semibold text-sm shrink-0">
           <span>ดูรายละเอียด</span>

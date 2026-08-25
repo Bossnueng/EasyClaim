@@ -9,16 +9,20 @@ const api = axios.create({
   timeout: 10000,
 });
 
-// Interceptor: แนบ Bearer Token ใน Header อัตโนมัติทุกครั้งที่ยิง API
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+// ปรับแก้ใน api.js ส่วน response interceptor
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      // 🟢 เพิ่มสั่ง เด้งกลับหน้า Login
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
+    return Promise.reject(error);
+  }
 );
 
 // Interceptor: จัดการ Error รวมจาก Backend

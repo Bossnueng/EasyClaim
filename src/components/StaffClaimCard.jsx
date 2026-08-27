@@ -11,15 +11,10 @@ const NON_DELETABLE_STATUSES = [
   "จัดส่งสินค้าเคลมสำเร็จ",
 ];
 
-const StaffClaimCard = ({
-  claim,
-  onDelete,
-  hideDeleteWhenDisabled = true,
-  layout = "vertical",
-}) => {
+const StaffClaimCard = ({  claim,  onDelete,  hideDeleteWhenDisabled = true,  layout = "vertical",}) => {
   const navigate = useNavigate();
 
-  // 🟢 Map ค่าตัวแปรให้รองรับทั้ง Data จาก API และ Props เดิม
+  //Map ค่าตัวแปรให้รองรับทั้ง Data จาก API และ Props เดิม
   const claim_no = claim?.claim_no || claim?.claimId;
   const targetClaimId = claim?.claim_id || claim_no;
   const status = claim?.current_status || claim?.status;

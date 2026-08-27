@@ -1,7 +1,7 @@
 import api from "./api";
 
 export const claimService = {
-  // 🟢 เพิ่มฟังก์ชัน getClaim สำหรับ Staff ดึงเคลมทั้งหมด
+
   getClaim: async () => {
     try {
       const response = await api.get("/getClaim");

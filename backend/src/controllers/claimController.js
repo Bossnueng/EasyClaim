@@ -234,15 +234,45 @@ exports.getclaimapproves = async (req, res) => {
     }
 }
 
+exports.getClaimImages = async (req, res) => {
+    try {
+        const { claim_id } = req.params;
+        const pool = await connectDB();
+        const result = await pool.request()
+            .input("claim_id", sql.Int, claim_id)
+            .query(`
+                SELECT [image_id]
+                      ,[claim_id]
+                      ,[image_path]
+                      ,[image_type]
+                      ,[created_at]
+                FROM [EasyClaim_Dev].[dbo].[claim_images]
+                WHERE claim_id = @claim_id
+                ORDER BY image_id ASC
+            `);
+
+        res.json({
+            status: true,
+            data: result.recordset
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};
+
+
 exports.createClaimapproves = async (req, res) => {
     try {
         const { claim_id, approve_by, approve_status, approve_remark } = req.body;
         const pool = await connectDB();
         const result = await pool.request()
             .input("claim_id", sql.Int, claim_id)
-            .input("approve_by", sql.VarChar, approve_by)
-            .input("approve_status", sql.VarChar, approve_status)
-            .input("approve_remark", sql.VarChar, approve_remark)
+            .input("approve_by", sql.NVarChar, approve_by)
+            .input("approve_status", sql.NVarChar, approve_status)
+            .input("approve_remark", sql.NVarChar(sql.MAX), approve_remark) // 👈 แก้เป็น sql.NVarChar(sql.MAX)
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_approves]
                 (

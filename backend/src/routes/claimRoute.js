@@ -8,6 +8,7 @@ const { verifyToken } = require("../middleware/authMiddleware");
 router.get("/getClaim",ClaimController.getClaim);
 router.get("/getclaimstatuslog",ClaimController.getclaimstatuslog);
 router.get("/getclaimapproves",ClaimController.getclaimapproves);
+router.get("/getClaimImages/:claim_id",ClaimController.getClaimImages);
 
 // เพิ่ม Route สำหรับรับ agent_id
 router.get("/getClaimByAgent/:agent_id", ClaimController.getClaimByAgent);

@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
 import {  RightOutlined,  CheckCircleOutlined,  FileSearchOutlined,  ClockCircleOutlined,  WarningOutlined,} from "@ant-design/icons";
 import dayjs from "dayjs";
-import ClaimCard from "../../components/StaffClaimCard";
 import { STATUS_PRIORITY, CLAIM_STATUS_MAP } from "../../constants/claimStatus";
+import StaffClaimCard from "../../components/StaffClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
+
+
 
 const StaffHome = () => {
   const navigate = useNavigate();
@@ -145,7 +147,7 @@ const StaffHome = () => {
               <span className="text-2xl sm:text-3xl font-bold text-blue-600">
                 {allClaims.filter((item) => {
                   const p = getPriority(item);
-                  return p === 1 || p === 2;
+                  return p <= 2 ;
                 }).length}
               </span>
               <span className="text-xs text-blue-500 font-medium">
@@ -275,11 +277,10 @@ const StaffHome = () => {
           ) : latestClaims.length > 0 ? (
             <div className="flex flex-col gap-3.5 w-full">
               {latestClaims.map((claim) => (
-                <ClaimCard
-                  key={claim.claim_id || claim.claim_no || claim.claimId}
+                <StaffClaimCard
+                  key={claim.claim_id || claim.claim_no}
                   claim={{
                     ...claim,
-                    current_status: getStatusNameText(claim),
                     item_name:
                       itemsMap[claim.item_id] ||
                       claim.item_name ||

@@ -3,12 +3,7 @@ import { Input, Empty, message, Spin } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import StaffClaimCard from "../../components/StaffClaimCard";
-import {
-  STATUS_PRIORITY,
-  FILTER_OPTIONS,
-  CUSTOMER_FILTER_TABS,
-  CUSTOMER_STATUS_GROUPS,
-} from "../../constants/claimStatus";
+import {STATUS_PRIORITY,FILTER_OPTIONS,CUSTOMER_FILTER_TABS,CUSTOMER_STATUS_GROUPS,} from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
 

@@ -94,7 +94,7 @@ const CustomerNewClaim = () => {
         expire_date: values.exp ? dayjs(values.exp).format("YYYY-MM-DD") : null,
         qty: parseInt(values.qty, 10),
         remark: `[${values.claimType}] ${values.detail}`,
-        current_status: "1",
+        current_status: "5",
         driver_receive_date: null,
         warehouse_receive_date: null,
         approve_date: null,
@@ -123,6 +123,13 @@ const CustomerNewClaim = () => {
           claim_id: newClaimId.toString(),
           status: "1",
           remark: "สร้างรายการเคลมสินค้าใหม่ในระบบ",
+          update_by: user?.user_id || 0,
+        });
+              // 4. บันทึก Log สถานะ "รอการพิจารณา" ต่อทันทีโดยอัตโนมัติ[cite: 24, 25]
+        await claimService.createClaimStatusLogs({
+          claim_id: newClaimId.toString(),
+          status: "5",
+          remark: "เปลี่ยนสถานะเป็นรอการพิจารณาโดยอัตโนมัติ",
           update_by: user?.user_id || 0,
         });
 

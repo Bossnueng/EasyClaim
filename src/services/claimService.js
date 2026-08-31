@@ -29,6 +29,16 @@ export const claimService = {
     }
   },
 
+  // 🟢 เพิ่ม alias ฟังก์ชันเพื่อให้รองรับ camelCase แบบที่เรียกใช้งานใน UI
+  getClaimStatusLogs: async (claimId) => {
+    try {
+      const response = await api.get("/getclaimstatuslog");
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
   getclaimapproves: async () => {
     try {
       const response = await api.get("/getclaimapproves");
@@ -38,9 +48,18 @@ export const claimService = {
     }
   },
 
+  getClaimImages: async (claimId) => {
+    try {
+      const response = await api.get(`/getClaimImages/${claimId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },    
+
   createClaim: async (claimData) => {
     try {
-      const response = await api.post("/Claim",claimData);
+      const response = await api.post("/Claim", claimData);
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);
@@ -56,9 +75,9 @@ export const claimService = {
     }
   },
 
-    createClaimapproves: async (approveData) => {
+  createClaimapproves: async (approveData) => {
     try {
-      const response = await api.post("/Claimapproves",approveData);
+      const response = await api.post("/Claimapproves", approveData);
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);
@@ -96,8 +115,8 @@ export const claimService = {
   delClaim: async (claim_id) => {
     try {
       const response = await api.delete("/delClaim", {
-        data: {claim_id}
-    });
+        data: { claim_id }
+      });
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);
@@ -107,19 +126,19 @@ export const claimService = {
   delClaimApprove: async (approve_id) => {
     try {
       const response = await api.delete("/delClaimApprove", {
-        data: {approve_id}
-    });
+        data: { approve_id }
+      });
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);
     }
   },
 
-    delClaimImages: async (image_ids) => {
+  delClaimImages: async (image_ids) => {
     try {
       const response = await api.delete("/delClaimImages", {
-        data: {image_ids}
-    });
+        data: { image_ids }
+      });
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);
@@ -129,8 +148,8 @@ export const claimService = {
   deleteClaimimage: async (image_id) => {
     try {
       const response = await api.delete("/deleteClaimimage", {
-        data: {image_id}
-    });
+        data: { image_id }
+      });
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);

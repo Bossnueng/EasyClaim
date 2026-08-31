@@ -1,15 +1,74 @@
-// 1. Structure หลักสำหรับ Map ข้อมูลตาม status_id
 export const CLAIM_STATUS_MAP = {
-  "1": { name: "สร้างรายการเคลม", color: "default", priority: 1 },
-  "2": { name: "มีสิทธิ์เคลม", color: "cyan", priority: 3 },
-  "3": { name: "ไม่มีสิทธิ์เคลม", color: "error", priority: 9 },
-  "4": { name: "รับสินค้าจริงแล้ว", color: "purple", priority: 4 },
-  "5": { name: "รอการพิจารณา", color: "processing", priority: 2 },
-  "6": { name: "อนุมัติเคลมสินค้า", color: "success", priority: 5 },
-  "7": { name: "ไม่อนุมัติเคลมสินค้า", color: "error", priority: 10 },
-  "8": { name: "กำลังดำเนินการเปลี่ยนสินค้า", color: "blue", priority: 6 },
-  "9": { name: "กำลังจัดส่งสินค้าเคลม", color: "warning", priority: 7 },
-  "10": { name: "จัดส่งสินค้าเคลมสำเร็จ", color: "green", priority: 8 },
+  "1": { priority: 1, name: "สร้างรายการเคลม", staffName: "รายการเคลมใหม่", customerName: "สร้างรายการเคลมใหม่", color: "default" },
+  "5": { priority: 2, name: "รอการพิจารณา", staffName: "รอการพิจารณา", customerName: "รอการพิจารณา", color: "processing" },
+  "2": { priority: 3, name: "มีสิทธิ์เคลม", staffName: "มีสิทธิ์เคลม", customerName: "มีสิทธิ์เคลม", color: "cyan" },
+  "3": { priority: 9, name: "ไม่มีสิทธิ์เคลม", staffName: "ไม่มีสิทธิ์เคลม", customerName: "ไม่มีสิทธิ์เคลม", color: "error" },
+  "4": { priority: 4, name: "รับสินค้าจริงแล้ว", staffName: "รับสินค้าจริงแล้ว", customerName: "รับสินค้าจริงแล้ว", color: "purple" },
+  "6": { priority: 5, name: "อนุมัติเคลมสินค้า", staffName: "อนุมัติการเคลมสินค้า", customerName: "อนุมัติการเคลมสินค้า", color: "success" },
+  "7": { priority: 10, name: "ไม่อนุมัติเคลมสินค้า", staffName: "ไม่อนุมัติการเคลมสินค้า", customerName: "ไม่อนุมัติการเคลมสินค้า", color: "error" },
+  "8": { priority: 6, name: "กำลังดำเนินการเปลี่ยนสินค้า", staffName: "กำลังดำเนินการเปลี่ยนสินค้า", customerName: "กำลังดำเนินการเปลี่ยนสินค้า", color: "blue" },
+  "9": { priority: 7, name: "กำลังจัดส่งสินค้าเคลม", staffName: "กำลังจัดส่งสินค้าเคลม", customerName: "กำลังจัดส่งสินค้าเคลม", color: "warning" },
+  "10": { priority: 8, name: "จัดส่งสินค้าเคลมสำเร็จ", staffName: "จัดส่งสินค้าเคลมสำเร็จ", customerName: "จัดส่งสินค้าเคลมสำเร็จ", color: "green" },
+};
+
+// Helper ค้นหา Config Object รองรับทั้ง ID และ Text
+const getStatusConfig = (statusVal) => {
+  if (!statusVal) return null;
+  return CLAIM_STATUS_MAP[String(statusVal)] || 
+         Object.values(CLAIM_STATUS_MAP).find(item => 
+           [item.name, item.staffName, item.customerName].includes(statusVal)
+         );
+};
+
+// ฟังก์ชันสำหรับหา status_id จากข้อความภาษาไทย
+export const getStatusId = (statusVal) => {
+  if (!statusVal) return null;
+  // ถ้าเป็น ID ตัวเลขอยู่แล้วให้ส่งกลับได้เลย
+  if (CLAIM_STATUS_MAP[String(statusVal)]) return String(statusVal);
+
+  // ถ้าเป็นข้อความ ให้หา ID จาก key
+  const foundKey = Object.keys(CLAIM_STATUS_MAP).find((key) => {
+    const item = CLAIM_STATUS_MAP[key];
+    return item.name === statusVal || item.staffName === statusVal || item.customerName === statusVal;
+  });
+
+  return foundKey || statusVal;
+};
+
+// 2. Helper Functions ดึงชื่อสถานะตาม Role และแปลงค่า fallback
+export const getStatusName = (statusVal, role = "default") => {
+  if (!statusVal) return "ไม่ระบุสถานะ";
+
+  // ค้นหาจาก status_id ตัวเลข (เช่น 1, 2, "1")
+  const targetObj = CLAIM_STATUS_MAP[String(statusVal)];
+  if (targetObj) {
+    if (role === "staff") return targetObj.staffName;
+    if (role === "customer") return targetObj.customerName;
+    return targetObj.name;
+  }
+
+  // หาก DB บันทึกมาเป็นข้อความภาษาไทยเดิม ค้นหาผ่านข้อความเดิมแล้วแมปเป็นชื่อของ role นั้นๆ
+  const foundEntry = Object.values(CLAIM_STATUS_MAP).find(
+    (item) => item.name === statusVal || item.staffName === statusVal || item.customerName === statusVal
+  );
+
+  if (foundEntry) {
+    if (role === "staff") return foundEntry.staffName;
+    if (role === "customer") return foundEntry.customerName;
+    return foundEntry.name;
+  }
+
+  return String(statusVal);
+};
+
+export const getStatusColor = (statusVal) => {
+  const targetObj = CLAIM_STATUS_MAP[String(statusVal)];
+  if (targetObj) return targetObj.color;
+
+  const foundEntry = Object.values(CLAIM_STATUS_MAP).find(
+    (item) => item.name === statusVal || item.staffName === statusVal || item.customerName === statusVal
+  );
+  return foundEntry?.color || "default";
 };
 
 // 2. STATUS_PRIORITY สำหรับรองรับโค้ดเดิมที่เรียกใช้ชื่อภาษาไทย
@@ -45,15 +104,6 @@ export const CUSTOMER_STATUS_GROUPS = {
 };
 
 
-
-// 3. Helper Functions
-export const getStatusName = (statusId) => {
-  return CLAIM_STATUS_MAP[String(statusId)]?.name || "ไม่ระบุสถานะ";
-};
-
-export const getStatusColor = (statusId) => {
-  return CLAIM_STATUS_MAP[String(statusId)]?.color || "default";
-};
-
 // 4. FILTER_OPTIONS สำหรับตัวกรองหน้า StaffClaimList
 export const FILTER_OPTIONS = ["ทั้งหมด"].concat(Object.keys(STATUS_PRIORITY));
+

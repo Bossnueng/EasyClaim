@@ -38,6 +38,30 @@ import {
 
 dayjs.extend(utc);
 
+const formatDate = (date) => {
+  if (!date) return "-";
+  const parsed = dayjs(date);
+  return parsed.isValid() ? parsed.format("DD/MM/YYYY HH:mm") : "-";
+};
+
+// Helper แกะข้อมูล JSON Extra Data จาก Remark ใน Log
+const parseExtraDataFromLogs = (logs) => {
+  if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
+  
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const log = logs[i];
+    if (log && log.remark && log.remark.includes("| DATA:")) {
+      try {
+        const jsonStr = log.remark.split("| DATA:")[1];
+        return JSON.parse(jsonStr);
+      } catch (e) {
+        console.error("Error parsing extra data from log remark", e);
+      }
+    }
+  }
+  return {};
+};
+
 const CustomerClaimDetail = () => {
   const navigate = useNavigate();
   const { claimId } = useParams();
@@ -88,17 +112,30 @@ const CustomerClaimDetail = () => {
             console.error("ดึงรูปภาพไม่สำเร็จ:", imgErr);
           }
 
-          setData({
+          const logsData = resLogs?.data || resLogs || [];
+          const filteredLogs = Array.isArray(logsData)
+            ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
+            : [];
+          setStatusLogs(filteredLogs);
+
+          // อ่านข้อมูล Extra Data จาก Remark Log เพื่อเติมช่องว่างเหมือน StaffClaimUpdate
+          const extraLogData = parseExtraDataFromLogs(filteredLogs);
+
+          const mergedClaimData = {
             ...currentClaim,
             images: imageUrls,
-          });
+            driver_name: currentClaim.driver_name || extraLogData.driverName || "",
+            truck_plate: currentClaim.truck_plate || extraLogData.truckPlate || "",
+            full_receive: currentClaim.full_receive || extraLogData.fullReceive || "",
+            withdraw_date: currentClaim.withdraw_date || extraLogData.withdrawDate || null,
+            returned_qty: currentClaim.returned_qty ?? extraLogData.returnedQty ?? "",
+            approved_qty: currentClaim.approved_qty ?? extraLogData.approvedQty ?? "",
+            delivery_driver: currentClaim.delivery_driver || extraLogData.deliveryDriver || "",
+            delivery_plate: currentClaim.delivery_plate || extraLogData.deliveryPlate || "",
+            estimated_delivery_date: currentClaim.estimated_delivery_date || extraLogData.estimatedDeliveryDate || null,
+          };
 
-          if (resLogs && resLogs.status && Array.isArray(resLogs.data)) {
-            const filteredLogs = resLogs.data.filter(
-              (log) => String(log.claim_id) === String(currentClaim.claim_id)
-            );
-            setStatusLogs(filteredLogs);
-          }
+          setData(mergedClaimData);
 
           if (resItems && resItems.data) {
             const foundItem = resItems.data.find((i) => i.item_id === currentClaim.item_id);
@@ -173,8 +210,8 @@ const CustomerClaimDetail = () => {
 
   const getLogDate = (statusTarget) => {
     const targetId = String(statusTarget);
-    const log = statusLogs.find((item) => String(item.status) === targetId);
-    return log ? formatDbDate(log.update_date, "DD/MM/YYYY HH:mm") : "-";
+    const log = statusLogs.find((item) => String(item.status || item.status_id) === targetId);
+    return log ? formatDbDate(log.update_date || log.created_at, "DD/MM/YYYY HH:mm") : "-";
   };
 
   const handleConfirmDelivery = async () => {
@@ -335,7 +372,7 @@ const CustomerClaimDetail = () => {
           <Card title={<span className="font-bold text-slate-800">รายละเอียดสินค้าและข้อมูลการแจ้ง</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
             <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
               <Descriptions.Item label="วันที่แจ้ง">
-                {data.claim_date ? formatDbDate(data.claim_date, "DD/MM/YYYY HH:mm") : "-"}
+                {data.claim_date ? formatDbDate(data.claim_date, "DD/MM/YYYY") : "-"}
               </Descriptions.Item>
               <Descriptions.Item label="สินค้า"><span className="font-bold text-slate-800">{productName}</span></Descriptions.Item>
               <Descriptions.Item label="Lot Number"><span className="font-mono">{data.lot_no || "-"}</span></Descriptions.Item>
@@ -385,6 +422,14 @@ const CustomerClaimDetail = () => {
               <div className="text-gray-400 italic py-6 text-center">ไม่มีรูปภาพแนบ</div>
             )}
           </Card>
+
+          <Card title={<span className="font-bold text-slate-800">ประวัติการบันทึกสถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "16px 24px" }}>
+                      <Descriptions column={1} bordered size="small" labelStyle={{ fontWeight: "600", color: "#334155", width: "150px", backgroundColor: "#f8fafc", fontSize: "12px" }}>
+                        <Descriptions.Item label="อัปเดตล่าสุด ณ เวลา">
+                          <span className="font-mono">{formatDate(data.updated_at)}</span>
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
 
           <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px" }}>
             <div className="flex flex-col gap-3">

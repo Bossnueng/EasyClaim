@@ -66,6 +66,8 @@ export const claimService = {
     }
   },
 
+  
+
   createClaimStatusLogs: async (logData) => {
     try {
       const response = await api.post("/ClaimStatusLogs", logData);

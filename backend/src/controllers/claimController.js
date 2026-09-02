@@ -55,7 +55,8 @@ exports.createClaimStatusLogs = async (req, res) => {
         const result = await pool.request()
             .input("claim_id", sql.NVarChar, claim_id)
             .input("status", sql.NVarChar, status)
-            .input("remark", sql.NVarChar, remark)
+            // 🟢 เปลี่ยนจาก sql.NVarChar เป็น sql.NVarChar(sql.MAX)
+            .input("remark", sql.NVarChar(sql.MAX), remark)
             .input("update_by", sql.Int, update_by)
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]

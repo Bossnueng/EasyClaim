@@ -1,40 +1,14 @@
 import React, { useState, useEffect } from "react";
-import {
-  Card,
-  Tag,
-  Descriptions,
-  Button,
-  Steps,
-  Image,
-  ConfigProvider,
-  Alert,
-  Popconfirm,
-  message,
-  Spin,
-} from "antd";
-import {
-  CheckCircleOutlined,
-  FileSearchOutlined,
-  CloseCircleOutlined,
-  MessageOutlined,
-  ArrowLeftOutlined,
-  CarOutlined,
-  SmileOutlined,
-  InboxOutlined,
-} from "@ant-design/icons";
+import {  Card,  Tag,  Descriptions,  Button,  Steps,  Image,  ConfigProvider,  Alert,  Popconfirm,  message,  Spin,} from "antd";
+import {  CheckCircleOutlined,  FileSearchOutlined,  CloseCircleOutlined,  MessageOutlined,  ArrowLeftOutlined,  CarOutlined,  SmileOutlined,
+  InboxOutlined,} from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
-import { 
-  getStatusName, 
-  getStatusColor,
-  getStatusId,
-  STATUS_PRIORITY,
-  CLAIM_STATUS_MAP
-} from "../../constants/claimStatus";
+import {   getStatusName,   getStatusColor,  getStatusId,  STATUS_PRIORITY,  CLAIM_STATUS_MAP} from "../../constants/claimStatus";
 
 dayjs.extend(utc);
 

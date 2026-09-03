@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Form, Input, Button, message } from "antd";
 import { useNavigate } from "react-router-dom";
-import {SafetyCertificateFilled,UserOutlined,LockOutlined,} from "@ant-design/icons";
+import { SafetyCertificateFilled, UserOutlined, LockOutlined } from "@ant-design/icons";
 import loginService from "../../services/loginService";
 
 const Login = () => {
@@ -11,19 +11,13 @@ const Login = () => {
   const onFinish = async (values) => {
     setLoading(true);
     try {
-      // 🟢 เรียกใช้ API เช็คเข้าสู่ระบบจริง
       const res = await loginService.login(values);
 
       if (res.status) {
-        message.success(res.message || `ยินดีต้อนรับ ${res.data.full_name}`);
+        message.success(res.message || `ยินดีต้อนรับ ${res.data?.full_name || ""}`);
+        const roleId = Number(res.data?.role_id);
 
-        // 🟢 ตรวจสอบ role_id แยกหน้า Dashboard
-        const roleId = res.data.role_id;
-        if (roleId === 1) {
-          // Admin (1) หรือ Driver (3)
-          navigate("/staff");
-        } else if (roleId === 2) {
-          // Agent/Customer (2)
+        if (roleId === 2) {
           navigate("/customer");
         } else {
           navigate("/staff");
@@ -41,16 +35,21 @@ const Login = () => {
   };
 
   return (
-    <div style={{ minHeight: "100vh", 
+    <div
+      style={{
+        minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "#f8fafc",
         padding: "20px",
         boxSizing: "border-box",
+        fontFamily: "'Prompt', 'Kanit', 'Inter', sans-serif", // กำหนด Font อ่านง่าย
       }}
     >
-      <div style={{width: "100%",
+      <div
+        style={{
+          width: "100%",
           maxWidth: "400px",
           backgroundColor: "#ffffff",
           borderRadius: "24px",
@@ -62,7 +61,9 @@ const Login = () => {
         }}
       >
         {/* === Shield Icon Header === */}
-        <div style={{ display: "inline-flex",
+        <div
+          style={{
+            display: "inline-flex",
             justifyContent: "center",
             alignItems: "center",
             width: "72px",
@@ -72,12 +73,20 @@ const Login = () => {
             marginBottom: "16px",
           }}
         >
-          <SafetyCertificateFilled style={{ fontSize: "42px", color: "#059669" }}/>
+          <SafetyCertificateFilled style={{ fontSize: "42px", color: "#059669" }} />
         </div>
 
-        {/* === Title Section ===*/}
-        <h2 style={{ fontSize: "24px",fontWeight: "700",color: "#0f172a",margin: "0 0 8px 0",}}>
-          Sign In
+        {/* === Title Section === */}
+        <h2
+          style={{
+            fontSize: "24px",
+            fontWeight: "600", // ลดความหนาลงนิดหน่อยให้อ่านสบายตาขึ้น
+            color: "#0f172a",
+            margin: "0 0 8px 0",
+            letterSpacing: "0.5px", // เพิ่มระยะห่างช่องไฟ
+          }}
+        >
+          เข้าสู่ระบบ
         </h2>
 
         <p style={{ fontSize: "14px", color: "#64748b", margin: "0 0 28px 0" }}>
@@ -87,47 +96,55 @@ const Login = () => {
         {/* === Form Section === */}
         <Form name="login_form" layout="vertical" onFinish={onFinish} requiredMark={false}>
           {/* --- Username --- */}
-          <Form.Item label={<span style={{ fontWeight: "600", color: "#334155" }}>Username</span>}
+          <Form.Item
+            label={<span style={{ fontWeight: "600", color: "#334155" }}>ชื่อผู้ใช้</span>}
             name="username"
             rules={[{ required: true, message: "กรุณากรอก Username!" }]}
             style={{ marginBottom: "20px", textAlign: "left" }}
           >
             <Input
-              prefix={<UserOutlined style={{ color: "#94a3b8", marginRight: "8px" }}/>}
-              placeholder="Enter your username"
+              prefix={<UserOutlined style={{ color: "#94a3b8", marginRight: "8px" }} />}
+              placeholder="กรอกชื่อผู้ใช้ของคุณ"
               size="large"
-              style={{borderRadius: "12px",padding: "10px 16px",borderColor: "#cbd5e1",}}
+              style={{ borderRadius: "12px", padding: "10px 16px", borderColor: "#cbd5e1" }}
             />
           </Form.Item>
 
           {/* --- Password --- */}
-          <Form.Item label={<span style={{ fontWeight: "600", color: "#334155" }}>Password</span>}
+          <Form.Item
+            label={<span style={{ fontWeight: "600", color: "#334155" }}>รหัสผ่าน</span>}
             name="password"
             rules={[{ required: true, message: "กรุณากรอก Password!" }]}
             style={{ marginBottom: "32px", textAlign: "left" }}
           >
-            <Input.Password prefix={
-              <LockOutlined style={{ color: "#94a3b8", marginRight: "8px" }}/>
-            }
-              placeholder="Enter your password"
+            <Input.Password
+              prefix={<LockOutlined style={{ color: "#94a3b8", marginRight: "8px" }} />}
+              placeholder="กรอกรหัสผ่านของคุณ"
               size="large"
-              style={{borderRadius: "12px",padding: "10px 16px",borderColor: "#cbd5e1",}}
+              style={{ borderRadius: "12px", padding: "10px 16px", borderColor: "#cbd5e1" }}
             />
           </Form.Item>
 
           {/* --- Submit Button --- */}
           <Form.Item style={{ marginBottom: 0 }}>
-            <Button type="primary" htmlType="submit" block size="large"
-              style={{height: "48px",
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              block
+              size="large"
+              style={{
+                height: "48px",
                 borderRadius: "24px",
                 backgroundColor: "#059669",
                 borderColor: "#059669",
                 fontSize: "16px",
                 fontWeight: "600",
                 boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)",
+                letterSpacing: "0.5px",
               }}
             >
-              Sign In
+              เข้าสู่ระบบ
             </Button>
           </Form.Item>
         </Form>

@@ -1,15 +1,14 @@
+// src/pages/staff/StaffHome.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
-import {  RightOutlined,  CheckCircleOutlined,  FileSearchOutlined,  ClockCircleOutlined,  WarningOutlined,} from "@ant-design/icons";
+import { RightOutlined, CheckCircleOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { STATUS_PRIORITY, CLAIM_STATUS_MAP } from "../../constants/claimStatus";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
-
-
 
 const StaffHome = () => {
   const navigate = useNavigate();
@@ -23,25 +22,23 @@ const StaffHome = () => {
     fetchClaimsAndItems();
   }, []);
 
-  // Helper Function: แปลงสถานะเป็น Priority (รองรับทั้ง status_id ตัวเลข และ ชื่อภาษาไทย)
   const getPriority = (item) => {
+    if (!item) return 99;
     const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
     
-    // กรณี statusVal เป็นตัวเลข ID
-    if (CLAIM_STATUS_MAP[String(statusVal)]) {
+    if (statusVal !== undefined && statusVal !== null && CLAIM_STATUS_MAP[String(statusVal)]) {
       return CLAIM_STATUS_MAP[String(statusVal)].priority;
     }
-    // กรณี statusVal เป็นชื่อภาษาไทย
-    if (STATUS_PRIORITY[statusVal] !== undefined) {
+    if (statusVal !== undefined && statusVal !== null && STATUS_PRIORITY[statusVal] !== undefined) {
       return STATUS_PRIORITY[statusVal];
     }
-    return 99; // fallback กรณีไม่ตรงกับสถานะใดเลย
+    return 99;
   };
 
-  // Helper Function: ดึงชื่อสถานะภาษาไทยสำหรับส่งให้ ClaimCard
   const getStatusNameText = (item) => {
+    if (!item) return "ไม่ระบุสถานะ";
     const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
-    if (CLAIM_STATUS_MAP[String(statusVal)]) {
+    if (statusVal !== undefined && statusVal !== null && CLAIM_STATUS_MAP[String(statusVal)]) {
       return CLAIM_STATUS_MAP[String(statusVal)].name;
     }
     return statusVal || "ไม่ระบุสถานะ";
@@ -56,32 +53,29 @@ const StaffHome = () => {
         itemService.getItems(),
       ]);
 
-      // 1. Map ชื่อสินค้า
       const itemsData = resItems?.data || resItems || [];
       const map = {};
       if (Array.isArray(itemsData)) {
         itemsData.forEach((item) => {
-          map[item.item_id] = item.item_name;
+          if (item && item.item_id) {
+            map[item.item_id] = item.item_name;
+          }
         });
         setItemsMap(map);
       }
 
-      // 2. จัดการข้อมูลรายการเคลม
       const claimData = Array.isArray(resClaim)
         ? resClaim
         : resClaim?.data || [];
 
-      // อัปเดต State allClaims ทันที
       setAllClaims(claimData);
 
       if (claimData.length > 0) {
-        // กรองเฉพาะรายการที่ยังไม่จบกระบวนการ (ตัด priority 8=สำเร็จ, 9=ไม่มีสิทธิ์, 10=ไม่อนุมัติ)
         const pendingClaims = claimData.filter((item) => {
           const priority = getPriority(item);
           return priority !== 8 && priority !== 9 && priority !== 10;
         });
 
-        // จัดเรียงตาม Priority และ วันที่สร้างล่าสุด
         const sortedClaims = pendingClaims.sort((a, b) => {
           const priorityA = getPriority(a);
           const priorityB = getPriority(b);
@@ -90,9 +84,13 @@ const StaffHome = () => {
             return priorityA - priorityB;
           }
 
-          const dateA = dayjs(a.claim_date || a.created_at || a.createdDate);
-          const dateB = dayjs(b.claim_date || b.created_at || b.createdDate);
-          return dateB.valueOf() - dateA.valueOf();
+          const parsedA = dayjs(a.claim_date || a.created_at || a.createdDate);
+          const parsedB = dayjs(b.claim_date || b.created_at || b.createdDate);
+          
+          const timeA = parsedA.isValid() ? parsedA.valueOf() : 0;
+          const timeB = parsedB.isValid() ? parsedB.valueOf() : 0;
+
+          return timeB - timeA;
         });
 
         setLatestClaims(sortedClaims.slice(0, 8));
@@ -102,7 +100,7 @@ const StaffHome = () => {
     } catch (error) {
       message.error(
         "ไม่สามารถดึงข้อมูลรายการเคลมได้: " +
-          (error.message || "เกิดข้อผิดพลาด")
+          (error?.message || "เกิดข้อผิดพลาด")
       );
     } finally {
       setLoading(false);
@@ -120,18 +118,17 @@ const StaffHome = () => {
       >
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, {user?.full_name || user?.name || "-"}
+            สวัสดี, คุณ{user?.full_name || user?.name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่
           </p>
-          
         </header>
 
         {/* Dashboard Summary Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           
-          {/* Card 1: รายการเคลมใหม่ / รอการพิจารณา (Priority 1 และ 2) */}
+          {/* Card 1: รายการเคลมใหม่ / รอการพิจารณา */}
           <div
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
             style={{
@@ -144,10 +141,13 @@ const StaffHome = () => {
               <span className="text-xs sm:text-sm font-medium text-gray-500">
                 รายการเคลมใหม่
               </span>
-              <span className="text-2xl sm:text-3xl font-bold text-blue-600">
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
                 {allClaims.filter((item) => {
                   const p = getPriority(item);
-                  return p <= 2 ;
+                  return p <= 2;
                 }).length}
               </span>
               <span className="text-xs text-blue-500 font-medium">
@@ -159,7 +159,7 @@ const StaffHome = () => {
             </div>
           </div>
 
-          {/* Card 2: ค้างดำเนินการ (Priority 1 ถึง 7) */}
+          {/* Card 2: ค้างดำเนินการ */}
           <div
             style={{
               boxSizing: "border-box",
@@ -172,7 +172,10 @@ const StaffHome = () => {
               <span className="text-xs sm:text-sm font-medium text-gray-500">
                 รายการกำลังดำเนินการ
               </span>
-              <span className="text-2xl sm:text-3xl font-bold text-amber-600">
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
                 {allClaims.filter((item) => {
                   const p = getPriority(item);
                   return p >= 3 && p <= 7;
@@ -187,7 +190,7 @@ const StaffHome = () => {
             </div>
           </div>
 
-          {/* Card 3: เคลมสำเร็จ (Priority 8) */}
+          {/* Card 3: เคลมสำเร็จ */}
           <div
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
             style={{
@@ -200,7 +203,10 @@ const StaffHome = () => {
               <span className="text-xs sm:text-sm font-medium text-gray-500">
                 รายการที่สำเร็จ
               </span>
-              <span className="text-2xl sm:text-3xl font-bold text-emerald-600">
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
                 {allClaims.filter((item) => getPriority(item) === 8).length}
               </span>
               <span className="text-xs text-emerald-500 font-medium">
@@ -212,7 +218,7 @@ const StaffHome = () => {
             </div>
           </div>
 
-          {/* Card 4: รายการเคลมค้างเกิน (Priority 1: สถานะสร้างรายการเคลม) */}
+          {/* Card 4: รายการเคลมค้างเกิน 3 วัน */}
           <div
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
             style={{
@@ -225,22 +231,22 @@ const StaffHome = () => {
               <span className="text-xs sm:text-sm font-medium text-gray-500">
                 รายการค้างสถานะเดิมเกิน 3 วัน
               </span>
-              <span className="text-2xl sm:text-3xl font-bold text-rose-600">
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
                 {allClaims.filter((item) => {
                   const priority = getPriority(item);
-                  
-                  // 1. ยกเว้นรายการที่จบกระบวนการแล้ว (8 = จัดส่งสำเร็จ, 9 = ไม่มีสิทธิ์, 10 = ไม่อนุมัติ)[cite: 5]
                   const isFinished = priority === 8 || priority === 9 || priority === 10;
                   if (isFinished) return false;
 
-                  // 2. ดึงวันที่อัปเดตล่าสุด (ถ้าไม่มี updated_at ให้ใช้วันอนุมัติหรือวันสร้างรายการแทน)
-                  const lastUpdateDate = item.updated_at || item.approved_at || item.claim_date || item.created_at;
-                  if (!lastUpdateDate) return false;
+                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
+                  if (!rawDate) return false;
 
-                  // 3. คำนวณจำนวนวันที่ไม่มีการเปลี่ยนสถานะเทียบกับวันนี้
-                  const diffDays = dayjs().diff(dayjs(lastUpdateDate), "day");
+                  const parsedDate = dayjs(rawDate);
+                  if (!parsedDate.isValid()) return false;
 
-                  // 4. ค้างสถานะเดิมเกิน 3 วัน (นับตั้งแต่เข้าสู่วันที่ 4 เป็นต้นไป)
+                  const diffDays = dayjs().diff(parsedDate, "day");
                   return diffDays >= 3;
                 }).length}
               </span>
@@ -286,7 +292,7 @@ const StaffHome = () => {
                       claim.item_name ||
                       `สินค้า ID: ${claim.item_id}`,
                   }}
-                  variant="compact"
+                  layout="horizontal"
                 />
               ))}
             </div>

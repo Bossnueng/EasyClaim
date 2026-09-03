@@ -1,14 +1,25 @@
+// src/pages/customer/CustomerClaimDetail.jsx
 import React, { useState, useEffect } from "react";
-import {  Card,  Tag,  Descriptions,  Button,  Steps,  Image,  ConfigProvider,  Alert,  Popconfirm,  message,  Spin,} from "antd";
-import {  CheckCircleOutlined,  FileSearchOutlined,  CloseCircleOutlined,  MessageOutlined,  ArrowLeftOutlined,  CarOutlined,  SmileOutlined,
-  InboxOutlined,} from "@ant-design/icons";
+import { Card, Tag, Descriptions, Button, Steps, Image, ConfigProvider, Alert, Popconfirm, message, Spin } from "antd";
+import { 
+  CheckCircleOutlined, 
+  FileSearchOutlined, 
+  CloseCircleOutlined, 
+  MessageOutlined, 
+  ArrowLeftOutlined, 
+  CarOutlined, 
+  SmileOutlined, 
+  InboxOutlined,
+  PrinterOutlined
+} from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import ClaimPrintModal from "../../components/ClaimPrintModal";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
-import {   getStatusName,   getStatusColor,  getStatusId,  STATUS_PRIORITY,  CLAIM_STATUS_MAP} from "../../constants/claimStatus";
+import { getStatusName, getStatusColor, getStatusId, STATUS_PRIORITY, CLAIM_STATUS_MAP } from "../../constants/claimStatus";
 
 dayjs.extend(utc);
 
@@ -18,10 +29,8 @@ const formatDate = (date) => {
   return parsed.isValid() ? parsed.format("DD/MM/YYYY HH:mm") : "-";
 };
 
-// Helper แกะข้อมูล JSON Extra Data จาก Remark ใน Log
 const parseExtraDataFromLogs = (logs) => {
   if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
-  
   for (let i = logs.length - 1; i >= 0; i--) {
     const log = logs[i];
     if (log && log.remark && log.remark.includes("| DATA:")) {
@@ -43,6 +52,7 @@ const CustomerClaimDetail = () => {
   const [data, setData] = useState(null);
   const [productName, setProductName] = useState("");
   const [statusLogs, setStatusLogs] = useState([]);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
   const formatDbDate = (dateString, format = "DD/MM/YYYY HH:mm") => {
     if (!dateString) return "-";
@@ -54,14 +64,22 @@ const CustomerClaimDetail = () => {
   }, [claimId]);
 
   const fetchClaimDetail = async () => {
+    const user = loginService.getCurrentUser();
+    const role = user?.role || user?.user_type;
+
+    if (role === "staff" || role === "admin") {
+      navigate("/staff", { replace: true });
+      return;
+    }
+
+    if (!user?.agent_id) {
+      loginService.logout();
+      navigate("/login", { replace: true });
+      return;
+    }
+
     setLoading(true);
     try {
-      const user = loginService.getCurrentUser();
-      if (!user?.agent_id) {
-        message.error("ไม่พบข้อมูลผู้ใช้งาน กรุณาล็อกอินใหม่");
-        return;
-      }
-
       const [resClaim, resItems, resLogs] = await Promise.all([
         claimService.getClaimByAgent(user.agent_id),
         itemService.getItems(),
@@ -78,9 +96,7 @@ const CustomerClaimDetail = () => {
           try {
             const resImages = await claimService.getClaimImages(currentClaim.claim_id);
             if (resImages?.data && Array.isArray(resImages.data)) {
-              imageUrls = resImages.data.map(
-                (img) => `http://localhost:5000${img.image_path}`
-              );
+              imageUrls = resImages.data.map((img) => `http://localhost:5000${img.image_path}`);
             }
           } catch (imgErr) {
             console.error("ดึงรูปภาพไม่สำเร็จ:", imgErr);
@@ -92,7 +108,6 @@ const CustomerClaimDetail = () => {
             : [];
           setStatusLogs(filteredLogs);
 
-          // อ่านข้อมูล Extra Data จาก Remark Log เพื่อเติมช่องว่างเหมือน StaffClaimUpdate
           const extraLogData = parseExtraDataFromLogs(filteredLogs);
 
           const mergedClaimData = {
@@ -136,8 +151,8 @@ const CustomerClaimDetail = () => {
 
   if (!data) {
     return (
-      <div className="text-center py-10">
-        <p>ไม่พบข้อมูลรายการเคลม</p>
+      <div className="text-center py-10 bg-white rounded-2xl m-6">
+        <p className="text-gray-500 mb-4 font-normal">ไม่พบข้อมูลรายการเคลม</p>
         <Button onClick={() => navigate("/customer/list-claim")}>กลับหน้ารายการ</Button>
       </div>
     );
@@ -178,8 +193,7 @@ const CustomerClaimDetail = () => {
   const getStatusTag = (status) => {
     const color = getStatusColor(status);
     const name = getStatusName(status, "customer");
-
-    return <Tag color={color} style={{ margin: 0 }}>{name}</Tag>;
+    return <Tag color={color} style={{ margin: 0, fontWeight: "normal" }}>{name}</Tag>;
   };
 
   const getLogDate = (statusTarget) => {
@@ -229,6 +243,13 @@ const CustomerClaimDetail = () => {
     }
   };
 
+  const renderDotIcon = (IconComponent) => (
+    <div className="relative flex items-center justify-center w-full h-full">
+      <IconComponent className="text-lg relative z-10" />
+      <span className="absolute w-2.5 h-2.5 bg-current rounded-full -bottom-1 z-0 opacity-80" />
+    </div>
+  );
+
   const getStepItems = () => {
     const rejectReason = data?.remark || data?.reject_reason;
 
@@ -237,12 +258,12 @@ const CustomerClaimDetail = () => {
         {
           title: CLAIM_STATUS_MAP["1"]?.customerName || "สร้างรายการ",
           description: getLogDate(1),
-          icon: <CheckCircleOutlined />,
+          icon: renderDotIcon(CheckCircleOutlined),
         },
         {
           title: CLAIM_STATUS_MAP["5"]?.customerName || "รอการพิจารณา",
           description: getLogDate(5),
-          icon: <FileSearchOutlined />,
+          icon: renderDotIcon(FileSearchOutlined),
         },
         {
           title: CLAIM_STATUS_MAP[currentStatusId]?.customerName || "ปฏิเสธการเคลม",
@@ -250,73 +271,70 @@ const CustomerClaimDetail = () => {
             <div className="text-xs">
               <div>{getLogDate(currentStatusId)}</div>
               {rejectReason && (
-                <div className="text-red-500 font-semibold">{rejectReason}</div>
+                <div className="text-red-500 font-medium">{rejectReason}</div>
               )}
             </div>
           ),
-          icon: <CloseCircleOutlined />,
+          icon: renderDotIcon(CloseCircleOutlined),
         },
       ];
     }
 
     return [
-      {
-        title: "สร้างรายการ",
-        description: getLogDate(1),
-        icon: <CheckCircleOutlined />,
-      },
-      {
-        title: "รอการพิจารณา",
-        description: getLogDate(5),
-        icon: <FileSearchOutlined />,
-      },
-      {
-        title: "มีสิทธิ์เคลม",
-        description: getLogDate(2),
-        icon: <CheckCircleOutlined />,
-      },
-      {
-        title: "รับสินค้าแล้ว",
-        description: getLogDate(4),
-        icon: <InboxOutlined />,
-      },
-      {
-        title: "อนุมัติเคลม",
-        description: getLogDate(6),
-        icon: <CheckCircleOutlined />,
-      },
-      {
-        title: "กำลังเปลี่ยนสินค้า",
-        description: getLogDate(8),
-        icon: <FileSearchOutlined />,
-      },
-      {
-        title: "กำลังจัดส่ง",
-        description: getLogDate(9),
-        icon: <CarOutlined />,
-      },
-      {
-        title: "จัดส่งสำเร็จ",
-        description: getLogDate(10),
-        icon: <SmileOutlined />,
-      },
+      { title: "สร้างรายการ", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
+      { title: "รอการพิจารณา", description: getLogDate(5), icon: renderDotIcon(FileSearchOutlined) },
+      { title: "มีสิทธิ์เคลม", description: getLogDate(2), icon: renderDotIcon(CheckCircleOutlined) },
+      { title: "รับสินค้าแล้ว", description: getLogDate(4), icon: renderDotIcon(InboxOutlined) },
+      { title: "อนุมัติเคลม", description: getLogDate(6), icon: renderDotIcon(CheckCircleOutlined) },
+      { title: "กำลังเปลี่ยนสินค้า", description: getLogDate(8), icon: renderDotIcon(FileSearchOutlined) },
+      { title: "กำลังจัดส่ง", description: getLogDate(9), icon: renderDotIcon(CarOutlined) },
+      { title: "จัดส่งสำเร็จ", description: getLogDate(10), icon: renderDotIcon(SmileOutlined) },
     ];
   };
 
   const isShipping = currentStatusId === "9" || data.current_status === "กำลังจัดส่งสินค้าเคลม";
 
   return (
-    <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
+    <div className="w-full flex flex-col gap-6 font-normal" style={{ boxSizing: "border-box" }}>
+      
       {/* Header */}
-      <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-bold text-slate-800 m-0">รายละเอียดการเคลม</h1>
-            <p className="text-sm text-gray-500 m-0">
-              Claim ID : <b className="text-slate-800 font-mono">{data.claim_no || data.claim_id}</b>
+      <Card className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" bodyStyle={{ padding: "24px" }}>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
+          <div className="flex flex-col gap-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-medium text-slate-800 m-0 truncate">รายละเอียดการเคลม</h1>
+            <p className="text-sm text-gray-500 m-0 truncate">
+              Claim ID : <b className="text-slate-800 font-mono font-normal">{data.claim_no || data.claim_id}</b>
             </p>
           </div>
-          <div className="shrink-0">{getStatusTag(data.current_status)}</div>
+
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto justify-start md:justify-end">
+            <div className="shrink-0">
+              {getStatusTag(data.current_status)}
+            </div>
+
+            {/* เพิ่มเฉพาะปุ่มพิมพ์/ดาวน์โหลดเอกสาร */}
+            <div>
+              <Button
+                type="default"
+                icon={<PrinterOutlined />}
+                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                onClick={() => setIsPreviewModalOpen(true)}
+              >
+                พิมพ์ / ดาวน์โหลดเอกสาร
+              </Button>
+              <ClaimPrintModal
+                open={isPreviewModalOpen}
+                onClose={() => setIsPreviewModalOpen(false)}
+                data={{
+                  ...data,
+                  claimId: data.claim_no || data.claim_id,
+                  productName: productName,
+                  createdDate: data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-",
+                }}
+              />
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -332,64 +350,144 @@ const CustomerClaimDetail = () => {
       )}
 
       {/* Timeline */}
-      <Card title={<span className="font-bold text-slate-800">สถานะการดำเนินงาน</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px 20px" }}>
-        <ConfigProvider theme={{ token: { colorPrimary: isRejected ? "#ef4444" : "#059669" } }}>
-          <div className="w-full py-2">
-            <Steps current={currentStep} status={isRejected ? "error" : "process"} responsive items={getStepItems()} />
-          </div>
+      <Card 
+        title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>} 
+        className="rounded-2xl shadow-sm border-gray-200 w-full" 
+        bodyStyle={{ padding: "24px 20px" }}
+      >
+        <ConfigProvider 
+          theme={{ 
+            token: { 
+              colorPrimary: isRejected ? "#ef4444" : "#059669",
+              fontWeightStrong: 400,
+            },
+            components: {
+              Steps: {
+                lineWidth: 4,
+                iconSize: 40,
+              },
+            },
+          }}
+        >
+          <Steps 
+            current={currentStep} 
+            status={isRejected ? "error" : "process"} 
+            responsive 
+            items={getStepItems()} 
+          />
         </ConfigProvider>
       </Card>
 
       {/* Responsive Grid Details */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
+        
+        {/* คอลัมน์ซ้าย (ฝั่งข้อมูลหลัก) */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
-          <Card title={<span className="font-bold text-slate-800">รายละเอียดสินค้าและข้อมูลการแจ้ง</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-            <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
+          <Card title={<span className="font-medium text-slate-800">รายละเอียดสินค้าและข้อมูลการแจ้ง</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+            <Descriptions 
+              column={1} 
+              bordered 
+              size="middle" 
+              labelStyle={{ 
+                fontWeight: "500", 
+                color: "#475569", 
+                width: "130px", 
+                backgroundColor: "#f8fafc",
+                verticalAlign: "top"
+              }}
+              contentStyle={{
+                color: "#1e293b",
+                wordBreak: "break-word"
+              }}
+            >
               <Descriptions.Item label="วันที่แจ้ง">
                 {data.claim_date ? formatDbDate(data.claim_date, "DD/MM/YYYY") : "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="สินค้า"><span className="font-bold text-slate-800">{productName}</span></Descriptions.Item>
-              <Descriptions.Item label="Lot Number"><span className="font-mono">{data.lot_no || "-"}</span></Descriptions.Item>
+              <Descriptions.Item label="สินค้า"><span className="font-medium text-slate-800">{productName}</span></Descriptions.Item>
+              <Descriptions.Item label="Lot Number"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.lot_no || "-"}</span></Descriptions.Item>
               <Descriptions.Item label="MFG Number"><span className="font-mono">{data.mfg_date ? formatDbDate(data.mfg_date, "DD/MM/YYYY") : "-"}</span></Descriptions.Item>
-              <Descriptions.Item label="จำนวน"><span className="font-bold text-emerald-700">{data.qty}</span> รายการ</Descriptions.Item>
-              <Descriptions.Item label="รายละเอียดเพิ่มเติม">{data.claim_reason || "-"}</Descriptions.Item>
+              <Descriptions.Item label="จำนวน"><span className="font-medium text-emerald-600 text-base">{data.qty}</span> <span className="text-xs text-gray-500">ขวด/กระป๋อง</span></Descriptions.Item>
+              <Descriptions.Item label="อัปเดตล่าสุด"><span className="font-mono">{formatDate(data.updated_at)}</span></Descriptions.Item>
+              <Descriptions.Item label="รายละเอียดเพิ่มเติม">
+                <div className="whitespace-pre-line text-slate-700 leading-relaxed">
+                  {data.claim_reason || "-"}
+                </div>
+              </Descriptions.Item>
             </Descriptions>
           </Card>
 
           {/* Card ข้อมูลการรับสินค้าเคลม */}
           {(STATUS_PRIORITY[currentStatusInDB] >= 4 || Boolean(data.driver_name && data.driver_name.trim())) && (
-            <Card title={<span className="font-bold text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
-                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="font-semibold text-slate-800">{data.driver_name || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono">{data.truck_plate || "-"}</span></Descriptions.Item>
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+              <Descriptions 
+                column={1} 
+                bordered 
+                size="middle" 
+                labelStyle={{ 
+                  fontWeight: "500", 
+                  color: "#475569", 
+                  width: "130px", 
+                  backgroundColor: "#f8fafc",
+                  verticalAlign: "top"
+                }}
+                contentStyle={{
+                  color: "#1e293b",
+                  wordBreak: "break-word"
+                }}
+              >
+                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800">{data.driver_name || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.truck_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="เลขที่เอกสารเคลม"><span className="font-mono">{data.claim_no || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="จำนวนที่รับคืนสินค้าแตก"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="จำนวนที่รับคืน"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
               </Descriptions>
             </Card>
           )}
 
           {/* Card ข้อมูลการจัดส่งสินค้าเคลม */}
           {(STATUS_PRIORITY[currentStatusInDB] >= 7 || Boolean(data.delivery_driver && data.delivery_driver.trim())) && (
-            <Card title={<span className="font-bold text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
-                <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม"><span className="font-semibold text-slate-800">{data.delivery_driver || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono">{data.delivery_plate || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="วันที่คาดว่าจะส่งถึงลูกค้า">
-                  <span className="font-semibold text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+              <Descriptions 
+                column={1} 
+                bordered 
+                size="middle" 
+                labelStyle={{ 
+                  fontWeight: "500", 
+                  color: "#475569", 
+                  width: "130px", 
+                  backgroundColor: "#f8fafc",
+                  verticalAlign: "top"
+                }}
+                contentStyle={{
+                  color: "#1e293b",
+                  wordBreak: "break-word"
+                }}
+              >
+                <Descriptions.Item label="พนักงานจัดส่ง"><span className="text-slate-800">{data.delivery_driver || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="วันคาดว่าจะถึง">
+                  <span className="text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
           )}
         </div>
 
-        {/* Sidebar Rights */}
+        {/* คอลัมน์ขวา (รูปภาพ + ปุ่มดำเนินการ) */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          <Card title={<span className="font-bold text-slate-800">รูปภาพหลักฐาน</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px", display: "flex", justifyContent: "center" }}>
+          <Card title={<span className="font-medium text-slate-800">รูปภาพหลักฐาน</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
             {data.images && data.images.length > 0 ? (
               <Image.PreviewGroup>
-                <div className="rounded-xl overflow-hidden border border-gray-200 p-2 bg-gray-50 flex justify-center w-full">
-                  <Image width="100%" style={{ maxHeight: "200px", objectFit: "contain" }} className="rounded-lg" src={data.images[0]} />
-                  <div className="hidden">{data.images.slice(1).map((img, idx) => <Image key={idx} src={img} />)}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {data.images.map((img, idx) => (
+                    <Image 
+                      key={idx} 
+                      width="100%" 
+                      height={100}
+                      style={{ objectFit: "cover" }} 
+                      className="rounded-lg border border-gray-200" 
+                      src={img} 
+                    />
+                  ))}
                 </div>
               </Image.PreviewGroup>
             ) : (
@@ -397,32 +495,25 @@ const CustomerClaimDetail = () => {
             )}
           </Card>
 
-          <Card title={<span className="font-bold text-slate-800">ประวัติการบันทึกสถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "16px 24px" }}>
-                      <Descriptions column={1} bordered size="small" labelStyle={{ fontWeight: "600", color: "#334155", width: "150px", backgroundColor: "#f8fafc", fontSize: "12px" }}>
-                        <Descriptions.Item label="อัปเดตล่าสุด ณ เวลา">
-                          <span className="font-mono">{formatDate(data.updated_at)}</span>
-                        </Descriptions.Item>
-                      </Descriptions>
-                    </Card>
-
           <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px" }}>
             <div className="flex flex-col gap-3">
               {isShipping && (
                 <Popconfirm title="ยืนยันการรับสินค้าเคลม" description="คุณได้รับสินค้าเคลมถูกต้องเรียบร้อยแล้วใช่หรือไม่?" onConfirm={handleConfirmDelivery} okText="ยืนยันรับสินค้า" cancelText="ยกเลิก">
-                  <Button type="primary" size="large" icon={<CheckCircleOutlined/>} className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 font-semibold shadow-sm border-none h-11">
+                  <Button type="primary" size="large" icon={<CheckCircleOutlined/>} className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 font-normal shadow-sm border-none h-11 text-sm">
                     ยืนยันได้รับสินค้าเคลมแล้ว
                   </Button>
                 </Popconfirm>
               )}
-              <Button type={isShipping ? "default" : "primary"} size="large" icon={<MessageOutlined />} className={`w-full rounded-xl font-semibold shadow-sm h-11 ${isShipping ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 border-none"}`} onClick={() => navigate(`/customer/chat/${data.claim_id}`)}>
+              <Button type={isShipping ? "default" : "primary"} size="large" icon={<MessageOutlined />} className={`w-full rounded-xl font-normal shadow-sm h-11 text-sm ${isShipping ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 border-none"}`} onClick={() => navigate(`/customer/chat/${data.claim_id}`)}>
                 สอบถาม/ติดต่อเจ้าหน้าที่
               </Button>
-              <Button size="large" icon={<ArrowLeftOutlined/>} className="w-full rounded-xl border-gray-300 text-slate-700 font-semibold hover:border-emerald-600 hover:text-emerald-700 h-11" onClick={() => navigate("/customer/list-claim")}>
+              <Button size="large" icon={<ArrowLeftOutlined/>} className="w-full rounded-xl border-gray-300 text-slate-700 font-normal hover:border-emerald-600 hover:text-emerald-700 h-11 text-sm" onClick={() => navigate("/customer/list-claim")}>
                 กลับหน้ารายการ
               </Button>
             </div>
           </Card>
         </div>
+
       </div>
     </div>
   );

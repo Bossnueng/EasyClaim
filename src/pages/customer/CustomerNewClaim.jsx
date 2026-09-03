@@ -1,11 +1,11 @@
+// src/pages/customer/CustomerNewClaim.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import {  Form,Input,DatePicker,AutoComplete,Upload,Button,Card,Row,Col,Select,Space,message,} from "antd";
-import { UploadOutlined } from "@ant-design/icons";
-import imageCompression from 'browser-image-compression';
+import { Form, Input, DatePicker, AutoComplete, Upload, Button, Card, Row, Col, Select, Space, message } from "antd";
+import { UploadOutlined, CalendarOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import loginService from "../../services/loginService";
-import itemService from "../../services/itemService"; // 🟢 1. Import itemService
+import itemService from "../../services/itemService";
 import claimService from "../../services/claimService";
 
 const claimType = [
@@ -17,24 +17,20 @@ const { TextArea } = Input;
 
 const CustomerNewClaim = () => {
   const navigate = useNavigate();
-
-  // ดึงข้อมูล User ผ่าน loginService
   const user = loginService.getCurrentUser();
 
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState([]);
-  const [productOptions, setProductOptions] = useState([]); // 🟢 2. เพิ่ม State สำหรับเก็บตัวเลือกสินค้า
+  const [productOptions, setProductOptions] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // 🟢 3. ดึงรายการสินค้าผ่าน itemService
   useEffect(() => {
     const fetchItems = async () => {
       setLoadingItems(true);
       try {
         const res = await itemService.getItems();
         if (res.status && Array.isArray(res.data)) {
-          // 🟢 2. แมปเก็บ id ไว้ใน id และใส่ value/label สำหรับค้นหา
           const options = res.data.map((item) => ({
             id: item.item_id,
             value: `${item.item_code} - ${item.item_name}`,
@@ -51,30 +47,6 @@ const CustomerNewClaim = () => {
 
     fetchItems();
   }, []);
-
-  // แปลงไฟล์รูปภาพเป็น Base64 พร้อมบีบอัดให้เล็กพิเศษ ไม่เกิน Express Default Limit (100KB)
-  const getBase64 = async (file) => {
-    const options = {
-      maxSizeMB: 0.03,          // 🟢 ลดขนาดเหลือ 30 KB (เมื่อแปลงเป็น Base64 จะไม่เกิน 60-70 KB)
-      maxWidthOrHeight: 600,   // 🟢 ย่อความกว้าง/สูงเหลือ 600px
-      useWebWorker: true,
-      initialQuality: 0.6,     // 🟢 ปรับคุณภาพเริ่มต้นที่ 60%
-    };
-
-    try {
-      const compressedFile = await imageCompression(file, options);
-      
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(compressedFile);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = (error) => reject(error);
-      });
-    } catch (error) {
-      console.error("Compression Error:", error);
-      throw error;
-    }
-  };
 
   const onFinish = async (values) => {
     setSubmitting(true);
@@ -105,27 +77,22 @@ const CustomerNewClaim = () => {
 
       const resClaim = await claimService.createClaim(claimPayload);
 
-      // เช็ก response จาก API
       if (resClaim && resClaim.status && resClaim.claim_id) {
         const newClaimId = resClaim.claim_id;
 
-        // บันทึก รูปภาพ
-        // บันทึก รูปภาพ
-      for (const file of fileList) {
-        if (file.originFileObj) {
-          // 🟢 ยิง API ส่งไฟล์ตรงๆ ไม่ติด Limit และ ไม่เกินความยาว VARCHAR ของ DB
-          await claimService.createClaimimageFormData(newClaimId, file.originFileObj);
+        for (const file of fileList) {
+          if (file.originFileObj) {
+            await claimService.createClaimimageFormData(newClaimId, file.originFileObj);
+          }
         }
-      }
 
-        // บันทึก Log
         await claimService.createClaimStatusLogs({
           claim_id: newClaimId.toString(),
           status: "1",
           remark: "สร้างรายการเคลมสินค้าใหม่ในระบบ",
           update_by: user?.user_id || 0,
         });
-              // 4. บันทึก Log สถานะ "รอการพิจารณา" ต่อทันทีโดยอัตโนมัติ[cite: 24, 25]
+
         await claimService.createClaimStatusLogs({
           claim_id: newClaimId.toString(),
           status: "5",
@@ -136,11 +103,9 @@ const CustomerNewClaim = () => {
         message.success("สร้างรายการขอเคลมสินค้าสำเร็จ");
         navigate(`/customer/new-claim/processing/${newClaimId}`);
       } else {
-        // ดึง message จาก response ถ้ามี
         message.error(resClaim?.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
       }
     } catch (error) {
-      // 🟢 ปรับปรุงการจัดการ Error ให้ดึงข้อความจากหลายช่องทางและป้องกัน undefined
       const errorMsg =
         error?.response?.data?.message ||
         error?.message ||
@@ -154,188 +119,247 @@ const CustomerNewClaim = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
-      <Card>
-        {/* ==================== Header ==================== */}
-        <div className="border-l-4 border-blue-600 pl-4 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-            สร้างรายการเคลม
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            กรุณากรอกข้อมูลการเคลมสินค้าให้ครบถ้วน
-          </p>
-        </div>
+    <div className="p-2 sm:p-6 w-full">
+      {/* Header */}
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight m-0">
+          สร้างรายการเคลม
+        </h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-1 m-0">
+          กรุณากรอกข้อมูลการเคลมสินค้าให้ครบถ้วน
+        </p>
+      </div>
 
-        {/* ==================== Form ==================== */}
-        <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Space direction="vertical" size={24} className="w-full">
-            {/* ข้อมูลผู้แจ้ง */}
-            <Card title="ข้อมูลผู้แจ้ง">
-              <Row gutter={16}>
-                <Col xs={24} md={12}>
-                  <Form.Item label="วันที่แจ้ง">
-                    <DatePicker className="w-full" defaultValue={dayjs()} disabled />
-                  </Form.Item>
-                </Col>
+      {/* Form */}
+      <Form form={form} layout="vertical" onFinish={onFinish}>
+        <Row gutter={[16, 16]}>
+          
+          {/* คอลัมน์ซ้าย: ข้อมูลผู้แจ้ง + ข้อมูลสินค้า */}
+          <Col xs={24} lg={12}>
+            <Space direction="vertical" size={16} className="w-full">
+              {/* ข้อมูลผู้แจ้ง */}
+              <Card title="ข้อมูลผู้แจ้ง" size="small" bodyStyle={{ padding: "16px" }}>
+                <Row gutter={[12, 0]}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item 
+                      label="วันที่แจ้ง" 
+                      className="mb-3 sm:mb-4"
+                      tooltip={{ title: "วันที่เริ่มทำรายการระบบจะดึงวันที่ปัจจุบันให้อัตโนมัติ", icon: <QuestionCircleOutlined /> }}
+                    >
+                      <DatePicker 
+                        size="large" 
+                        suffixIcon={<CalendarOutlined className="text-gray-400" />}
+                        style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                        className="w-full rounded-xl h-11" 
+                        defaultValue={dayjs()} 
+                        disabled 
+                      />
+                    </Form.Item>
+                  </Col>
 
-                <Col xs={24} md={12}>
-                  <Form.Item label="ผู้แจ้ง">
-                    <Input value={user?.full_name || "-"} disabled />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
+                  <Col xs={24} sm={12}>
+                    <Form.Item 
+                      label="ผู้แจ้ง" 
+                      className="mb-0 sm:mb-4"
+                      tooltip={{ title: "ชื่อและนามสกุลของผู้ใช้งานที่เข้าสู่ระบบ", icon: <QuestionCircleOutlined /> }}
+                    >
+                      <Input 
+                        size="large" 
+                        className="w-full rounded-xl h-11" 
+                        style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                        value={user?.full_name || "-"} 
+                        disabled 
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
 
-            {/* ข้อมูลสินค้า */}
-            <Card title="ข้อมูลสินค้า">
-              <Row gutter={16}>
-                {/* ชื่อสินค้า */}
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="ชื่อสินค้า"
-                    name="productName"
-                    rules={[
-                      {
-                        required: true,
-                        message: "กรุณาเลือกสินค้า",
-                      },
-                    ]}
-                  >
-                    {/* 🟢 4. ใช้งาน AutoComplete ร่วมกับ productOptions จาก Backend */}
-                    <AutoComplete
-                      options={productOptions}
-                      placeholder={loadingItems ? "กำลังโหลดสินค้า..." : "ค้นหาชื่อสินค้า"}
-                      disabled={loadingItems}
-                      filterOption={(input, option) =>
-                        (option?.label ?? "").toLowerCase().includes(input.toLowerCase()) ||
-                        (option?.value ?? "").toLowerCase().includes(input.toLowerCase())
-                      }
-                    />
-                  </Form.Item>
-                </Col>
+              {/* ข้อมูลสินค้า */}
+              <Card title="ข้อมูลสินค้า" size="small" bodyStyle={{ padding: "16px" }}>
+                <Row gutter={[12, 0]}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label="ชื่อสินค้า"
+                      name="productName"
+                      className="mb-3 sm:mb-4"
+                      rules={[{ required: true, message: "กรุณาเลือกสินค้า" }]}
+                      tooltip={{ title: "พิมพ์รหัสสินค้าหรือชื่อสินค้าเพื่อเลือกรายการ", icon: <QuestionCircleOutlined /> }}
+                    >
+                      <AutoComplete
+                        size="large"
+                        className="w-full h-11"
+                        options={productOptions}
+                        placeholder={loadingItems ? "กำลังโหลดสินค้า..." : "ค้นหาชื่อสินค้า"}
+                        disabled={loadingItems}
+                        filterOption={(input, option) =>
+                          (option?.label ?? "").toLowerCase().includes(input.toLowerCase()) ||
+                          (option?.value ?? "").toLowerCase().includes(input.toLowerCase())
+                        }
+                      >
+                        <Input 
+                          style={{ paddingLeft: "16px", paddingRight: "16px" }} 
+                          className="rounded-xl h-11" 
+                          placeholder={loadingItems ? "กำลังโหลดสินค้า..." : "ค้นหาชื่อสินค้า"}
+                        />
+                      </AutoComplete>
+                    </Form.Item>
+                  </Col>
 
-                {/* Lot Number */}
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="หมายเลข Lot"
-                    name="lot"
-                    getValueFromEvent={(e) => e.target.value.toUpperCase()}
-                    rules={[{ required: true, message: "กรุณาใส่เลข Lot" }]}
-                  >
-                    <Input placeholder="เช่น LOT240801" />
-                  </Form.Item>
-                </Col>
-              </Row>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label="หมายเลข Lot"
+                      name="lot"
+                      className="mb-3 sm:mb-4"
+                      getValueFromEvent={(e) => e.target.value.toUpperCase()}
+                      rules={[{ required: true, message: "กรุณาใส่เลข Lot" }]}
+                      tooltip={{ title: "ระบุหมายเลข Lot สินค้าที่พิมพ์อยู่บนบรรจุภัณฑ์", icon: <QuestionCircleOutlined /> }}
+                    >
+                      <Input 
+                        size="large" 
+                        className="w-full rounded-xl h-11" 
+                        style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                        placeholder="เช่น LOT240801" 
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
-              <Row gutter={16}>
-                {/* MFG DATE */}
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="วันที่ผลิต"
-                    name="mfg"
-                    rules={[{ required: true, message: "กรุณาเลือกวันที่" }]}
-                  >
-                    <DatePicker className="w-full" />
-                  </Form.Item>
-                </Col>
+                <Row gutter={[12, 0]}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label="วันที่ผลิต"
+                      name="mfg"
+                      className="mb-3 sm:mb-4"
+                      rules={[{ required: true, message: "กรุณาเลือกวันที่" }]}
+                      tooltip={{ title: "เลือกวันที่ผลิต (MFG) ตามที่ระบุบนสินค้า", icon: <QuestionCircleOutlined /> }}
+                    >
+                      <DatePicker 
+                        size="large" 
+                        suffixIcon={<CalendarOutlined className="text-gray-400" />}
+                        style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                        className="w-full rounded-xl h-11" 
+                      />
+                    </Form.Item>
+                  </Col>
 
-                {/* จำนวนสินค้า */}
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="จำนวน"
-                    name="qty"
-                    getValueFromEvent={(e) =>
-                      e.target.value.replace(/[^0-9]/g, "")
-                    }
-                    rules={[
-                      {
-                        required: true,
-                        message: "กรุณาระบุจำนวน",
-                      },
-                      {
-                        pattern: /^[1-9][0-9]*$/,
-                        message: "กรุณากรอกจำนวนเต็มที่มากกว่า 0 เท่านั้น",
-                      },
-                    ]}
-                  >
-                    <Input
-                      placeholder="ระบุจำนวน"
-                      maxLength={6}
-                      addonAfter="ขวด/กระป๋อง"
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Card>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label="จำนวน"
+                      name="qty"
+                      className="mb-0 sm:mb-4"
+                      getValueFromEvent={(e) => e.target.value.replace(/[^0-9]/g, "")}
+                      rules={[
+                        { required: true, message: "กรุณาระบุจำนวน" },
+                        { pattern: /^[1-9][0-9]*$/, message: "กรุณากรอกจำนวนเต็มที่มากกว่า 0 เท่านั้น" },
+                      ]}
+                      tooltip={{ title: "ระบุจำนวนสินค้าที่ต้องการส่งเคลม (ตัวเลขเท่านั้น)", icon: <QuestionCircleOutlined /> }}
+                    >
+                      <Input 
+                        size="large" 
+                        className="w-full rounded-xl h-11" 
+                        style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                        placeholder="ระบุจำนวน" 
+                        maxLength={6} 
+                        suffix={<span className="text-gray-400 text-xs sm:text-sm font-normal">ขวด/กระป๋อง</span>}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </Space>
+          </Col>
 
-            {/* รายละเอียดการเคลม */}
-            <Card title="รายละเอียดการเคลม">
-              <Form.Item
-                label="ประเภทการเคลม"
-                name="claimType"
-                rules={[{ required: true, message: "กรุณาประเภทการเคลม" }]}
-              >
-                <Select options={claimType} placeholder="เลือกประเภทการเคลม" />
-              </Form.Item>
-
-              <Form.Item
-                label="รายละเอียด"
-                name="detail"
-                rules={[
-                  {
-                    required: true,
-                    message: "กรุณาใส่รายละเอียดสาเหตุเพิ่มเติม",
-                  },
-                ]}
-              >
-                <TextArea
-                  rows={6}
-                  placeholder="อธิบายอาการเสียหรือรายละเอียดสาเหตุเพิ่มเติม"
-                />
-              </Form.Item>
-            </Card>
-
-            {/* รูปภาพ */}
-            <Card title="รูปภาพประกอบ">
-              <Form.Item
-                name="images"
-                rules={[
-                  {
-                    validator: () => {
-                      if (fileList.length > 0) {
-                        return Promise.resolve();
-                      }
-                      return Promise.reject(
-                        new Error("กรุณาอัปโหลดรูปภาพประกอบอย่างน้อย 1 รูป")
-                      );
-                    },
-                  },
-                ]}
-              >
-                <Upload
-                  listType="picture-card"
-                  beforeUpload={() => false}
-                  fileList={fileList}
-                  onChange={({ fileList }) => setFileList(fileList)}
-                  multiple
+          {/* คอลัมน์ขวา: รายละเอียดการเคลม + รูปภาพ + ปุ่มกดส่ง */}
+          <Col xs={24} lg={12}>
+            <Space direction="vertical" size={16} className="w-full">
+              {/* รายละเอียดการเคลม */}
+              <Card title="รายละเอียดการเคลม" size="small" bodyStyle={{ padding: "16px" }}>
+                <Form.Item
+                  label="ประเภทการเคลม"
+                  name="claimType"
+                  className="mb-3 sm:mb-4"
+                  rules={[{ required: true, message: "กรุณาเลือกประเภทการเคลม" }]}
+                  tooltip={{ title: "เลือกประเภทความเสียหายของสินค้า", icon: <QuestionCircleOutlined /> }}
                 >
-                  <div>
-                    <UploadOutlined style={{ fontSize: 24 }} />
-                    <div className="mt-2">Upload</div>
-                  </div>
-                </Upload>
-              </Form.Item>
-            </Card>
+                  <Select 
+                    size="large" 
+                    className="w-full h-11 [&_.ant-select-selection-search]:!left-3 [&_.ant-select-selection-placeholder]:!left-3 [&_.ant-select-selection-item]:!left-3" 
+                    options={claimType} 
+                    placeholder="เลือกประเภทการเคลม" 
+                  />
+                </Form.Item>
 
-            {/* Submit Button */}
-            <div className="flex justify-end gap-3">
-              <Button type="primary" size="large" htmlType="submit" loading={submitting}>
-                ส่งข้อมูลการเคลม
-              </Button>
-            </div>
-          </Space>
-        </Form>
-      </Card>
+                <Form.Item
+                  label="รายละเอียด"
+                  name="detail"
+                  className="mb-0 sm:mb-4"
+                  rules={[{ required: true, message: "กรุณาใส่รายละเอียดสาเหตุเพิ่มเติม" }]}
+                  tooltip={{ title: "อธิบายลักษณะความเสียหาย หรือเหตุผลเพิ่มเติมโดยสังเขป", icon: <QuestionCircleOutlined /> }}
+                >
+                  <TextArea 
+                    rows={4} 
+                    className="rounded-xl p-3 px-4" 
+                    placeholder="อธิบายอาการเสียหรือรายละเอียดสาเหตุเพิ่มเติม" 
+                  />
+                </Form.Item>
+              </Card>
+
+              {/* รูปภาพ */}
+              <Card title="รูปภาพประกอบ" size="small" bodyStyle={{ padding: "16px" }}>
+                <Form.Item
+                  name="images"
+                  className="mb-0"
+                  rules={[
+                    {
+                      validator: () => {
+                        if (fileList.length > 0) return Promise.resolve();
+                        return Promise.reject(new Error("กรุณาอัปโหลดรูปภาพประกอบอย่างน้อย 1 รูป"));
+                      },
+                    },
+                  ]}
+                  tooltip={{ title: "แนบรูปถ่ายสินค้าที่ชำรุด โดยถ่ายให้เห็นเลข Lot และบริเวณที่เสียหายชัดเจน", icon: <QuestionCircleOutlined /> }}
+                >
+                  <Upload.Dragger
+                    listType="picture"
+                    beforeUpload={() => false}
+                    fileList={fileList}
+                    onChange={({ fileList }) => setFileList(fileList)}
+                    multiple
+                    className="w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl hover:border-emerald-500 transition-colors p-6"
+                  >
+                    <p className="ant-upload-drag-icon flex justify-center mb-2">
+                      <UploadOutlined className="text-3xl text-emerald-600" />
+                    </p>
+                    <p className="text-sm font-medium text-slate-700 m-0">
+                      คลิกหรือลากไฟล์มาวางที่นี่เพื่ออัปโหลด
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1 mb-0">
+                      รองรับไฟล์ภาพ JPG, PNG (สูงสุด 5MB)
+                    </p>
+                  </Upload.Dragger>
+                </Form.Item>
+              </Card>
+
+              {/* Submit Button */}
+              <div className="pt-2">
+                <Button
+                  type="primary"
+                  size="large"
+                  htmlType="submit"
+                  loading={submitting}
+                  block
+                  className="rounded-2xl"
+                  style={{ backgroundColor: "#059669", borderColor: "#059669", height: "48px", fontSize: "16px" }}
+                >
+                  ส่งข้อมูลการเคลม
+                </Button>
+              </div>
+            </Space>
+          </Col>
+
+        </Row>
+      </Form>
     </div>
   );
 };

@@ -13,11 +13,12 @@ function HeaderBar({ collapsed, setCollapsed }) {
   const user = savedUser ? JSON.parse(savedUser) : null;
 
   return (
-    <Header className="!bg-white grid grid-cols-[1fr_auto_1fr] items-center px-4 h-16 shadow-sm border-b border-slate-100">
-      <div className="flex items-center">
+    <Header className="!bg-white grid grid-cols-[1fr_auto_1fr] items-center !px-2 sm:!px-4 h-16 shadow-sm border-b border-slate-100">
+      {/* ฝั่งซ้าย: ขยับปุ่มออกชิดซ้ายด้วย -ml-2 */}
+      <div className="flex items-center justify-start">
         <Button
           type="text"
-          className="lg:hidden"
+          className="lg:hidden -ml-2 flex items-center justify-center"
           icon={
             collapsed ? (
               <MenuUnfoldOutlined style={{ fontSize: 24 }} />
@@ -33,7 +34,6 @@ function HeaderBar({ collapsed, setCollapsed }) {
       <div
         className="flex items-center justify-center cursor-pointer select-none transition-all duration-200 hover:opacity-85 active:scale-95"
         onClick={() => {
-          // เช็กบทบาทผู้ใช้ (ปรับ key เช่น user.role ให้ตรงกับโครงสร้างข้อมูลใน localStorage ของคุณ)
           const targetPath = user?.role === "customer" ? "/customer" : "/staff";
           navigate(targetPath);
         }}

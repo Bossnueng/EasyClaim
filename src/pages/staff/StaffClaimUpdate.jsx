@@ -231,7 +231,8 @@ const StaffClaimUpdate = () => {
       }
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
-    } finally {
+    } 
+    finally {
       setLoading(false);
     }
   };
@@ -415,7 +416,6 @@ const StaffClaimUpdate = () => {
 
     try {
       const { images, image, ...cleanData } = data;
-      // การันตีว่าดึง Integer Primary Key (4020) เสมอ
       const realClaimId = cleanData.claim_id || data.claim_id;
       const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, withdrawDate, returnedQty, approvedQty, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
 
@@ -492,10 +492,9 @@ const StaffClaimUpdate = () => {
 
       if (resUpdate?.status) {
         const targetStatusId = Number(getStatusId(status));
-        const isReceiveStatus = targetStatusId === 4 || status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว" ;
+        const isReceiveStatus = targetStatusId === 4 || status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว";
         const isDeliveryStatus = targetStatusId === 9 || status === "กำลังจัดส่งสินค้าเคลม";
 
-        // ... existing code ...
         if (isReceiveStatus || isDeliveryStatus) {
           try {
             const rawId = realClaimId;
@@ -504,18 +503,15 @@ const StaffClaimUpdate = () => {
             const validDriverId = !isNaN(numericDriverId) && numericDriverId > 0 ? numericDriverId : null;
 
             if (!isNaN(numericClaimId) && numericClaimId > 0) {
-              // 🟢 เพิ่มการส่งข้อมูล driver, plate, estimated_date และ claim_no เพื่อให้ /getDelivery นำไปใช้งานต่อได้
               const deliveryPayload = {
                 claim_id: numericClaimId,
                 claim_no: claimNoInput || cleanData.claim_no,
                 driver_id: validDriverId,
                 delivery_status: isReceiveStatus ? "4" : "9",
                 
-                // ข้อมูล พขร. และรถ สำหรับการรับ/ส่งสินค้า
                 driver_name: isReceiveStatus ? driverName : deliveryDriver,
                 truck_plate: isReceiveStatus ? truckPlate : deliveryPlate,
                 
-                // สำหรับสถานะกำลังจัดส่ง
                 estimated_delivery_date: formatDatePayload(estimatedDeliveryDate),
                 withdraw_date: formatDatePayload(withdrawDate),
                 returned_qty: returnedQty ? Number(returnedQty) : null,
@@ -531,7 +527,6 @@ const StaffClaimUpdate = () => {
             message.warning("อัปเดตสถานะสำเร็จ แต่บันทึกข้อมูล Delivery ไม่สำเร็จ");
           }
         }
-        // ... existing code ...
 
         await claimService.createClaimStatusLogs({
           claim_id: String(realClaimId),
@@ -569,115 +564,148 @@ const StaffClaimUpdate = () => {
     }
   };
 
+  const renderDotIcon = (IconComponent) => (
+    <div className="relative flex items-center justify-center w-full h-full">
+      <IconComponent className="text-lg relative z-10" />
+      <span className="absolute w-2.5 h-2.5 bg-current rounded-full -bottom-1 z-0 opacity-80" />
+    </div>
+  );
+
   const getStepItems = () => {
     const rejectReason = data?.reject_reason;
 
     if (isRejectedInDB) {
       return [
-        { title: "สร้างรายการ", description: getLogDate(1), icon: <FileSearchOutlined /> },
-        { title: "รอการพิจารณา", description: getLogDate(5), icon: <FileSearchOutlined /> },
+        { title: "สร้างรายการ", description: getLogDate(1), icon: renderDotIcon(FileSearchOutlined) },
+        { title: "รอการพิจารณา", description: getLogDate(5), icon: renderDotIcon(FileSearchOutlined) },
         {
           title: currentStatusInDB === "ไม่มีสิทธิ์เคลม" ? "ไม่มีสิทธิ์เคลม" : "ไม่อนุมัติเคลมสินค้า",
           description: (
             <div className="text-xs">
               <div>{getLogDate(currentStatusId)}</div>
-              {rejectReason && <div className="text-red-500 font-semibold">{rejectReason}</div>}
+              {rejectReason && <div className="text-red-500 font-medium">{rejectReason}</div>}
             </div>
           ),
-          icon: <CloseCircleOutlined />,
+          icon: renderDotIcon(CloseCircleOutlined),
         },
       ];
     }
 
     return [
-      { title: "สร้างรายการ", description: getLogDate(1), icon: <CheckCircleOutlined /> },
-      { title: "รอการพิจารณา", description: getLogDate(5), icon: <FileSearchOutlined /> },
-      { title: "มีสิทธิ์เคลม", description: getLogDate(2), icon: <CheckCircleOutlined /> },
-      { title: "รับสินค้าแล้ว", description: getLogDate(4), icon: <InboxOutlined /> },
-      { title: "อนุมัติเคลม", description: getLogDate(6), icon: <CheckCircleOutlined /> },
-      { title: "กำลังเปลี่ยนสินค้า", description: getLogDate(8), icon: <FileSearchOutlined /> },
-      { title: "กำลังจัดส่ง", description: getLogDate(9), icon: <CarOutlined /> },
-      { title: "จัดส่งสำเร็จ", description: getLogDate(10), icon: <SmileOutlined /> },
+      { title: "สร้างรายการ", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
+      { title: "รอการพิจารณา", description: getLogDate(5), icon: renderDotIcon(FileSearchOutlined) },
+      { title: "มีสิทธิ์เคลม", description: getLogDate(2), icon: renderDotIcon(CheckCircleOutlined) },
+      { title: "รับสินค้าแล้ว", description: getLogDate(4), icon: renderDotIcon(InboxOutlined) },
+      { title: "อนุมัติเคลม", description: getLogDate(6), icon: renderDotIcon(CheckCircleOutlined) },
+      { title: "กำลังเปลี่ยนสินค้า", description: getLogDate(8), icon: renderDotIcon(FileSearchOutlined) },
+      { title: "กำลังจัดส่ง", description: getLogDate(9), icon: renderDotIcon(CarOutlined) },
+      { title: "จัดส่งสำเร็จ", description: getLogDate(10), icon: renderDotIcon(SmileOutlined) },
     ];
   };
 
   return (
-    <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
+    <div className="w-full flex flex-col gap-6 font-normal" style={{ boxSizing: "border-box" }}>
       <Card className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" bodyStyle={{ padding: "24px" }}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
           <div className="flex flex-col gap-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0 truncate">จัดการการเคลม</h1>
+            <h1 className="text-xl sm:text-2xl font-medium text-slate-800 m-0 truncate">จัดการการเคลม</h1>
             <p className="text-sm text-gray-500 m-0 truncate">
-              Claim ID : <b className="text-slate-800 font-mono">{data.claim_no || data.claim_id}</b>
+              Claim ID : <b className="text-slate-800 font-mono font-normal">{data.claim_no || data.claim_id}</b>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto justify-start md:justify-end">
-            <div className="shrink-0">
-              <ClaimStatusTag status={data.current_status || data.status} />
-            </div>
+  <div className="shrink-0">
+    <ClaimStatusTag status={data.current_status || data.status} />
+  </div>
 
-            <div>
-              <Button icon={<PrinterOutlined />} onClick={() => setIsPreviewModalOpen(true)}>
-                พิมพ์ / ดาวน์โหลดเอกสาร
-              </Button>
-              <ClaimPrintModal
-                open={isPreviewModalOpen}
-                onClose={() => setIsPreviewModalOpen(false)}
-                data={{
-                  ...data,
-                  claimId: data.claim_no || data.claim_id,
-                  productName: productName,
-                  createdDate: data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-",
-                }}
-              />
-            </div>
+  {/* 1. ปุ่ม พิมพ์ / ดาวน์โหลดเอกสาร (Utility Action: สไตล์ปุ่มเทาเรียบง่าย) */}
+  <div>
+    <Button
+      type="default"
+      icon={<PrinterOutlined />}
+      className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+      style={{ paddingLeft: "16px", paddingRight: "16px" }}
+      onClick={() => setIsPreviewModalOpen(true)}
+    >
+      พิมพ์ / ดาวน์โหลดเอกสาร
+    </Button>
+    <ClaimPrintModal
+      open={isPreviewModalOpen}
+      onClose={() => setIsPreviewModalOpen(false)}
+      data={{
+        ...data,
+        claimId: data.claim_no || data.claim_id,
+        productName: productName,
+        createdDate: data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-",
+      }}
+    />
+  </div>
 
-            {previousStatusName && (
-              <Button
-                icon={<UndoOutlined />}
-                className="rounded-xl font-semibold border-amber-400 text-amber-700 hover:bg-amber-50 shrink-0"
-                onClick={handleStepBack}
-              >
-                ถอยสถานะ
-              </Button>
-            )}
+  {/* 2. ปุ่ม ถอยสถานะ (Warning / Revert Action: สไตล์ปุ่มเตือนขอบส้ม) */}
+  {previousStatusName && (
+    <Button
+      type="default"
+      icon={<UndoOutlined />}
+      className="border-amber-500 text-amber-600 hover:text-amber-700 hover:bg-amber-50 hover:border-amber-600 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+      style={{ paddingLeft: "16px", paddingRight: "16px" }}
+      onClick={handleStepBack}
+    >
+      ถอยสถานะ
+    </Button>
+  )}
 
-            {isFinalStatus ? (
-              <Button
-                type="primary"
-                danger
-                icon={<EditOutlined />}
-                className="rounded-xl font-semibold shrink-0"
-                onClick={handleOpenRevertModal}
-              >
-                ขอแก้ไขรายการเคลม
-              </Button>
-            ) : (
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                className="bg-slate-800 hover:bg-slate-900 rounded-xl font-semibold shrink-0"
-                onClick={() => {
-                  handleInputChange("status", currentStatusInDB);
-                  handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
-                  handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
-                  setIsModalOpen(true);
-                }}
-              >
-                อัปเดตสถานะ
-              </Button>
-            )}
-          </div>
+  {/* 3. ปุ่ม อัปเดตสถานะ / ขอแก้ไขรายการเคลม (Primary Action: สไตล์ปุ่มหลักสีฟ้าสด) */}
+  {isFinalStatus ? (
+    <Button
+      type="primary"
+      danger
+      icon={<EditOutlined />}
+      className="rounded-xl font-normal shrink-0 h-10 shadow-sm"
+      style={{ paddingLeft: "20px", paddingRight: "20px" }}
+      onClick={handleOpenRevertModal}
+    >
+      ขอแก้ไขรายการเคลม
+    </Button>
+  ) : (
+    <Button
+      type="primary"
+      icon={<SaveOutlined />}
+      className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl font-medium shrink-0 h-10 shadow-md"
+      style={{ paddingLeft: "24px", paddingRight: "24px" }}
+      onClick={() => {
+        handleInputChange("status", currentStatusInDB);
+        handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
+        handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
+        setIsModalOpen(true);
+      }}
+    >
+      อัปเดตสถานะ
+    </Button>
+  )}
+</div>
         </div>
       </Card>
 
       <Card
-        title={<span className="font-bold text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
+        title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
         className="rounded-2xl shadow-sm border-gray-200 w-full"
         bodyStyle={{ padding: "24px 20px" }}
       >
-        <ConfigProvider theme={{ token: { colorPrimary: isRejectedInDB ? "#ef4444" : "#059669" } }}>
+        <ConfigProvider
+          theme={{
+            token: {
+              colorPrimary: isRejectedInDB ? "#ef4444" : "#059669",
+              fontWeightStrong: 400,
+            },
+            components: {
+              Steps: {
+                lineWidth: 4,
+                iconSize: 40,
+              },
+            },
+          }}
+        >
           <Steps
             current={getCurrentStep()}
             status={isRejectedInDB ? "error" : "process"}
@@ -689,28 +717,62 @@ const StaffClaimUpdate = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
-          <Card title={<span className="font-bold text-slate-800">ข้อมูลสินค้า และรายละเอียดคำร้องขอเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-            <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
+          <Card title={<span className="font-medium text-slate-800">ข้อมูลสินค้า และรายละเอียดคำร้องขอเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+            <Descriptions 
+              column={1} 
+              bordered 
+              size="middle" 
+              labelStyle={{ 
+                fontWeight: "500", 
+                color: "#475569", 
+                width: "130px", 
+                backgroundColor: "#f8fafc",
+                verticalAlign: "top" 
+              }}
+              contentStyle={{
+                color: "#1e293b",
+                wordBreak: "break-word"
+              }}
+            >
               <Descriptions.Item label="วันที่แจ้ง">
                 {data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"}
               </Descriptions.Item>
               <Descriptions.Item label="ผู้แจ้ง">
                 {usersMap[String(data.created_by || data.agent_id || data.user_id)] || data.created_by || data.agent_id || data.reporter || "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="สินค้า"><span className="font-bold text-slate-800">{productName}</span></Descriptions.Item>
-              <Descriptions.Item label="Lot Number"><span className="font-mono">{data.lot_no || data.lot || "-"}</span></Descriptions.Item>
+              <Descriptions.Item label="สินค้า"><span className="font-medium text-slate-800">{productName}</span></Descriptions.Item>
+              <Descriptions.Item label="Lot Number"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.lot_no || data.lot || "-"}</span></Descriptions.Item>
               <Descriptions.Item label="MFG Number"><span className="font-mono">{data.mfg_date ? dayjs(data.mfg_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
               <Descriptions.Item label="EXP Number"><span className="font-mono">{data.exp_date || data.expire_date ? dayjs(data.exp_date || data.expire_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
-              <Descriptions.Item label="จำนวน"><span className="font-bold text-emerald-700">{data.qty}</span> ขวด/กระป๋อง</Descriptions.Item>
-              <Descriptions.Item label="รายละเอียดเพิ่มเติม">{data.remark || data.claim_reason || data.detail || "-"}</Descriptions.Item>
+              <Descriptions.Item label="จำนวน"><span className="font-medium text-emerald-600 text-base">{data.qty}</span> <span className="text-xs text-gray-500">ขวด/กระป๋อง</span></Descriptions.Item>
+              <Descriptions.Item label="รายละเอียดเพิ่มเติม">
+                <div className="whitespace-pre-line text-slate-700 leading-relaxed">
+                  {data.remark || data.claim_reason || data.detail || "-"}
+                </div>
+              </Descriptions.Item>
             </Descriptions>
           </Card>
 
           {(STATUS_PRIORITY[currentStatusInDB] >= 4 || Boolean(data.driver_name && data.driver_name.trim())) && (
-            <Card title={<span className="font-bold text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
-                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="font-semibold text-slate-800">{data.driver_name || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono">{data.truck_plate || "-"}</span></Descriptions.Item>
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+              <Descriptions 
+                column={1} 
+                bordered 
+                size="middle" 
+                labelStyle={{ 
+                  fontWeight: "500", 
+                  color: "#475569", 
+                  width: "130px", 
+                  backgroundColor: "#f8fafc",
+                  verticalAlign: "top" 
+                }}
+                contentStyle={{
+                  color: "#1e293b",
+                  wordBreak: "break-word"
+                }}
+              >
+                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800">{data.driver_name || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.truck_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="เลขที่เอกสารเคลม"><span className="font-mono">{data.claim_no || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="จำนวนที่รับคืนสินค้าแตก"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
               </Descriptions>
@@ -718,22 +780,52 @@ const StaffClaimUpdate = () => {
           )}
 
           {(STATUS_PRIORITY[currentStatusInDB] >= 6 || Boolean(data.withdraw_date)) && (
-            <Card title={<span className="font-bold text-slate-800">ข้อมูลการเบิกเปลี่ยนสินค้า</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการเบิกเปลี่ยนสินค้า</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+              <Descriptions 
+                column={1} 
+                bordered 
+                size="middle" 
+                labelStyle={{ 
+                  fontWeight: "500", 
+                  color: "#475569", 
+                  width: "130px", 
+                  backgroundColor: "#f8fafc",
+                  verticalAlign: "top" 
+                }}
+                contentStyle={{
+                  color: "#1e293b",
+                  wordBreak: "break-word"
+                }}
+              >
                 <Descriptions.Item label="วันที่เบิกสินค้าจากคลัง"><span className="font-mono">{data.withdraw_date ? dayjs(data.withdraw_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="จำนวนที่ส่งสินค้าคืน"><span className="font-bold text-slate-800">{data.returned_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
-                <Descriptions.Item label="จำนวนแตกที่รับรองการเปลี่ยน"><span className="font-bold text-emerald-700">{data.approved_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
+                <Descriptions.Item label="จำนวนที่ส่งสินค้าคืน"><span className="text-slate-800">{data.returned_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
+                <Descriptions.Item label="จำนวนแตกที่รับรองการเปลี่ยน"><span className="text-emerald-600">{data.approved_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
               </Descriptions>
             </Card>
           )}
 
           {(STATUS_PRIORITY[currentStatusInDB] >= 7 || Boolean(data.delivery_driver && data.delivery_driver.trim())) && (
-            <Card title={<span className="font-bold text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions column={1} bordered size="middle" labelStyle={{ fontWeight: "600", color: "#334155", width: "180px", backgroundColor: "#f8fafc" }}>
-                <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม"><span className="font-semibold text-slate-800">{data.delivery_driver || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono">{data.delivery_plate || "-"}</span></Descriptions.Item>
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+              <Descriptions 
+                column={1} 
+                bordered 
+                size="middle" 
+                labelStyle={{ 
+                  fontWeight: "500", 
+                  color: "#475569", 
+                  width: "130px", 
+                  backgroundColor: "#f8fafc",
+                  verticalAlign: "top" 
+                }}
+                contentStyle={{
+                  color: "#1e293b",
+                  wordBreak: "break-word"
+                }}
+              >
+                <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม"><span className="text-slate-800">{data.delivery_driver || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="วันที่คาดว่าจะส่งถึงลูกค้า">
-                  <span className="font-semibold text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
+                  <span className="text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -741,7 +833,7 @@ const StaffClaimUpdate = () => {
         </div>
 
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          <Card title={<span className="font-bold text-slate-800">รูปภาพหลักฐานจากลูกค้า</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+          <Card title={<span className="font-medium text-slate-800">รูปภาพหลักฐานจากลูกค้า</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
             {data.images && data.images.length > 0 ? (
               <Image.PreviewGroup>
                 <div className="grid grid-cols-2 gap-2">
@@ -758,7 +850,7 @@ const StaffClaimUpdate = () => {
           </Card>
 
           <Card 
-            title={<span className="font-bold text-slate-800">ประวัติการพิจารณาอนุมัติ</span>} 
+            title={<span className="font-medium text-slate-800">ประวัติการพิจารณาอนุมัติ</span>} 
             className="rounded-2xl shadow-sm border-gray-200 w-full" 
             bodyStyle={{ padding: "16px" }}
           >
@@ -778,17 +870,17 @@ const StaffClaimUpdate = () => {
                   return (
                     <div key={index} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col gap-1 text-xs">
                       <div className="flex justify-between items-center">
-                        <span className={`px-2 py-0.5 rounded-md border font-semibold ${conf.color}`}>
+                        <span className={`px-2 py-0.5 rounded-md border font-normal ${conf.color}`}>
                           {conf.text}
                         </span>
                         <span className="text-gray-400 font-mono">{formatDate(item.approve_date)}</span>
                       </div>
                       <div className="text-slate-700 mt-1">
-                        <span className="font-semibold">ผู้อนุมัติ:</span> {approverName}
+                        <span className="font-medium">ผู้อนุมัติ:</span> {approverName}
                       </div>
                       {item.approve_remark && (
                         <div className="text-gray-500 italic">
-                          <span className="font-semibold">หมายเหตุ:</span> {item.approve_remark}
+                          <span className="font-medium">หมายเหตุ:</span> {item.approve_remark}
                         </div>
                       )}
                     </div>
@@ -800,8 +892,25 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          <Card title={<span className="font-bold text-slate-800">ประวัติการบันทึกสถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "16px 24px" }}>
-            <Descriptions column={1} bordered size="small" labelStyle={{ fontWeight: "600", color: "#334155", width: "150px", backgroundColor: "#f8fafc", fontSize: "12px" }}>
+          <Card title={<span className="font-medium text-slate-800">ประวัติการบันทึกสถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "16px 24px" }}>
+            <Descriptions 
+              column={1} 
+              bordered 
+              size="small" 
+              labelStyle={{ 
+                fontWeight: "500", 
+                color: "#475569", 
+                width: "130px", 
+                backgroundColor: "#f8fafc", 
+                fontSize: "12px",
+                verticalAlign: "top"
+              }}
+              contentStyle={{
+                color: "#1e293b",
+                fontSize: "12px",
+                wordBreak: "break-word"
+              }}
+            >
               <Descriptions.Item label="อัปเดตล่าสุด ณ เวลา">
                 <span className="font-mono">{formatDate(data.updated_at)}</span>
               </Descriptions.Item>
@@ -812,7 +921,7 @@ const StaffClaimUpdate = () => {
             <Button
               size="large"
               icon={<ArrowLeftOutlined />}
-              className="w-full rounded-xl border-gray-300 text-slate-700 font-semibold hover:border-slate-800 h-11"
+              className="w-full rounded-xl border-gray-300 text-slate-700 font-normal hover:border-slate-800 h-11"
               onClick={() => navigate("/staff/list-claim")}
             >
               กลับหน้ารายการคลังสินค้า
@@ -823,7 +932,7 @@ const StaffClaimUpdate = () => {
 
       <Modal
         title={
-          <span className="font-bold text-slate-800">
+          <span className="font-medium text-slate-800">
             {isFinalStatus
               ? "แก้ไข/เปลี่ยนสถานะจากการปฏิเสธ"
               : (STATUS_PRIORITY[formData.status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0)
@@ -836,11 +945,11 @@ const StaffClaimUpdate = () => {
         onCancel={() => setIsModalOpen(false)}
         okText="บันทึกเปลี่ยนสถานะ"
         cancelText="ยกเลิก"
-        okButtonProps={{ className: isFinalStatus ? "bg-amber-600 hover:bg-amber-700 font-semibold" : "bg-emerald-600 hover:bg-emerald-700 font-semibold" }}
+        okButtonProps={{ className: isFinalStatus ? "bg-amber-600 hover:bg-amber-700 font-normal" : "bg-emerald-600 hover:bg-emerald-700 font-normal" }}
       >
         <div className="flex flex-col gap-4 py-3">
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">เลือกสถานะใหม่:</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">เลือกสถานะใหม่:</label>
             <Select
               className="w-full"
               value={formData.status}
@@ -851,21 +960,21 @@ const StaffClaimUpdate = () => {
 
           {(formData.status === "รับสินค้าจริงแล้ว" || formData.status === "รับสินค้าแล้ว") && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-bold text-slate-800">ข้อมูลที่เข้ารับสินค้า</span>
+              <span className="text-sm font-medium text-slate-800">ข้อมูลที่เข้ารับสินค้า</span>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อ-นามสกุล พขร.:</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อ-นามสกุล พขร.:</label>
                 <Input placeholder="เช่น นายสมชาย ใจดี" value={formData.driverName} onChange={(e) => handleInputChange("driverName", e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">ทะเบียนรถ:</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ:</label>
                 <Input placeholder="เช่น 70-1234 กทม." value={formData.truckPlate} onChange={(e) => handleInputChange("truckPlate", e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">เลขที่เอกสารเคลม (เล่ม-เลขที่):</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">เลขที่เอกสารเคลม (เล่ม-เลขที่):</label>
                 <Input placeholder="เช่น 055-02742" value={formData.claimNoInput} onChange={(e) => handleInputChange("claimNoInput", e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนที่รับคืนสินค้าแตก(ขวด/กระป๋อง):</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่รับคืนสินค้าแตก(ขวด/กระป๋อง):</label>
                 <Input placeholder="เช่น 48" value={formData.fullReceive} onChange={(e) => handleInputChange("fullReceive", e.target.value)} />
               </div>
             </div>
@@ -873,9 +982,9 @@ const StaffClaimUpdate = () => {
 
           {formData.status === "กำลังดำเนินการเปลี่ยนสินค้า" && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-bold text-slate-800">ข้อมูลการเบิกและรับรองเปลี่ยนสินค้า</span>
+              <span className="text-sm font-medium text-slate-800">ข้อมูลการเบิกและรับรองเปลี่ยนสินค้า</span>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่เบิกสินค้าจากคลัง:</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">วันที่เบิกสินค้าจากคลัง:</label>
                 <DatePicker
                   className="w-full"
                   format="DD/MM/YYYY"
@@ -885,11 +994,11 @@ const StaffClaimUpdate = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนที่ส่งสินค้าคืน (ขวด/กระป๋อง):</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่ส่งสินค้าคืน (ขวด/กระป๋อง):</label>
                 <Input type="number" placeholder="เช่น 48" value={formData.returnedQty} onChange={(e) => handleInputChange("returnedQty", e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">จำนวนแตกที่เจ้าหน้าที่คลังรับรองการเปลี่ยน (ขวด/กระป๋อง):</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนแตกที่เจ้าหน้าที่คลังรับรองการเปลี่ยน (ขวด/กระป๋อง):</label>
                 <Input type="number" placeholder="เช่น 48" value={formData.approvedQty} onChange={(e) => handleInputChange("approvedQty", e.target.value)} />
               </div>
             </div>
@@ -897,17 +1006,17 @@ const StaffClaimUpdate = () => {
 
           {formData.status === "กำลังจัดส่งสินค้าเคลม" && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-bold text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>
+              <span className="text-sm font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">ชื่อ-นามสกุล พขร. จัดส่ง:</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อ-นามสกุล พขร. จัดส่ง:</label>
                 <Input placeholder="เช่น นายสมศักดิ์ ขยันยิ่ง" value={formData.deliveryDriver} onChange={(e) => handleInputChange("deliveryDriver", e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">ทะเบียนรถจัดส่ง:</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถจัดส่ง:</label>
                 <Input placeholder="เช่น 80-5678 กทม." value={formData.deliveryPlate} onChange={(e) => handleInputChange("deliveryPlate", e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">วันที่คาดว่าจะส่งถึงลูกค้า:</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">วันที่คาดว่าจะส่งถึงลูกค้า:</label>
                 <DatePicker
                   className="w-full"
                   format="DD/MM/YYYY"
@@ -921,7 +1030,7 @@ const StaffClaimUpdate = () => {
 
           {isModalStatusRejected && (
             <div className="bg-red-50 p-3 rounded-xl border border-red-200 flex flex-col gap-2">
-              <label className="block text-xs font-semibold text-red-700">เหตุผลการปฏิเสธการเคลม (จำเป็น):</label>
+              <label className="block text-xs font-medium text-red-700">เหตุผลการปฏิเสธการเคลม (จำเป็น):</label>
               <Input.TextArea rows={3} placeholder="ระบุเหตุผลการไม่อนุมัติ หรือไม่มีสิทธิ์เคลม..." value={formData.rejectReason} onChange={(e) => handleInputChange("rejectReason", e.target.value)} />
             </div>
           )}

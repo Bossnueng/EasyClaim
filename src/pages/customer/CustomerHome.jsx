@@ -19,55 +19,58 @@ const CustomerHome = () => {
   const user = loginService.getCurrentUser();
 
   useEffect(() => {
-    fetchClaimsAndItems();
-  }, []);
+  fetchClaimsAndItems();
+}, []);
 
-  // โหลดข้อมูลเคลมและข้อมูลสินค้าจาก API
-  const fetchClaimsAndItems = async () => {
-    setLoading(true);
-    try {
-      const agentId = user?.agent_id;
+const fetchClaimsAndItems = async () => {
+  const user = loginService.getCurrentUser();
+  const role = user?.role || user?.user_type;
 
-      if (!agentId) {
-        message.error("ไม่พบข้อมูลผู้ใช้งาน กรุณาล็อกอินใหม่");
-        return;
-      }
+  // 🟢 1. ถ้าผู้ใช้เป็น Staff ให้ดีดไปหน้า /staff ทันที
+  if (role === "staff" || role === "admin") {
+    navigate("/staff", { replace: true });
+    return;
+  }
 
-      const [resClaim, resItems] = await Promise.all([
-        claimService.getClaimByAgent(agentId),
-        itemService.getItems(),
-      ]);
+  // 🟢 2. ถ้าเป็น Customer แต่ไม่มี agent_id ให้ดีดไปหน้า /login โดยไม่ต้องโชว์ alert
+  const agentId = user?.agent_id;
+  if (!agentId) {
+    loginService.logout();
+    navigate("/login", { replace: true });
+    return;
+  }
 
-      // Map ข้อมูลชื่อสินค้า
-      const map = {};
-      if (resItems && resItems.data) {
-        resItems.data.forEach((item) => {
-          map[item.item_id] = item.item_name;
-        });
-        setItemsMap(map);
-      }
+  setLoading(true);
+  try {
+    const [resClaim, resItems] = await Promise.all([
+      claimService.getClaimByAgent(agentId),
+      itemService.getItems(),
+    ]);
 
-      // จัดเรียงรายการเคลมและเลือกมา 8 รายการล่าสุด
-      if (resClaim.status && resClaim.data) {
-        const sortedClaims = [...resClaim.data].sort((a, b) => {
-          const priorityA = STATUS_PRIORITY[a.current_status] || 99;
-          const priorityB = STATUS_PRIORITY[b.current_status] || 99;
-
-          if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-          }
-
-          return dayjs(b.claim_date).valueOf() - dayjs(a.claim_date).valueOf();
-        });
-
-        setLatestClaims(sortedClaims.slice(0, 8));
-      }
-    } catch (error) {
-      message.error("ไม่สามารถดึงข้อมูลได้: " + error.message);
-    } finally {
-      setLoading(false);
+    const map = {};
+    if (resItems && resItems.data) {
+      resItems.data.forEach((item) => {
+        map[item.item_id] = item.item_name;
+      });
+      setItemsMap(map);
     }
-  };
+
+    if (resClaim.status && resClaim.data) {
+      const sortedClaims = [...resClaim.data].sort((a, b) => {
+        const priorityA = STATUS_PRIORITY[a.current_status] || 99;
+        const priorityB = STATUS_PRIORITY[b.current_status] || 99;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        return dayjs(b.claim_date).valueOf() - dayjs(a.claim_date).valueOf();
+      });
+
+      setLatestClaims(sortedClaims.slice(0, 8));
+    }
+  } catch (error) {
+    message.error("ไม่สามารถดึงข้อมูลได้: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();

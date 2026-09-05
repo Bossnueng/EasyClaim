@@ -1,10 +1,17 @@
+// src/pages/customer/CustomerClaimList.jsx
+
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input, Empty, message, DatePicker, Button, Spin, Select } from "antd";
 import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
-import { STATUS_PRIORITY, CUSTOMER_FILTER_TABS, CUSTOMER_STATUS_GROUPS } from "../../constants/claimStatus";
+import { 
+  STATUS_PRIORITY, 
+  CUSTOMER_FILTER_TABS, 
+  CUSTOMER_STATUS_GROUPS,
+  getStatusName 
+} from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
@@ -116,7 +123,7 @@ const CustomerClaimList = () => {
         `"${claim.lot_no || ""}"`,
         `"${claim.qty || 0}"`,
         `"${cleanRemark}"`,
-        `"${claim.current_status || claim.status || ""}"`,
+        `"${getStatusName(claim.current_status || claim.status)}"`,
       ];
       csvRows.push(row.join(","));
     });
@@ -134,38 +141,43 @@ const CustomerClaimList = () => {
     message.success("ดาวน์โหลดรายงานเรียบร้อยแล้ว");
   };
 
+  // 🔴 จุดแก้ไข 1: ปรับการนับ tabCounts ให้ตรวจสอบทั้ง ID และ ชื่อสถานะ
   const tabCounts = claims.reduce((acc, claim) => {
-    const status = claim.current_status || claim.status;
+    const rawStatus = claim.current_status || claim.status;
+    const nameStatus = getStatusName(rawStatus);
+
     if (CUSTOMER_STATUS_GROUPS) {
-      Object.keys(CUSTOMER_STATUS_GROUPS).forEach((tabName) => {
-        if (CUSTOMER_STATUS_GROUPS[tabName].includes(status)) {
-          acc[tabName] = (acc[tabName] || 0) + 1;
+      Object.keys(CUSTOMER_STATUS_GROUPS).forEach((groupName) => {
+        const allowedStatuses = CUSTOMER_STATUS_GROUPS[groupName];
+        if (
+          allowedStatuses.includes(rawStatus) ||
+          allowedStatuses.includes(String(rawStatus)) ||
+          allowedStatuses.includes(nameStatus)
+        ) {
+          acc[groupName] = (acc[groupName] || 0) + 1;
         }
       });
     }
     return acc;
   }, {});
 
-  const statusCounts = claims.reduce((acc, claim) => {
-    const status = claim.current_status || claim.status;
-    if (status) {
-      acc[status] = (acc[status] || 0) + 1;
-    }
-    return acc;
-  }, {});
-
+  // 🔴 จุดแก้ไข 2: ปรับการ Filter ให้จับคู่กลุ่มสถานะได้แม่นยำ
   const filteredClaims = claims
     .filter((claim) => {
-      const claimStatus = claim.current_status || claim.status;
+      const rawStatus = claim.current_status || claim.status;
+      const nameStatus = getStatusName(rawStatus);
       let matchesStatus = false;
 
       if (selectedStatus === "ทั้งหมด") {
         matchesStatus = true;
       } else if (CUSTOMER_STATUS_GROUPS && CUSTOMER_STATUS_GROUPS[selectedStatus]) {
         const allowedStatuses = CUSTOMER_STATUS_GROUPS[selectedStatus] || [];
-        matchesStatus = allowedStatuses.includes(claimStatus);
+        matchesStatus =
+          allowedStatuses.includes(rawStatus) ||
+          allowedStatuses.includes(String(rawStatus)) ||
+          allowedStatuses.includes(nameStatus);
       } else {
-        matchesStatus = claimStatus === selectedStatus;
+        matchesStatus = rawStatus === selectedStatus || nameStatus === selectedStatus;
       }
 
       const searchLower = searchTerm.toLowerCase();
@@ -189,8 +201,8 @@ const CustomerClaimList = () => {
     .sort((a, b) => {
       const statusA = a.current_status || a.status;
       const statusB = b.current_status || b.status;
-      const priorityA = STATUS_PRIORITY[statusA] || 99;
-      const priorityB = STATUS_PRIORITY[statusB] || 99;
+      const priorityA = STATUS_PRIORITY[statusA] || STATUS_PRIORITY[getStatusName(statusA)] || 99;
+      const priorityB = STATUS_PRIORITY[statusB] || STATUS_PRIORITY[getStatusName(statusB)] || 99;
 
       if (priorityA !== priorityB) {
         return priorityA - priorityB;
@@ -200,8 +212,6 @@ const CustomerClaimList = () => {
       const dateB = dayjs(b.claim_date || b.created_at);
       return dateB.valueOf() - dateA.valueOf();
     });
-
-  const filterTabs = CUSTOMER_FILTER_TABS;
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-3 sm:p-4 md:p-6 w-full max-w-full overflow-hidden box-border">
@@ -287,7 +297,7 @@ const CustomerClaimList = () => {
                 const count =
                   value === "ทั้งหมด"
                     ? claims.length
-                    : tabCounts[value] ?? statusCounts[value] ?? 0;
+                    : tabCounts[value] ?? 0;
                 return (
                   <div className="flex justify-between items-center w-full pr-2">
                     <span 
@@ -302,11 +312,11 @@ const CustomerClaimList = () => {
                   </div>
                 );
               }}
-              options={filterTabs.map((tab) => {
+              options={CUSTOMER_FILTER_TABS.map((tab) => {
                 const count =
                   tab === "ทั้งหมด"
                     ? claims.length
-                    : tabCounts[tab] ?? statusCounts[tab] ?? 0;
+                    : tabCounts[tab] ?? 0;
                 return {
                   value: tab,
                   label: (

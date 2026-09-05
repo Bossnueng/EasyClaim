@@ -99,7 +99,7 @@ const fetchClaimsAndItems = async () => {
         {/* ==================== Header ==================== */}
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, คุณ {user?.full_name || "-"}
+            สวัสดี, คุณ{user?.full_name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะหรือแจ้งเคลมสินค้าใหม่ได้ง่ายๆ ที่นี่

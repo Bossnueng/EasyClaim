@@ -36,6 +36,8 @@ import itemService from "../../services/itemService";
 import loginService from "../../services/loginService";
 import userService from "../../services/userService";
 import deliveryService from "../../services/deliveryService";
+import agentService from "../../services/agentService";
+import { getAgentNameByUserId } from "../../utils/agentHelper";
 
 const parseExtraDataFromLogs = (logs) => {
   if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
@@ -102,6 +104,8 @@ const StaffClaimUpdate = () => {
   const [statusLogs, setStatusLogs] = useState([]);
   const [approveLogs, setApproveLogs] = useState([]);
   const [usersMap, setUsersMap] = useState({});
+  const [agentsMap, setAgentsMap] = useState({});
+  const [usersList, setUsersList] = useState([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
@@ -135,16 +139,35 @@ const StaffClaimUpdate = () => {
   const fetchClaimDetail = async () => {
     setLoading(true);
     try {
-      const [resClaim, resItems, resLogs, resApproves, resUsers] = await Promise.all([
+      const [resClaim, resItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
         claimService.getClaimStatusLogs(),
         claimService.getclaimapproves(),
         userService.getUsers(),
+        agentService.getAgent(),
       ]);
+
+      // ใน StaffClaimUpdate_12.jsx
+      const aMap = {};
+      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          // ดึงค่า ID และ Code
+          const aId = String(agent.agent_id || agent.id);
+          const aCode = String(agent.agent_code || "");
+
+          // บันทึกชื่อลง Map ทั้งสอง Key เพื่อป้องกันการส่งรหัส/ID สลับกัน
+          if (aId) aMap[aId] = agent.agent_name || agent.name;
+          if (aCode) aMap[aCode] = agent.agent_name || agent.name;
+        });
+        setAgentsMap(aMap);
+      }
 
       const usersData = resUsers?.data || resUsers || [];
       if (Array.isArray(usersData)) {
+        setUsersList(usersData);
+        
         const uMap = {};
         usersData.forEach((u) => {
           const uId = String(u.user_id || u.id);
@@ -231,8 +254,7 @@ const StaffClaimUpdate = () => {
       }
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
-    } 
-    finally {
+    } finally {
       setLoading(false);
     }
   };
@@ -603,6 +625,45 @@ const StaffClaimUpdate = () => {
     ];
   };
 
+  // 1. คำนวณชื่อ Agent ให้ครอบคลุมทุก Field ที่เป็นไปได้
+    const creatorUserId = data ? String(data.user_id || data.created_by || "") : "";
+    const claimAgentId = data ? String(data.agent_id || "") : "";
+    const claimAgentCode = data ? String(data.agent_code || "") : "";
+    // ตัวอย่างการดึงวันที่รับสินค้าจริงจาก Timestamp ใน Log หรือ Claim Data
+    const driverReceiveLogDate = getLogDate("4"); // หรือใช้ data.driver_receive_date
+    // ค้นหา Log ของสถานะ "จัดส่งสำเร็จ" (ID: 9)
+    const deliverySuccessLog = statusLogs.find(
+      (log) => String(log.status || log.status_id) === "10"
+    );
+
+    // ดึง user_id จาก log จัดส่งสำเร็จ แล้วหาชื่อจาก usersMap
+    const deliverySuccessUserId = deliverySuccessLog 
+      ? String(deliverySuccessLog.update_by || deliverySuccessLog.user_id || "") 
+      : "";
+    const deliverySuccessNameDisplay = usersMap[deliverySuccessUserId] || "-";
+
+    // ค้นหา Log ของสถานะ "รับสินค้าแล้ว" (ID: 4)
+    const receiveLog = statusLogs.find(
+      (log) => String(log.status || log.status_id) === "4"
+    );                    
+    // ดึง user_id จาก log แล้วไปค้นชื่อจาก usersMap
+  const receiverUserId = receiveLog ? String(receiveLog.update_by || receiveLog.user_id || "") : "";
+  const receiverNameDisplay = usersMap[receiverUserId] || "-";        
+
+    // ค้นหาชื่อจาก agentsMap ตามลำดับ priority
+const matchedAgentName = 
+  agentsMap[claimAgentId] || 
+  agentsMap[claimAgentCode] || 
+  getAgentNameByUserId(creatorUserId, usersList, agentsMap);
+
+const agentNameDisplay = 
+  matchedAgentName !== "-" && matchedAgentName 
+    ? matchedAgentName 
+    : (data?.agent_name || data?.agentName || "-");
+
+  // --- [2. คำนวณชื่อ ผู้แจ้งส่งคืน/ผู้สร้างรายการ] ---
+  const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || data?.reporter || "-";
+
   return (
     <div className="w-full flex flex-col gap-6 font-normal" style={{ boxSizing: "border-box" }}>
       <Card className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" bodyStyle={{ padding: "24px" }}>
@@ -615,75 +676,103 @@ const StaffClaimUpdate = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto justify-start md:justify-end">
-  <div className="shrink-0">
-    <ClaimStatusTag status={data.current_status || data.status} />
-  </div>
+            <div className="shrink-0">
+              <ClaimStatusTag status={data.current_status || data.status} />
+            </div>
 
-  {/* 1. ปุ่ม พิมพ์ / ดาวน์โหลดเอกสาร (Utility Action: สไตล์ปุ่มเทาเรียบง่าย) */}
-  <div>
-    <Button
-      type="default"
-      icon={<PrinterOutlined />}
-      className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
-      style={{ paddingLeft: "16px", paddingRight: "16px" }}
-      onClick={() => setIsPreviewModalOpen(true)}
-    >
-      พิมพ์ / ดาวน์โหลดเอกสาร
-    </Button>
-    <ClaimPrintModal
-      open={isPreviewModalOpen}
-      onClose={() => setIsPreviewModalOpen(false)}
-      data={{
-        ...data,
-        claimId: data.claim_no || data.claim_id,
-        productName: productName,
-        createdDate: data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-",
-      }}
-    />
-  </div>
+            <div>
+              <Button
+                type="default"
+                icon={<PrinterOutlined />}
+                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                onClick={() => setIsPreviewModalOpen(true)}
+              >
+                พิมพ์ / ดาวน์โหลดเอกสาร
+              </Button>
+              <ClaimPrintModal
+                open={isPreviewModalOpen}
+                onClose={() => setIsPreviewModalOpen(false)}
+                isStaff={true}
+                data={{
+                  ...data,
+                  claimNo: data.claim_no || data.claim_id,
+                  productName: productName,
+                  receiverName: receiverNameDisplay,
+                  approverName: approveLogs.length > 0 
+                    ? usersMap[String(approveLogs[approveLogs.length - 1]?.approve_by)] || "พรนภา แก่นเมือง"
+                    : "อารียา, สุรศักดิ์, ยุทธพงษ์",
+                  receiveDate: (() => {
+                    const targetDate = driverReceiveLogDate !== "-" ? driverReceiveLogDate : data?.claim_date;
+                    if (!targetDate || targetDate === "-") return "-";
+                    return String(targetDate).trim().split(" ")[0];
+                  })(),
+                  createdDate: getLogDate("1") !== "-" 
+                    ? getLogDate("1").split(" ")[0] 
+                    : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
+                  
+                  // ดึงวันที่จาก Log ID 10 ก่อน
+                  deliverySuccessDate: (() => {
+                    const log10 = getLogDate("10");
+                    const log9 = getLogDate("9");
+                    const targetLog = log10 !== "-" ? log10 : log9;
+                    return targetLog !== "-" ? targetLog.split(" ")[0] : "-";
+                  })(),
 
-  {/* 2. ปุ่ม ถอยสถานะ (Warning / Revert Action: สไตล์ปุ่มเตือนขอบส้ม) */}
-  {previousStatusName && (
-    <Button
-      type="default"
-      icon={<UndoOutlined />}
-      className="border-amber-500 text-amber-600 hover:text-amber-700 hover:bg-amber-50 hover:border-amber-600 rounded-xl font-normal shrink-0 h-10 shadow-sm"
-      style={{ paddingLeft: "16px", paddingRight: "16px" }}
-      onClick={handleStepBack}
-    >
-      ถอยสถานะ
-    </Button>
-  )}
+                  agentName: agentNameDisplay,
+                  agent_name: agentNameDisplay,
+                  reporter: reporterNameDisplay,
+                  
+                  // ดึงชื่อผู้กดรับสินค้า หรือ Fallback เป็นชื่อเอเย่นต์
+                  deliverySuccessName: deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay,
+                  
+                  driverName: data.driver_name || "-",
+                  claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
+                  withdrawDate: data.withdraw_date
+                }}
+              />
+            </div>
 
-  {/* 3. ปุ่ม อัปเดตสถานะ / ขอแก้ไขรายการเคลม (Primary Action: สไตล์ปุ่มหลักสีฟ้าสด) */}
-  {isFinalStatus ? (
-    <Button
-      type="primary"
-      danger
-      icon={<EditOutlined />}
-      className="rounded-xl font-normal shrink-0 h-10 shadow-sm"
-      style={{ paddingLeft: "20px", paddingRight: "20px" }}
-      onClick={handleOpenRevertModal}
-    >
-      ขอแก้ไขรายการเคลม
-    </Button>
-  ) : (
-    <Button
-      type="primary"
-      icon={<SaveOutlined />}
-      className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl font-medium shrink-0 h-10 shadow-md"
-      style={{ paddingLeft: "24px", paddingRight: "24px" }}
-      onClick={() => {
-        handleInputChange("status", currentStatusInDB);
-        handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
-        handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
-        setIsModalOpen(true);
-      }}
-    >
-      อัปเดตสถานะ
-    </Button>
-  )}
-</div>
+            {previousStatusName && (
+              <Button
+                type="default"
+                icon={<UndoOutlined />}
+                className="border-amber-500 text-amber-600 hover:text-amber-700 hover:bg-amber-50 hover:border-amber-600 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                onClick={handleStepBack}
+              >
+                ถอยสถานะ
+              </Button>
+            )}
+
+            {isFinalStatus ? (
+              <Button
+                type="primary"
+                danger
+                icon={<EditOutlined />}
+                className="rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                style={{ paddingLeft: "20px", paddingRight: "20px" }}
+                onClick={handleOpenRevertModal}
+              >
+                ขอแก้ไขรายการเคลม
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl font-medium shrink-0 h-10 shadow-md"
+                style={{ paddingLeft: "24px", paddingRight: "24px" }}
+                onClick={() => {
+                  handleInputChange("status", currentStatusInDB);
+                  handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
+                  handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
+                  setIsModalOpen(true);
+                }}
+              >
+                อัปเดตสถานะ
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
@@ -737,8 +826,11 @@ const StaffClaimUpdate = () => {
               <Descriptions.Item label="วันที่แจ้ง">
                 {data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="ผู้แจ้ง">
-                {usersMap[String(data.created_by || data.agent_id || data.user_id)] || data.created_by || data.agent_id || data.reporter || "-"}
+              <Descriptions.Item label="ชื่อ Agent">
+                <span className="font-medium text-slate-800">{agentNameDisplay}</span>
+              </Descriptions.Item>
+              <Descriptions.Item label="ผู้แจ้งส่งคืน">
+                {reporterNameDisplay}
               </Descriptions.Item>
               <Descriptions.Item label="สินค้า"><span className="font-medium text-slate-800">{productName}</span></Descriptions.Item>
               <Descriptions.Item label="Lot Number"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.lot_no || data.lot || "-"}</span></Descriptions.Item>

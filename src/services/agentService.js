@@ -1,51 +1,42 @@
 import api from "./api";
-/**
- //GET
-router.get("/getagent",AgentController.getagent);
-
-router.post("/agent",AgentController.createAgent);
-router.post("/updateAgent",AgentController.updateAgent);
-
- */
 
 export const agentService = {
-    /**
-   * ดึงรายการ Agent ทั้งหมด
-   */
-    getAgent: async () => {
-        try {
-            const response = await api.get("/getagent"); // ปรับ Endpoint ตาม route ของคุณ (เช่น /roles หรือ /getRole)
-            return response.data;
-        } catch (error) {
-            throw error.response ? error.response.data : new Error(error.message);
-        }
-    },
+  getAgent: async () => {
+    try {
+      const response = await api.get("/getagent");
+      // แก้ไขเพื่อส่งกลับเฉพาะ Array ข้อมูลที่อยู่ใน field data
+      return response.data.data || [];
+    } catch (error) {
+      throw error.response?.data || new Error(error.message);
+    }
+  },
 
-    /**
-   * สร้าง Agent ใหม่
-   * @param {Object} agentData - { agent_code, agent_name }
-   */
-    createAgent: async (agentData) => {
-        try {
-            const response = await api.post("/agent", agentData); // ปรับ Endpoint ตาม route ของคุณ (เช่น /roles หรือ /getRole)
-            return response.data;
-        } catch (error) {
-            throw error.response ? error.response.data : new Error(error.message);
-        }
-    },
+  createAgent: async (agentData) => {
+    try {
+      const response = await api.post("/createagent", agentData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || new Error(error.message);
+    }
+  },
 
-/**
-   * อัปเดตข้อมูล Agent
-   * @param {Object} agentData - { agent_id, agent_code, agent_name, status }
-   */
-    updateAgent: async (agentData) => {
-        try {
-            const response = await api.post("/updateAgent", agentData); // ปรับ Endpoint ตาม route ของคุณ (เช่น /roles หรือ /getRole)
-            return response.data;
-        } catch (error) {
-            throw error.response ? error.response.data : new Error(error.message);
-        }
-    },                    
+  updateAgent: async (agentData) => {
+    try {
+      const response = await api.put("/updateagent", agentData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || new Error(error.message);
+    }
+  },
+
+  deleteAgent: async (agentId) => {
+    try {
+      const response = await api.delete(`/deleteagent/${agentId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || new Error(error.message);
+    }
+  },
 };
 
 export default agentService;

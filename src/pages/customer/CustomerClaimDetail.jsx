@@ -19,7 +19,10 @@ import ClaimPrintModal from "../../components/ClaimPrintModal";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
+import userService from "../../services/userService";
+import agentService from "../../services/agentService";
 import { getStatusName, getStatusColor, getStatusId, STATUS_PRIORITY, CLAIM_STATUS_MAP } from "../../constants/claimStatus";
+import { getAgentNameByUserId } from "../../utils/agentHelper";
 
 dayjs.extend(utc);
 
@@ -52,6 +55,10 @@ const CustomerClaimDetail = () => {
   const [data, setData] = useState(null);
   const [productName, setProductName] = useState("");
   const [statusLogs, setStatusLogs] = useState([]);
+  const [approveLogs, setApproveLogs] = useState([]);
+  const [usersMap, setUsersMap] = useState({});
+  const [agentsMap, setAgentsMap] = useState({});
+  const [usersList, setUsersList] = useState([]);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
   const formatDbDate = (dateString, format = "DD/MM/YYYY HH:mm") => {
@@ -80,11 +87,38 @@ const CustomerClaimDetail = () => {
 
     setLoading(true);
     try {
-      const [resClaim, resItems, resLogs] = await Promise.all([
+      const [resClaim, resItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
         claimService.getClaimByAgent(user.agent_id),
         itemService.getItems(),
         claimService.getClaimStatusLogs(),
+        claimService.getclaimapproves(),
+        userService.getUsers(),
+        agentService.getAgent(),
       ]);
+
+      const aMap = {};
+      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id);
+          const aCode = String(agent.agent_code || "");
+          if (aId) aMap[aId] = agent.agent_name || agent.name;
+          if (aCode) aMap[aCode] = agent.agent_name || agent.name;
+        });
+        setAgentsMap(aMap);
+      }
+
+      const usersData = resUsers?.data || resUsers || [];
+      if (Array.isArray(usersData)) {
+        setUsersList(usersData);
+        const uMap = {};
+        usersData.forEach((u) => {
+          const uId = String(u.user_id || u.id);
+          const name = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
+          uMap[uId] = name || `User ID: ${uId}`;
+        });
+        setUsersMap(uMap);
+      }
 
       if (resClaim.status && resClaim.data) {
         const currentClaim = resClaim.data.find(
@@ -125,6 +159,14 @@ const CustomerClaimDetail = () => {
           };
 
           setData(mergedClaimData);
+
+          const approvesData = resApproves?.data || resApproves || [];
+          if (Array.isArray(approvesData)) {
+            const filteredApproves = approvesData.filter(
+              (app) => String(app.claim_id) === String(currentClaim.claim_id)
+            );
+            setApproveLogs(filteredApproves);
+          }
 
           if (resItems && resItems.data) {
             const foundItem = resItems.data.find((i) => i.item_id === currentClaim.item_id);
@@ -198,50 +240,66 @@ const CustomerClaimDetail = () => {
 
   const getLogDate = (statusTarget) => {
     const targetId = String(statusTarget);
-    const log = statusLogs.find((item) => String(item.status || item.status_id) === targetId);
-    return log ? formatDbDate(log.update_date || log.created_at, "DD/MM/YYYY HH:mm") : "-";
+    const matchingLogs = statusLogs.filter(
+      (item) => String(item.status || item.status_id) === targetId
+    );
+
+    if (matchingLogs.length > 0) {
+      const lastLog = matchingLogs[matchingLogs.length - 1];
+      const rawDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
+      return formatDate(rawDate);
+    }
+
+    if (targetId === "1") return formatDate(data.claim_date || data.created_at);
+    if (targetId === "2" || targetId === "6") return formatDate(data.approve_date);
+    if (targetId === "4") return formatDate(data.driver_receive_date || data.warehouse_receive_date);
+    if (targetId === "8") return formatDate(data.withdraw_date);
+    if (targetId === "9") return formatDate(data.delivery_date);
+    if (targetId === "10") return formatDate(data.receive_finish_date);
+
+    return "-";
   };
 
-  const handleConfirmDelivery = async () => {
-    try {
-      const currentUser = loginService.getCurrentUser();
-      const userId = currentUser?.user_id || currentUser?.agent_id || data?.agent_id || "";
+  // ตัวอย่างการปรับปรุงฟังก์ชัน handleConfirmDelivery ใน CustomerClaimDetail.jsx
+const handleConfirmDelivery = async () => {
+  try {
+    const currentUser = loginService.getCurrentUser();
+    const userId = currentUser?.user_id || currentUser?.agent_id || data?.agent_id || "";
+    const currentTimestamp = new Date().toISOString();
 
-      const { images, ...claimDataWithoutImages } = data;
-      const currentTimestamp = new Date().toISOString();
+    const { images, ...claimDataWithoutImages } = data;
 
-      const updatePayload = {
-        ...claimDataWithoutImages,
+    const updatePayload = {
+      ...claimDataWithoutImages,
+      claim_id: String(data.claim_id),
+      claim_no: String(data.claim_no || ""),
+      agent_id: String(data.agent_id || currentUser?.agent_id || ""),
+      current_status: "10",
+      status: "10",
+      status_name: "จัดส่งสินค้าเคลมสำเร็จ",
+      receive_finish_date: currentTimestamp,
+      update_by: String(userId),
+    };
+
+    const resUpdate = await claimService.updateClaim(updatePayload);
+
+    if (resUpdate.status) {
+      await claimService.createClaimStatusLogs({
         claim_id: String(data.claim_id),
-        claim_no: String(data.claim_no || ""),
-        agent_id: String(data.agent_id || currentUser?.agent_id || ""),
-        claim_date: data.claim_date,
-        current_status: "10",
         status: "10",
         status_name: "จัดส่งสินค้าเคลมสำเร็จ",
-        receive_finish_date: currentTimestamp,
+        remark: "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว",
         update_by: String(userId),
-      };
+        agent_id: String(data.agent_id || currentUser?.agent_id || ""),
+      });
 
-      const resUpdate = await claimService.updateClaim(updatePayload);
-
-      if (resUpdate.status) {
-        await claimService.createClaimStatusLogs({
-          claim_id: String(data.claim_id),
-          status: "10",
-          status_name: "จัดส่งสินค้าเคลมสำเร็จ",
-          remark: "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว",
-          update_by: String(userId),
-          agent_id: String(data.agent_id || currentUser?.agent_id || ""),
-        });
-
-        message.success("ยืนยันรับสินค้าเคลมเรียบร้อยแล้ว");
-        fetchClaimDetail();
-      }
-    } catch (error) {
-      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+      message.success("ยืนยันรับสินค้าเคลมเรียบร้อยแล้ว");
+      fetchClaimDetail();
     }
-  };
+  } catch (error) {
+    message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+  }
+};
 
   const renderDotIcon = (IconComponent) => (
     <div className="relative flex items-center justify-center w-full h-full">
@@ -294,6 +352,26 @@ const CustomerClaimDetail = () => {
 
   const isShipping = currentStatusId === "9" || data.current_status === "กำลังจัดส่งสินค้าเคลม";
 
+  // ดึงตัวแปรและข้อมูลสำหรับแสดงผลและส่งเข้า ClaimPrintModal
+  const creatorUserId = data ? String(data.user_id || data.created_by || "") : "";
+  const claimAgentId = data ? String(data.agent_id || "") : "";
+  const claimAgentCode = data ? String(data.agent_code || "") : "";
+  const driverReceiveLogDate = getLogDate("4");
+
+  const deliverySuccessLog = statusLogs.find(
+    (log) => String(log.status || log.status_id) === "10"
+  );
+  const deliverySuccessUserId = deliverySuccessLog ? String(deliverySuccessLog.update_by || deliverySuccessLog.user_id || "") : "";
+  const deliverySuccessNameDisplay = usersMap[deliverySuccessUserId] || "-";
+
+  const receiveLog = statusLogs.find((log) => String(log.status || log.status_id) === "4");
+  const receiverUserId = receiveLog ? String(receiveLog.update_by || receiveLog.user_id || "") : "";
+  const receiverNameDisplay = usersMap[receiverUserId] || "-";
+
+  const matchedAgentName = agentsMap[claimAgentId] || agentsMap[claimAgentCode] || getAgentNameByUserId(creatorUserId, usersList, agentsMap);
+  const agentNameDisplay = matchedAgentName !== "-" && matchedAgentName ? matchedAgentName : (data?.agent_name || data?.agentName || "-");
+  const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || data?.reporter || "-";
+
   return (
     <div className="w-full flex flex-col gap-6 font-normal" style={{ boxSizing: "border-box" }}>
       
@@ -312,7 +390,6 @@ const CustomerClaimDetail = () => {
               {getStatusTag(data.current_status)}
             </div>
 
-            {/* เพิ่มเฉพาะปุ่มพิมพ์/ดาวน์โหลดเอกสาร */}
             <div>
               <Button
                 type="default"
@@ -328,10 +405,41 @@ const CustomerClaimDetail = () => {
                 onClose={() => setIsPreviewModalOpen(false)}
                 data={{
                   ...data,
-                  claimId: data.claim_no || data.claim_id,
+                  claimNo: data.claim_no || data.claim_id,
                   productName: productName,
-                  createdDate: data.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-",
+                  receiverName: "-",
+                  approverName: "-",
+                  receiveDate: (() => {
+                    const targetDate = driverReceiveLogDate !== "-" ? driverReceiveLogDate : data?.claim_date;
+                    if (!targetDate || targetDate === "-") return "-";
+                    return String(targetDate).trim().split(" ")[0];
+                  })(),
+                  createdDate: getLogDate("1") !== "-" 
+                    ? getLogDate("1").split(" ")[0] 
+                    : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
+                  
+                  // ดึงวันที่จาก Log ID 10 เป็นหลัก
+                  deliverySuccessDate: (() => {
+                    const log10 = getLogDate("10");
+                    const log9 = getLogDate("9");
+                    const targetLog = log10 !== "-" ? log10 : log9;
+                    return targetLog !== "-" ? targetLog.split(" ")[0] : "-";
+                  })(),
+
+                  agentName: agentNameDisplay,
+                  agent_name: agentNameDisplay,
+                  reporter: reporterNameDisplay,
+                  
+                  // หากมีชื่อคนกดรับสินค้า (Log ID 10) ให้ใช้ชื่อนั้น ถ้าไม่มีให้ใช้ agentNameDisplay
+                  deliverySuccessName: deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay,
+                  
+                  driverName: data.driver_name || "-",
+                  claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
+                  withdrawDate: data.withdraw_date,
+                  approved_qty: "-",
+                  detail:  "-"
                 }}
+                isStaff={false}
               />
             </div>
           </div>
@@ -403,14 +511,21 @@ const CustomerClaimDetail = () => {
               <Descriptions.Item label="วันที่แจ้ง">
                 {data.claim_date ? formatDbDate(data.claim_date, "DD/MM/YYYY") : "-"}
               </Descriptions.Item>
+              <Descriptions.Item label="ชื่อ Agent">
+                <span className="font-medium text-slate-800">{agentNameDisplay}</span>
+              </Descriptions.Item>
+              <Descriptions.Item label="ผู้แจ้งส่งคืน">
+                {reporterNameDisplay}
+              </Descriptions.Item>
               <Descriptions.Item label="สินค้า"><span className="font-medium text-slate-800">{productName}</span></Descriptions.Item>
-              <Descriptions.Item label="Lot Number"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.lot_no || "-"}</span></Descriptions.Item>
+              <Descriptions.Item label="Lot Number"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.lot_no || data.lot || "-"}</span></Descriptions.Item>
               <Descriptions.Item label="MFG Number"><span className="font-mono">{data.mfg_date ? formatDbDate(data.mfg_date, "DD/MM/YYYY") : "-"}</span></Descriptions.Item>
+              <Descriptions.Item label="EXP Number"><span className="font-mono">{data.exp_date || data.expire_date ? formatDbDate(data.exp_date || data.expire_date, "DD/MM/YYYY") : "-"}</span></Descriptions.Item>
               <Descriptions.Item label="จำนวน"><span className="font-medium text-emerald-600 text-base">{data.qty}</span> <span className="text-xs text-gray-500">ขวด/กระป๋อง</span></Descriptions.Item>
               <Descriptions.Item label="อัปเดตล่าสุด"><span className="font-mono">{formatDate(data.updated_at)}</span></Descriptions.Item>
               <Descriptions.Item label="รายละเอียดเพิ่มเติม">
                 <div className="whitespace-pre-line text-slate-700 leading-relaxed">
-                  {data.claim_reason || "-"}
+                  {data.remark || data.claim_reason || data.detail || "-"}
                 </div>
               </Descriptions.Item>
             </Descriptions>

@@ -126,6 +126,9 @@ const StaffClaimUpdate = () => {
     deliveryDriver: "",
     deliveryPlate: "",
     estimatedDeliveryDate: null,
+    // 🟢 เพิ่ม 2 ฟิลด์นี้
+    lotNoChange: "",
+    mfgDateChange: null,
   });
 
   const handleInputChange = (field, value) => {
@@ -148,16 +151,12 @@ const StaffClaimUpdate = () => {
         agentService.getAgent(),
       ]);
 
-      // ใน StaffClaimUpdate_12.jsx
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       if (Array.isArray(agentsData)) {
         agentsData.forEach((agent) => {
-          // ดึงค่า ID และ Code
           const aId = String(agent.agent_id || agent.id);
           const aCode = String(agent.agent_code || "");
-
-          // บันทึกชื่อลง Map ทั้งสอง Key เพื่อป้องกันการส่งรหัส/ID สลับกัน
           if (aId) aMap[aId] = agent.agent_name || agent.name;
           if (aCode) aMap[aCode] = agent.agent_name || agent.name;
         });
@@ -215,6 +214,8 @@ const StaffClaimUpdate = () => {
             delivery_driver: currentClaim.delivery_driver || extraLogData.deliveryDriver || "",
             delivery_plate: currentClaim.delivery_plate || extraLogData.deliveryPlate || "",
             estimated_delivery_date: currentClaim.estimated_delivery_date || extraLogData.estimatedDeliveryDate || null,
+            lot_no_change: currentClaim.lot_no_change || extraLogData.lotNoChange || "",
+            mfg_date_change: currentClaim.mfg_date_change || extraLogData.mfgDateChange || null,
           };
 
           setData(mergedClaimData);
@@ -234,6 +235,8 @@ const StaffClaimUpdate = () => {
             deliveryDriver: mergedClaimData.delivery_driver,
             deliveryPlate: mergedClaimData.delivery_plate,
             estimatedDeliveryDate: mergedClaimData.estimated_delivery_date ? dayjs(mergedClaimData.estimated_delivery_date) : null,
+            lotNoChange: mergedClaimData.lot_no_change || extraLogData.lotNoChange || "",
+            mfgDateChange: mergedClaimData.mfg_date_change ? dayjs(mergedClaimData.mfg_date_change) : (extraLogData.mfg_date_change ? dayjs(extraLogData.mfg_date_change) : null),
           });
 
           const approvesData = resApproves?.data || resApproves || [];
@@ -311,10 +314,61 @@ const StaffClaimUpdate = () => {
       message.warning("อยู่ที่สถานะแรกสุดแล้ว ไม่สามารถถอยได้อีก");
       return;
     }
-    handleInputChange("status", previousStatusName);
-    handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
-    handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
-    setIsModalOpen(true);
+
+    Modal.confirm({
+      title: "ยืนยันการถอยสถานะ",
+      content: `คุณต้องการถอยสถานะกลับไปเป็น "${previousStatusName}" ใช่หรือไม่?`,
+      okText: "ยืนยันถอยสถานะ",
+      cancelText: "ยกเลิก",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await processStatusChange(previousStatusName, true);
+      },
+    });
+  };
+
+  const processStatusChange = async (targetStatus, isSteppingBack = false) => {
+    if (!currentUserId) {
+      message.error("ไม่พบรหัสผู้ใช้งาน กรุณาล็อกอินใหม่อีกครั้ง");
+      return;
+    }
+
+    try {
+      const { images, image, ...cleanData } = data;
+      const realClaimId = cleanData.claim_id || data.claim_id;
+      const statusId = getStatusId(targetStatus);
+
+      const mainRemarkText = isSteppingBack
+        ? `ถอยสถานะย้อนกลับจาก (${currentStatusInDB}) เป็น ${targetStatus}`
+        : `เปลี่ยนสถานะเป็น ${targetStatus}`;
+
+      const updatePayload = {
+        ...cleanData,
+        claim_id: realClaimId,
+        current_status: statusId,
+        status: statusId,
+        status_name: targetStatus,
+        update_by: currentUserId,
+      };
+
+      const resUpdate = await claimService.updateClaim(updatePayload);
+
+      if (resUpdate?.status) {
+        await claimService.createClaimStatusLogs({
+          claim_id: String(realClaimId),
+          status: String(statusId),
+          remark: mainRemarkText,
+          update_by: currentUserId,
+          user_id: currentUserId,
+        });
+
+        message.success(`ถอยสถานะเป็น "${targetStatus}" เรียบร้อยแล้ว`);
+        setIsModalOpen(false);
+        fetchClaimDetail();
+      }
+    } catch (error) {
+      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+    }
   };
 
   const handleOpenRevertModal = () => {
@@ -362,39 +416,26 @@ const StaffClaimUpdate = () => {
 
     const nextOptionsMap = {
       "สร้างรายการเคลม": [
-        { value: "สร้างรายการเคลม", label: "ขั้นที่ 1: สร้างรายการเคลม (คงเดิม)" },
         { value: "รอการพิจารณา", label: "ขั้นที่ 2: รอการพิจารณา" },
       ],
       "รอการพิจารณา": [
-        { value: "สร้างรายการเคลม", label: "↩️ ถอยกลับ: สร้างรายการเคลม" },
-        { value: "รอการพิจารณา", label: "ขั้นที่ 2: รอการพิจารณา (คงเดิม)" },
         { value: "มีสิทธิ์เคลม", label: "ขั้นที่ 3: มีสิทธิ์เคลม" },
         { value: "ไม่มีสิทธิ์เคลม", label: "ขั้นที่ 3: ไม่มีสิทธิ์เคลม (สิ้นสุด)" },
       ],
       "มีสิทธิ์เคลม": [
-        { value: "รอการพิจารณา", label: "↩️ ถอยกลับ: รอการพิจารณา" },
-        { value: "มีสิทธิ์เคลม", label: "ขั้นที่ 3: มีสิทธิ์เคลม (คงเดิม)" },
         { value: "รับสินค้าจริงแล้ว", label: "ขั้นที่ 4: รับสินค้าจริงแล้ว" },
       ],
       "รับสินค้าจริงแล้ว": [
-        { value: "มีสิทธิ์เคลม", label: "↩️ ถอยกลับ: มีสิทธิ์เคลม" },
-        { value: "รับสินค้าจริงแล้ว", label: "ขั้นที่ 4: รับสินค้าจริงแล้ว (คงเดิม)" },
         { value: "อนุมัติเคลมสินค้า", label: "ขั้นที่ 5: อนุมัติเคลมสินค้า" },
         { value: "ไม่อนุมัติเคลมสินค้า", label: "ขั้นที่ 5: ไม่อนุมัติเคลมสินค้า (สิ้นสุด)" },
       ],
       "อนุมัติเคลมสินค้า": [
-        { value: "รับสินค้าจริงแล้ว", label: "↩️ ถอยกลับ: รับสินค้าจริงแล้ว" },
-        { value: "อนุมัติเคลมสินค้า", label: "ขั้นที่ 5: อนุมัติเคลมสินค้า (คงเดิม)" },
         { value: "กำลังดำเนินการเปลี่ยนสินค้า", label: "ขั้นที่ 6: กำลังดำเนินการเปลี่ยนสินค้า" },
       ],
       "กำลังดำเนินการเปลี่ยนสินค้า": [
-        { value: "อนุมัติเคลมสินค้า", label: "↩️ ถอยกลับ: อนุมัติเคลมสินค้า" },
-        { value: "กำลังดำเนินการเปลี่ยนสินค้า", label: "ขั้นที่ 6: กำลังดำเนินการเปลี่ยนสินค้า (คงเดิม)" },
         { value: "กำลังจัดส่งสินค้าเคลม", label: "ขั้นที่ 7: กำลังจัดส่งสินค้าเคลม" },
       ],
       "กำลังจัดส่งสินค้าเคลม": [
-        { value: "กำลังดำเนินการเปลี่ยนสินค้า", label: "↩️ ถอยกลับ: กำลังดำเนินการเปลี่ยนสินค้า" },
-        { value: "กำลังจัดส่งสินค้าเคลม", label: "ขั้นที่ 7: กำลังจัดส่งสินค้าเคลม (คงเดิม)" },
         { value: "จัดส่งสินค้าเคลมสำเร็จ", label: "ขั้นที่ 8: จัดส่งสินค้าเคลมสำเร็จ" },
       ],
     };
@@ -439,9 +480,10 @@ const StaffClaimUpdate = () => {
     try {
       const { images, image, ...cleanData } = data;
       const realClaimId = cleanData.claim_id || data.claim_id;
-      const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, withdrawDate, returnedQty, approvedQty, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
+      const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, withdrawDate, returnedQty, approvedQty, deliveryDriver, deliveryPlate, estimatedDeliveryDate, lotNoChange, mfgDateChange } = formData;
 
       const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
+     
       const statusId = getStatusId(status);
 
       const extraData = {
@@ -455,6 +497,8 @@ const StaffClaimUpdate = () => {
         deliveryDriver,
         deliveryPlate,
         estimatedDeliveryDate: formatDatePayload(estimatedDeliveryDate),
+        lotNoChange, // 👈 เพิ่ม
+        mfgDateChange: formatDatePayload(mfgDateChange), // 👈 เพิ่ม
       };
 
       const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
@@ -505,9 +549,11 @@ const StaffClaimUpdate = () => {
         delivery_driver: status === "กำลังจัดส่งสินค้าเคลม" || cleanData.delivery_driver ? deliveryDriver : "",
         delivery_plate: status === "กำลังจัดส่งสินค้าเคลม" || cleanData.delivery_plate ? deliveryPlate : "",
         estimated_delivery_date: status === "กำลังจัดส่งสินค้าเคลม" || cleanData.estimated_delivery_date ? formatDatePayload(estimatedDeliveryDate) : "",
-
+        lot_no_change: status === "กำลังดำเนินการเปลี่ยนสินค้า" && lotNoChange ? lotNoChange : cleanData.lot_no_change,
+        mfg_date_change: status === "กำลังดำเนินการเปลี่ยนสินค้า" && mfgDateChange ? formatDatePayload(mfgDateChange) : cleanData.mfg_date_change,
         ...timestampUpdates,
         update_by: currentUserId,
+        
       };
 
       const resUpdate = await claimService.updateClaim(updatePayload);
@@ -546,7 +592,6 @@ const StaffClaimUpdate = () => {
             }
           } catch (delErr) {
             console.error("Error จาก Backend createDelivery:", delErr?.response?.data || delErr.message);
-            message.warning("อัปเดตสถานะสำเร็จ แต่บันทึกข้อมูล Delivery ไม่สำเร็จ");
           }
         }
 
@@ -625,43 +670,37 @@ const StaffClaimUpdate = () => {
     ];
   };
 
-  // 1. คำนวณชื่อ Agent ให้ครอบคลุมทุก Field ที่เป็นไปได้
-    const creatorUserId = data ? String(data.user_id || data.created_by || "") : "";
-    const claimAgentId = data ? String(data.agent_id || "") : "";
-    const claimAgentCode = data ? String(data.agent_code || "") : "";
-    // ตัวอย่างการดึงวันที่รับสินค้าจริงจาก Timestamp ใน Log หรือ Claim Data
-    const driverReceiveLogDate = getLogDate("4"); // หรือใช้ data.driver_receive_date
-    // ค้นหา Log ของสถานะ "จัดส่งสำเร็จ" (ID: 9)
-    const deliverySuccessLog = statusLogs.find(
-      (log) => String(log.status || log.status_id) === "10"
-    );
+  const creatorUserId = data ? String(data.user_id || data.created_by || "") : "";
+  const claimAgentId = data ? String(data.agent_id || "") : "";
+  const claimAgentCode = data ? String(data.agent_code || "") : "";
+  const driverReceiveLogDate = getLogDate("4");
 
-    // ดึง user_id จาก log จัดส่งสำเร็จ แล้วหาชื่อจาก usersMap
-    const deliverySuccessUserId = deliverySuccessLog 
-      ? String(deliverySuccessLog.update_by || deliverySuccessLog.user_id || "") 
-      : "";
-    const deliverySuccessNameDisplay = usersMap[deliverySuccessUserId] || "-";
+  const deliverySuccessLog = statusLogs.find(
+    (log) => String(log.status || log.status_id) === "10"
+  );
 
-    // ค้นหา Log ของสถานะ "รับสินค้าแล้ว" (ID: 4)
-    const receiveLog = statusLogs.find(
-      (log) => String(log.status || log.status_id) === "4"
-    );                    
-    // ดึง user_id จาก log แล้วไปค้นชื่อจาก usersMap
+  const deliverySuccessUserId = deliverySuccessLog 
+    ? String(deliverySuccessLog.update_by || deliverySuccessLog.user_id || "") 
+    : "";
+  const deliverySuccessNameDisplay = usersMap[deliverySuccessUserId] || "-";
+
+  const receiveLog = statusLogs.find(
+    (log) => String(log.status || log.status_id) === "4"
+  );                    
+
   const receiverUserId = receiveLog ? String(receiveLog.update_by || receiveLog.user_id || "") : "";
   const receiverNameDisplay = usersMap[receiverUserId] || "-";        
 
-    // ค้นหาชื่อจาก agentsMap ตามลำดับ priority
-const matchedAgentName = 
-  agentsMap[claimAgentId] || 
-  agentsMap[claimAgentCode] || 
-  getAgentNameByUserId(creatorUserId, usersList, agentsMap);
+  const matchedAgentName = 
+    agentsMap[claimAgentId] || 
+    agentsMap[claimAgentCode] || 
+    getAgentNameByUserId(creatorUserId, usersList, agentsMap);
 
-const agentNameDisplay = 
-  matchedAgentName !== "-" && matchedAgentName 
-    ? matchedAgentName 
-    : (data?.agent_name || data?.agentName || "-");
+  const agentNameDisplay = 
+    matchedAgentName !== "-" && matchedAgentName 
+      ? matchedAgentName 
+      : (data?.agent_name || data?.agentName || "-");
 
-  // --- [2. คำนวณชื่อ ผู้แจ้งส่งคืน/ผู้สร้างรายการ] ---
   const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || data?.reporter || "-";
 
   return (
@@ -680,60 +719,60 @@ const agentNameDisplay =
               <ClaimStatusTag status={data.current_status || data.status} />
             </div>
 
-            <div>
-              <Button
-                type="default"
-                icon={<PrinterOutlined />}
-                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
-                style={{ paddingLeft: "16px", paddingRight: "16px" }}
-                onClick={() => setIsPreviewModalOpen(true)}
-              >
-                พิมพ์ / ดาวน์โหลดเอกสาร
-              </Button>
-              <ClaimPrintModal
-                open={isPreviewModalOpen}
-                onClose={() => setIsPreviewModalOpen(false)}
-                isStaff={true}
-                data={{
-                  ...data,
-                  claimNo: data.claim_no || data.claim_id,
-                  productName: productName,
-                  receiverName: receiverNameDisplay,
-                  approverName: approveLogs.length > 0 
-                    ? usersMap[String(approveLogs[approveLogs.length - 1]?.approve_by)] || "พรนภา แก่นเมือง"
-                    : "อารียา, สุรศักดิ์, ยุทธพงษ์",
-                  receiveDate: (() => {
-                    const targetDate = driverReceiveLogDate !== "-" ? driverReceiveLogDate : data?.claim_date;
-                    if (!targetDate || targetDate === "-") return "-";
-                    return String(targetDate).trim().split(" ")[0];
-                  })(),
-                  createdDate: getLogDate("1") !== "-" 
-                    ? getLogDate("1").split(" ")[0] 
-                    : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
-                  
-                  // ดึงวันที่จาก Log ID 10 ก่อน
-                  deliverySuccessDate: (() => {
-                    const log10 = getLogDate("10");
-                    const log9 = getLogDate("9");
-                    const targetLog = log10 !== "-" ? log10 : log9;
-                    return targetLog !== "-" ? targetLog.split(" ")[0] : "-";
-                  })(),
+            {/* ซ่อนปุ่มพิมพ์/ดาวน์โหลด จนกว่าสถานะจะเป็น รับสินค้าจริงแล้ว ขึ้นไป (Priority >= 4) */}
+            {STATUS_PRIORITY[currentStatusInDB] >= 4 && (
+              <div>
+                <Button
+                  type="default"
+                  icon={<PrinterOutlined />}
+                  className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                  style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                  onClick={() => setIsPreviewModalOpen(true)}
+                >
+                  พิมพ์ / ดาวน์โหลดเอกสาร
+                </Button>
+                <ClaimPrintModal
+                  open={isPreviewModalOpen}
+                  onClose={() => setIsPreviewModalOpen(false)}
+                  isStaff={true}
+                  data={{
+                    ...data,
+                    claimNo: data.claim_no || data.claim_id,
+                    productName: productName,
+                    receiverName: receiverNameDisplay,
+                    approverName: approveLogs.length > 0 
+                      ? usersMap[String(approveLogs[approveLogs.length - 1]?.approve_by)] || "พรนภา แก่นเมือง"
+                      : "อารียา, สุรศักดิ์, ยุทธพงษ์",
+                    receiveDate: (() => {
+                      const targetDate = driverReceiveLogDate !== "-" ? driverReceiveLogDate : data?.claim_date;
+                      if (!targetDate || targetDate === "-") return "-";
+                      return String(targetDate).trim().split(" ")[0];
+                    })(),
+                    createdDate: getLogDate("1") !== "-" 
+                      ? getLogDate("1").split(" ")[0] 
+                      : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
+                    
+                    deliverySuccessDate: (() => {
+                      const log10 = getLogDate("10");
+                      const log9 = getLogDate("9");
+                      const targetLog = log10 !== "-" ? log10 : log9;
+                      return targetLog !== "-" ? targetLog.split(" ")[0] : "-";
+                    })(),
 
-                  agentName: agentNameDisplay,
-                  agent_name: agentNameDisplay,
-                  reporter: reporterNameDisplay,
-                  
-                  // ดึงชื่อผู้กดรับสินค้า หรือ Fallback เป็นชื่อเอเย่นต์
-                  deliverySuccessName: deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay,
-                  
-                  driverName: data.driver_name || "-",
-                  claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
-                  withdrawDate: data.withdraw_date
-                }}
-              />
-            </div>
+                    agentName: agentNameDisplay,
+                    agent_name: agentNameDisplay,
+                    reporter: reporterNameDisplay,
+                    deliverySuccessName: deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay,
+                    driverName: data.driver_name || "-",
+                    claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
+                    withdrawDate: data.withdraw_date
+                  }}
+                />
+              </div>
+            )}
 
-            {previousStatusName && (
+            {/* แสดงปุ่มถอยสถานะเฉพาะกรณีที่ไม่ได้อยู่ในสถานะสุดท้าย (isFinalStatus = false) */}
+            {!isFinalStatus && previousStatusName && (
               <Button
                 type="default"
                 icon={<UndoOutlined />}
@@ -745,6 +784,7 @@ const agentNameDisplay =
               </Button>
             )}
 
+            {/* ปุ่มสถานะสุดท้าย */}
             {isFinalStatus ? (
               <Button
                 type="primary"
@@ -763,7 +803,22 @@ const agentNameDisplay =
                 className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl font-medium shrink-0 h-10 shadow-md"
                 style={{ paddingLeft: "24px", paddingRight: "24px" }}
                 onClick={() => {
-                  handleInputChange("status", currentStatusInDB);
+                  const options = getSelectOptions();
+                  
+                  const forwardOptions = options.filter(
+                    (opt) => !opt.label.includes("(คงเดิม)") && !opt.label.includes("ถอยกลับ")
+                  );
+
+                  let defaultStatus = currentStatusInDB;
+
+                  if (forwardOptions.length === 1) {
+                    defaultStatus = forwardOptions[0].value;
+                  } 
+                  else if (forwardOptions.length > 1) {
+                    defaultStatus = null; 
+                  }
+
+                  handleInputChange("status", defaultStatus);
                   handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
                   handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
                   setIsModalOpen(true);
@@ -834,8 +889,8 @@ const agentNameDisplay =
               </Descriptions.Item>
               <Descriptions.Item label="สินค้า"><span className="font-medium text-slate-800">{productName}</span></Descriptions.Item>
               <Descriptions.Item label="Lot Number"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.lot_no || data.lot || "-"}</span></Descriptions.Item>
-              <Descriptions.Item label="MFG Number"><span className="font-mono">{data.mfg_date ? dayjs(data.mfg_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
-              <Descriptions.Item label="EXP Number"><span className="font-mono">{data.exp_date || data.expire_date ? dayjs(data.exp_date || data.expire_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
+              <Descriptions.Item label="MFG Date"><span className="font-mono">{data.mfg_date ? dayjs(data.mfg_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
+              <Descriptions.Item label="EXP Date"><span className="font-mono">{data.exp_date || data.expire_date ? dayjs(data.exp_date || data.expire_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
               <Descriptions.Item label="จำนวน"><span className="font-medium text-emerald-600 text-base">{data.qty}</span> <span className="text-xs text-gray-500">ขวด/กระป๋อง</span></Descriptions.Item>
               <Descriptions.Item label="รายละเอียดเพิ่มเติม">
                 <div className="whitespace-pre-line text-slate-700 leading-relaxed">
@@ -890,6 +945,19 @@ const agentNameDisplay =
                 }}
               >
                 <Descriptions.Item label="วันที่เบิกสินค้าจากคลัง"><span className="font-mono">{data.withdraw_date ? dayjs(data.withdraw_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
+                {/* Lot Number Change */}
+              <Descriptions.Item label="Lot Number Change">
+                <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-800">
+                  {data.lot_no_change || "-"}
+                </span>
+              </Descriptions.Item>
+
+              {/* MFG Date Change: จัดฟอร์แมตวันที่ DD/MM/YYYY */}
+              <Descriptions.Item label="MFG Date Change">
+                <span className="font-mono text-emerald-600 font-medium">
+                  {data.mfg_date_change ? dayjs(data.mfg_date_change).format("DD/MM/YYYY") : "-"}
+                </span>
+              </Descriptions.Item>
                 <Descriptions.Item label="จำนวนที่ส่งสินค้าคืน"><span className="text-slate-800">{data.returned_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
                 <Descriptions.Item label="จำนวนแตกที่รับรองการเปลี่ยน"><span className="text-emerald-600">{data.approved_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
               </Descriptions>
@@ -1037,13 +1105,19 @@ const agentNameDisplay =
         onCancel={() => setIsModalOpen(false)}
         okText="บันทึกเปลี่ยนสถานะ"
         cancelText="ยกเลิก"
-        okButtonProps={{ className: isFinalStatus ? "bg-amber-600 hover:bg-amber-700 font-normal" : "bg-emerald-600 hover:bg-emerald-700 font-normal" }}
+        okButtonProps={{ 
+          disabled: !formData.status || formData.status === currentStatusInDB,
+          className: isFinalStatus ? "bg-amber-600 hover:bg-amber-700 font-normal" : "bg-emerald-600 hover:bg-emerald-700 font-normal" 
+        }}
       >
         <div className="flex flex-col gap-4 py-3">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">เลือกสถานะใหม่:</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              เลือกสถานะใหม่ <span className="text-red-500">*</span>:
+            </label>
             <Select
               className="w-full"
+              placeholder="-- กรุณาคลิกเพื่อเลือกสถานะใหม่ --"
               value={formData.status}
               onChange={(val) => handleInputChange("status", val)}
               options={getSelectOptions()}
@@ -1085,6 +1159,29 @@ const agentNameDisplay =
                   onChange={(date) => handleInputChange("withdrawDate", date)}
                 />
               </div>
+
+              {/* 🟢 เพิ่มช่องระบุ Lot Number */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Lot Number (ล็อตใหม่ที่เปลี่ยน):</label>
+                <Input 
+                  placeholder="เช่น LOT123456" 
+                  value={formData.lotNoChange} 
+                  onChange={(e) => handleInputChange("lotNoChange", e.target.value)} 
+                />
+              </div>
+
+              {/* 🟢 เพิ่มช่องระบุ MFG Date */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">MFG Date (วันผลิตล็อตใหม่):</label>
+                <DatePicker
+                  className="w-full"
+                  format="DD/MM/YYYY"
+                  placeholder="เลือกวันที่ผลิต"
+                  value={formData.mfgDateChange ? (dayjs.isDayjs(formData.mfgDateChange) ? formData.mfgDateChange : dayjs(formData.mfgDateChange)) : null}
+                  onChange={(date) => handleInputChange("mfgDateChange", date)}
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่ส่งสินค้าคืน (ขวด/กระป๋อง):</label>
                 <Input type="number" placeholder="เช่น 48" value={formData.returnedQty} onChange={(e) => handleInputChange("returnedQty", e.target.value)} />

@@ -24,6 +24,13 @@ app.use("/api",loginRoute);
 app.use("/api",deliveryRoute);
 const PORT = process.env.PORT || 3000;
 
+/*
 app.listen(PORT, () => {
     console.log(`Server Running : http://localhost:${PORT}`);
+});
+*/
+
+// แก้ไขจากเดิม
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server Running on port ${PORT} (Binding to 0.0.0.0)`);
 });

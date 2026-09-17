@@ -178,7 +178,8 @@ const CustomerClaimDetail = () => {
       }
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + error.message);
-    } finally {
+    } 
+    finally {
       setLoading(false);
     }
   };
@@ -260,46 +261,45 @@ const CustomerClaimDetail = () => {
     return "-";
   };
 
-  // ตัวอย่างการปรับปรุงฟังก์ชัน handleConfirmDelivery ใน CustomerClaimDetail.jsx
-const handleConfirmDelivery = async () => {
-  try {
-    const currentUser = loginService.getCurrentUser();
-    const userId = currentUser?.user_id || currentUser?.agent_id || data?.agent_id || "";
-    const currentTimestamp = new Date().toISOString();
+  const handleConfirmDelivery = async () => {
+    try {
+      const currentUser = loginService.getCurrentUser();
+      const userId = currentUser?.user_id || currentUser?.agent_id || data?.agent_id || "";
+      const currentTimestamp = new Date().toISOString();
 
-    const { images, ...claimDataWithoutImages } = data;
+      const { images, ...claimDataWithoutImages } = data;
 
-    const updatePayload = {
-      ...claimDataWithoutImages,
-      claim_id: String(data.claim_id),
-      claim_no: String(data.claim_no || ""),
-      agent_id: String(data.agent_id || currentUser?.agent_id || ""),
-      current_status: "10",
-      status: "10",
-      status_name: "จัดส่งสินค้าเคลมสำเร็จ",
-      receive_finish_date: currentTimestamp,
-      update_by: String(userId),
-    };
-
-    const resUpdate = await claimService.updateClaim(updatePayload);
-
-    if (resUpdate.status) {
-      await claimService.createClaimStatusLogs({
+      const updatePayload = {
+        ...claimDataWithoutImages,
         claim_id: String(data.claim_id),
+        claim_no: String(data.claim_no || ""),
+        agent_id: String(data.agent_id || currentUser?.agent_id || ""),
+        current_status: "10",
         status: "10",
         status_name: "จัดส่งสินค้าเคลมสำเร็จ",
-        remark: "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว",
+        receive_finish_date: currentTimestamp,
         update_by: String(userId),
-        agent_id: String(data.agent_id || currentUser?.agent_id || ""),
-      });
+      };
 
-      message.success("ยืนยันรับสินค้าเคลมเรียบร้อยแล้ว");
-      fetchClaimDetail();
+      const resUpdate = await claimService.updateClaim(updatePayload);
+
+      if (resUpdate.status) {
+        await claimService.createClaimStatusLogs({
+          claim_id: String(data.claim_id),
+          status: "10",
+          status_name: "จัดส่งสินค้าเคลมสำเร็จ",
+          remark: "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว",
+          update_by: String(userId),
+          agent_id: String(data.agent_id || currentUser?.agent_id || ""),
+        });
+
+        message.success("ยืนยันรับสินค้าเคลมเรียบร้อยแล้ว");
+        fetchClaimDetail();
+      }
+    } catch (error) {
+      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
     }
-  } catch (error) {
-    message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
-  }
-};
+  };
 
   const renderDotIcon = (IconComponent) => (
     <div className="relative flex items-center justify-center w-full h-full">
@@ -352,7 +352,6 @@ const handleConfirmDelivery = async () => {
 
   const isShipping = currentStatusId === "9" || data.current_status === "กำลังจัดส่งสินค้าเคลม";
 
-  // ดึงตัวแปรและข้อมูลสำหรับแสดงผลและส่งเข้า ClaimPrintModal
   const creatorUserId = data ? String(data.user_id || data.created_by || "") : "";
   const claimAgentId = data ? String(data.agent_id || "") : "";
   const claimAgentCode = data ? String(data.agent_code || "") : "";
@@ -390,58 +389,56 @@ const handleConfirmDelivery = async () => {
               {getStatusTag(data.current_status)}
             </div>
 
-            <div>
-              <Button
-                type="default"
-                icon={<PrinterOutlined />}
-                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
-                style={{ paddingLeft: "16px", paddingRight: "16px" }}
-                onClick={() => setIsPreviewModalOpen(true)}
-              >
-                พิมพ์ / ดาวน์โหลดเอกสาร
-              </Button>
-              <ClaimPrintModal
-                open={isPreviewModalOpen}
-                onClose={() => setIsPreviewModalOpen(false)}
-                data={{
-                  ...data,
-                  claimNo: data.claim_no || data.claim_id,
-                  productName: productName,
-                  receiverName: "-",
-                  approverName: "-",
-                  receiveDate: (() => {
-                    const targetDate = driverReceiveLogDate !== "-" ? driverReceiveLogDate : data?.claim_date;
-                    if (!targetDate || targetDate === "-") return "-";
-                    return String(targetDate).trim().split(" ")[0];
-                  })(),
-                  createdDate: getLogDate("1") !== "-" 
-                    ? getLogDate("1").split(" ")[0] 
-                    : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
-                  
-                  // ดึงวันที่จาก Log ID 10 เป็นหลัก
-                  deliverySuccessDate: (() => {
-                    const log10 = getLogDate("10");
-                    const log9 = getLogDate("9");
-                    const targetLog = log10 !== "-" ? log10 : log9;
-                    return targetLog !== "-" ? targetLog.split(" ")[0] : "-";
-                  })(),
+            {STATUS_PRIORITY[currentStatusInDB] >= 4 && (
+              <div>
+                <Button
+                  type="default"
+                  icon={<PrinterOutlined />}
+                  className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                  style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                  onClick={() => setIsPreviewModalOpen(true)}
+                >
+                  พิมพ์ / ดาวน์โหลดเอกสาร
+                </Button>
+                <ClaimPrintModal
+                  open={isPreviewModalOpen}
+                  onClose={() => setIsPreviewModalOpen(false)}
+                  data={{
+                    ...data,
+                    claimNo: data.claim_no || data.claim_id,
+                    productName: productName,
+                    receiverName: "-",
+                    approverName: "-",
+                    receiveDate: (() => {
+                      const targetDate = driverReceiveLogDate !== "-" ? driverReceiveLogDate : data?.claim_date;
+                      if (!targetDate || targetDate === "-") return "-";
+                      return String(targetDate).trim().split(" ")[0];
+                    })(),
+                    createdDate: getLogDate("1") !== "-" 
+                      ? getLogDate("1").split(" ")[0] 
+                      : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
+                    
+                    deliverySuccessDate: (() => {
+                      const log10 = getLogDate("10");
+                      const log9 = getLogDate("9");
+                      const targetLog = log10 !== "-" ? log10 : log9;
+                      return targetLog !== "-" ? targetLog.split(" ")[0] : "-";
+                    })(),
 
-                  agentName: agentNameDisplay,
-                  agent_name: agentNameDisplay,
-                  reporter: reporterNameDisplay,
-                  
-                  // หากมีชื่อคนกดรับสินค้า (Log ID 10) ให้ใช้ชื่อนั้น ถ้าไม่มีให้ใช้ agentNameDisplay
-                  deliverySuccessName: deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay,
-                  
-                  driverName: data.driver_name || "-",
-                  claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
-                  withdrawDate: data.withdraw_date,
-                  approved_qty: "-",
-                  detail:  "-"
-                }}
-                isStaff={false}
-              />
-            </div>
+                    agentName: agentNameDisplay,
+                    agent_name: agentNameDisplay,
+                    reporter: reporterNameDisplay,
+                    deliverySuccessName: deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay,
+                    driverName: data.driver_name || "-",
+                    claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
+                    withdrawDate: data.withdraw_date,
+                    approved_qty: "-",
+                    detail: "-"
+                  }}
+                  isStaff={false}
+                />
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -489,7 +486,7 @@ const handleConfirmDelivery = async () => {
       {/* Responsive Grid Details */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
         
-        {/* คอลัมน์ซ้าย (ฝั่งข้อมูลหลัก) */}
+        {/* คอลัมน์ซ้าย */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
           <Card title={<span className="font-medium text-slate-800">รายละเอียดสินค้าและข้อมูลการแจ้ง</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
             <Descriptions 
@@ -531,7 +528,6 @@ const handleConfirmDelivery = async () => {
             </Descriptions>
           </Card>
 
-          {/* Card ข้อมูลการรับสินค้าเคลม */}
           {(STATUS_PRIORITY[currentStatusInDB] >= 4 || Boolean(data.driver_name && data.driver_name.trim())) && (
             <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
               <Descriptions 
@@ -558,7 +554,6 @@ const handleConfirmDelivery = async () => {
             </Card>
           )}
 
-          {/* Card ข้อมูลการจัดส่งสินค้าเคลม */}
           {(STATUS_PRIORITY[currentStatusInDB] >= 7 || Boolean(data.delivery_driver && data.delivery_driver.trim())) && (
             <Card title={<span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
               <Descriptions 
@@ -587,7 +582,7 @@ const handleConfirmDelivery = async () => {
           )}
         </div>
 
-        {/* คอลัมน์ขวา (รูปภาพ + ปุ่มดำเนินการ) */}
+        {/* คอลัมน์ขวา */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
           <Card title={<span className="font-medium text-slate-800">รูปภาพหลักฐาน</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
             {data.images && data.images.length > 0 ? (
@@ -608,6 +603,36 @@ const handleConfirmDelivery = async () => {
             ) : (
               <div className="text-gray-400 italic py-6 text-center">ไม่มีรูปภาพแนบ</div>
             )}
+          </Card>
+
+          {/* 🟢 Card ประวัติการบันทึกสถานะ */}
+          <Card 
+            title={<span className="font-medium text-slate-800">ประวัติการบันทึกสถานะ</span>} 
+            className="rounded-2xl shadow-sm border-gray-200 w-full" 
+            bodyStyle={{ padding: "16px 24px" }}
+          >
+            <Descriptions 
+              column={1} 
+              bordered 
+              size="small" 
+              labelStyle={{ 
+                fontWeight: "500", 
+                color: "#475569", 
+                width: "130px", 
+                backgroundColor: "#f8fafc", 
+                fontSize: "12px",
+                verticalAlign: "top"
+              }}
+              contentStyle={{
+                color: "#1e293b",
+                fontSize: "12px",
+                wordBreak: "break-word"
+              }}
+            >
+              <Descriptions.Item label="อัปเดตล่าสุด ณ เวลา">
+                <span className="font-mono">{formatDate(data.updated_at)}</span>
+              </Descriptions.Item>
+            </Descriptions>
           </Card>
 
           <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px" }}>

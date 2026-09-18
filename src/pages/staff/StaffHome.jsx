@@ -9,6 +9,9 @@ import StaffClaimCard from "../../components/StaffClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
+import agentService from "../../services/agentService";
+import userService from "../../services/userService";
+import { getAgentNameByUserId } from "../../utils/agentHelper";
 
 const StaffHome = () => {
   const navigate = useNavigate();
@@ -17,6 +20,8 @@ const StaffHome = () => {
   const [latestClaims, setLatestClaims] = useState([]);
   const [loading, setLoading] = useState(false);
   const [itemsMap, setItemsMap] = useState({});
+  const [agentsMap, setAgentsMap] = useState({});
+  const [usersList, setUsersList] = useState([]);
 
   useEffect(() => {
     fetchClaimsAndItems();
@@ -48,11 +53,34 @@ const StaffHome = () => {
     setLoading(true);
 
     try {
-      const [resClaim, resItems] = await Promise.all([
+      const [resClaim, resItems, resAgents, resUsers] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
+        agentService.getAgent(),
+        userService.getUsers(),
       ]);
 
+      // 1. สร้าง agentsMap
+      const aMap = {};
+      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || "");
+          const name = agent.agent_name || agent.name;
+          if (aId) aMap[aId] = name;
+          if (aCode) aMap[aCode] = name;
+        });
+        setAgentsMap(aMap);
+      }
+
+      // 2. เก็บ usersList
+      const usersData = resUsers?.data || resUsers || [];
+      if (Array.isArray(usersData)) {
+        setUsersList(usersData);
+      }
+
+      // 3. สร้าง itemsMap
       const itemsData = resItems?.data || resItems || [];
       const map = {};
       if (Array.isArray(itemsData)) {
@@ -229,7 +257,7 @@ const StaffHome = () => {
           >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการค้างสถานะเดิมเกิน 3 วัน
+                รายการค้างเกิน 3 วัน
               </span>
               <span 
                 className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
@@ -282,19 +310,36 @@ const StaffHome = () => {
             </div>
           ) : latestClaims.length > 0 ? (
             <div className="flex flex-col gap-3.5 w-full">
-              {latestClaims.map((claim) => (
-                <StaffClaimCard
-                  key={claim.claim_id || claim.claim_no}
-                  claim={{
-                    ...claim,
-                    item_name:
-                      itemsMap[claim.item_id] ||
-                      claim.item_name ||
-                      `สินค้า ID: ${claim.item_id}`,
-                  }}
-                  layout="horizontal"
-                />
-              ))}
+              {latestClaims.map((claim) => {
+                const creatorUserId = String(claim.user_id || claim.created_by || "");
+                const claimAgentId = String(claim.agent_id || "");
+                const claimAgentCode = String(claim.agent_code || "");
+
+                const matchedAgentName = 
+                  agentsMap[claimAgentId] || 
+                  agentsMap[claimAgentCode] || 
+                  getAgentNameByUserId(creatorUserId, usersList, agentsMap);
+
+                const agentName = 
+                  (matchedAgentName && matchedAgentName !== "-") 
+                    ? matchedAgentName 
+                    : (claim.agent_name || claim.agentName || "-");
+
+                return (
+                  <StaffClaimCard
+                    key={claim.claim_id || claim.claim_no}
+                    claim={{
+                      ...claim,
+                      item_name:
+                        itemsMap[claim.item_id] ||
+                        claim.item_name ||
+                        `สินค้า ID: ${claim.item_id}`,
+                      agent_name: agentName, // 👈 ส่งชื่อ Agent ไปยัง StaffClaimCard
+                    }}
+                    layout="horizontal"
+                  />
+                );
+              })}
             </div>
           ) : (
             <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center my-4 w-full">

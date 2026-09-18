@@ -241,6 +241,17 @@ const CustomerClaimDetail = () => {
 
   const getLogDate = (statusTarget) => {
     const targetId = String(statusTarget);
+
+    // 1. ดึง priority ของสถานะปัจจุบัน และสถานะที่จะแสดงผลใน timeline
+    const currentPriority = CLAIM_STATUS_MAP[currentStatusId]?.priority || 0;
+    const targetPriority = CLAIM_STATUS_MAP[targetId]?.priority || 0;
+
+    // 2. ถ้าไม่ใช่สถานะปฏิเสธการเคลม และขั้นตอนที่จะแสดงผลมี priority สูงกว่าสถานะปัจจุบัน ให้แสดงผลเป็น "-"
+    if (!isRejected && targetPriority > currentPriority) {
+      return "-";
+    }
+
+    // 3. ทำงานดึงเวลาตาม Logic เดิมสำหรับขั้นตอนที่ผ่านไปแล้ว
     const matchingLogs = statusLogs.filter(
       (item) => String(item.status || item.status_id) === targetId
     );

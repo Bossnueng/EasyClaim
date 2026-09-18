@@ -38,6 +38,8 @@ import userService from "../../services/userService";
 import deliveryService from "../../services/deliveryService";
 import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { CLAIM_STATUS_MAP } from "../../constants/claimStatus";
+
 
 const parseExtraDataFromLogs = (logs) => {
   if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
@@ -126,7 +128,6 @@ const StaffClaimUpdate = () => {
     deliveryDriver: "",
     deliveryPlate: "",
     estimatedDeliveryDate: null,
-    // 🟢 เพิ่ม 2 ฟิลด์นี้
     lotNoChange: "",
     mfgDateChange: null,
   });
@@ -176,10 +177,21 @@ const StaffClaimUpdate = () => {
         setUsersMap(uMap);
       }
 
-      if (resClaim?.data) {
-        const currentClaim = resClaim.data.find(
-          (item) => String(item.claim_id) === String(claimId) || item.claim_no === claimId
-        );
+      // 🟢 ปรับปรุงจุดค้นหารายการเคลมให้ยืดหยุ่นและรัดกุมยิ่งขึ้น
+      const claimsList = Array.isArray(resClaim?.data)
+        ? resClaim.data
+        : Array.isArray(resClaim)
+        ? resClaim
+        : [];
+
+      if (claimsList.length > 0) {
+        const targetId = String(claimId || "").trim();
+
+        const currentClaim = claimsList.find((item) => {
+          const itemClaimId = String(item.claim_id || "").trim();
+          const itemClaimNo = String(item.claim_no || "").trim();
+          return itemClaimId === targetId || itemClaimNo === targetId;
+        });
 
         if (currentClaim) {
           let imageUrls = [];
@@ -252,8 +264,10 @@ const StaffClaimUpdate = () => {
             setProductName(foundItem ? foundItem.item_name : `สินค้า ID: ${currentClaim.item_id}`);
           }
         } else {
-          message.error("ไม่พบข้อมูลรายการเคลมนี้");
+          message.error(`ไม่พบข้อมูลรายการเคลมรหัส: ${claimId}`);
         }
+      } else {
+        message.error("ไม่พบข้อมูลรายการเคลมในระบบ");
       }
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
@@ -289,6 +303,17 @@ const StaffClaimUpdate = () => {
 
   const getLogDate = (statusTarget) => {
     const targetId = String(statusTarget);
+    
+    // ดึง Priority (ลำดับ) ของสถานะปัจจุบัน และสถานะที่ต้องการเช็ก
+    const currentPriority = CLAIM_STATUS_MAP[String(currentStatusId)]?.priority || 0;
+    const targetPriority = CLAIM_STATUS_MAP[targetId]?.priority || 0;
+
+    // 1. Guard Clause: เช็กจาก Priority แทนการเช็ก ID ตัวเลขตรงๆ
+    if (currentPriority > 0 && targetPriority > 0 && targetPriority > currentPriority) {
+      return "-";
+    }
+
+    // 2. ดึงเวลาจาก Logs
     const matchingLogs = statusLogs.filter(
       (item) => String(item.status || item.status_id) === targetId
     );
@@ -299,7 +324,8 @@ const StaffClaimUpdate = () => {
       return formatDate(rawDate);
     }
 
-    if (targetId === "1") return formatDate(data.claim_date || data.created_at);
+    // 3. Fallback Data
+    if (targetId === "1" || targetId === "5") return formatDate(data.claim_date || data.created_at);
     if (targetId === "2" || targetId === "6") return formatDate(data.approve_date);
     if (targetId === "4") return formatDate(data.driver_receive_date || data.warehouse_receive_date);
     if (targetId === "8") return formatDate(data.withdraw_date);
@@ -497,8 +523,8 @@ const StaffClaimUpdate = () => {
         deliveryDriver,
         deliveryPlate,
         estimatedDeliveryDate: formatDatePayload(estimatedDeliveryDate),
-        lotNoChange, // 👈 เพิ่ม
-        mfgDateChange: formatDatePayload(mfgDateChange), // 👈 เพิ่ม
+        lotNoChange,
+        mfgDateChange: formatDatePayload(mfgDateChange),
       };
 
       const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
@@ -553,7 +579,6 @@ const StaffClaimUpdate = () => {
         mfg_date_change: status === "กำลังดำเนินการเปลี่ยนสินค้า" && mfgDateChange ? formatDatePayload(mfgDateChange) : cleanData.mfg_date_change,
         ...timestampUpdates,
         update_by: currentUserId,
-        
       };
 
       const resUpdate = await claimService.updateClaim(updatePayload);
@@ -719,7 +744,6 @@ const StaffClaimUpdate = () => {
               <ClaimStatusTag status={data.current_status || data.status} />
             </div>
 
-            {/* ซ่อนปุ่มพิมพ์/ดาวน์โหลด จนกว่าสถานะจะเป็น รับสินค้าจริงแล้ว ขึ้นไป (Priority >= 4) */}
             {STATUS_PRIORITY[currentStatusInDB] >= 4 && (
               <div>
                 <Button
@@ -771,7 +795,6 @@ const StaffClaimUpdate = () => {
               </div>
             )}
 
-            {/* แสดงปุ่มถอยสถานะเฉพาะกรณีที่ไม่ได้อยู่ในสถานะสุดท้าย (isFinalStatus = false) */}
             {!isFinalStatus && previousStatusName && (
               <Button
                 type="default"
@@ -784,7 +807,6 @@ const StaffClaimUpdate = () => {
               </Button>
             )}
 
-            {/* ปุ่มสถานะสุดท้าย */}
             {isFinalStatus ? (
               <Button
                 type="primary"
@@ -945,19 +967,17 @@ const StaffClaimUpdate = () => {
                 }}
               >
                 <Descriptions.Item label="วันที่เบิกสินค้าจากคลัง"><span className="font-mono">{data.withdraw_date ? dayjs(data.withdraw_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
-                {/* Lot Number Change */}
-              <Descriptions.Item label="Lot Number Change">
-                <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-800">
-                  {data.lot_no_change || "-"}
-                </span>
-              </Descriptions.Item>
+                <Descriptions.Item label="Lot Number Change">
+                  <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-800">
+                    {data.lot_no_change || "-"}
+                  </span>
+                </Descriptions.Item>
 
-              {/* MFG Date Change: จัดฟอร์แมตวันที่ DD/MM/YYYY */}
-              <Descriptions.Item label="MFG Date Change">
-                <span className="font-mono text-emerald-600 font-medium">
-                  {data.mfg_date_change ? dayjs(data.mfg_date_change).format("DD/MM/YYYY") : "-"}
-                </span>
-              </Descriptions.Item>
+                <Descriptions.Item label="MFG Date Change">
+                  <span className="font-mono text-emerald-600 font-medium">
+                    {data.mfg_date_change ? dayjs(data.mfg_date_change).format("DD/MM/YYYY") : "-"}
+                  </span>
+                </Descriptions.Item>
                 <Descriptions.Item label="จำนวนที่ส่งสินค้าคืน"><span className="text-slate-800">{data.returned_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
                 <Descriptions.Item label="จำนวนแตกที่รับรองการเปลี่ยน"><span className="text-emerald-600">{data.approved_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
               </Descriptions>
@@ -1160,7 +1180,6 @@ const StaffClaimUpdate = () => {
                 />
               </div>
 
-              {/* 🟢 เพิ่มช่องระบุ Lot Number */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Lot Number (ล็อตใหม่ที่เปลี่ยน):</label>
                 <Input 
@@ -1170,7 +1189,6 @@ const StaffClaimUpdate = () => {
                 />
               </div>
 
-              {/* 🟢 เพิ่มช่องระบุ MFG Date */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">MFG Date (วันผลิตล็อตใหม่):</label>
                 <DatePicker

@@ -157,18 +157,25 @@ const fetchClaimsAndItems = async () => {
             </div>
           ) : latestClaims.length > 0 ? (
             <div className="flex flex-col gap-3.5 w-full">
-              {latestClaims.map((claim) => (
-                <CustomerClaimCard
-                  key={claim.claim_id}
-                  claim={{
-                    ...claim,
-                    item_name: itemsMap[claim.item_id] || `สินค้า ID: ${claim.item_id}`,
-                  }}
-                  onDelete={handleDeleteClaim}
-                  hideDeleteWhenDisabled={true}
-                  layout="horizontal"
-                />
-              ))}
+              {latestClaims.map((claim) => {
+                // 🟢 แปลงวันที่โดยเช็กทั้ง claim_date และ created_at
+                const dateVal = claim.claim_date || claim.created_at;
+                const formattedDate = dateVal ? dayjs(dateVal).format("DD/MM/YY HH:mm") : "-";
+
+                return (
+                  <CustomerClaimCard
+                    key={claim.claim_id}
+                    claim={{
+                      ...claim,
+                      item_name: itemsMap[claim.item_id] || `สินค้า ID: ${claim.item_id}`,
+                      created_at_formatted: formattedDate, // ส่งวันที่ฟอร์แมตแล้ว
+                    }}
+                    onDelete={handleDeleteClaim}
+                    hideDeleteWhenDisabled={true}
+                    layout="horizontal"
+                  />
+                );
+              })}
             </div>
           ) : (
             <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center my-4 w-full">

@@ -23,7 +23,7 @@ exports.upload = multer({ storage: storage });
 
 // 🟢 2. ฟังก์ชันสำหรับส่งการแจ้งเตือนเข้า Microsoft Teams
 const sendTeamsNotification = async (claimData) => {
-  // ⚠️ นำ Webhook URL จาก MS Teams Channel มาตั้งค่าผ่าน .env หรือใส่ URL ตรงนี้
+  //  นำ Webhook URL จาก MS Teams Channel มาตั้งค่าผ่าน .env หรือใส่ URL ตรงนี้
   const webhookUrl =
     process.env.TEAMS_WEBHOOK_URL ||
     "https://default1d8f5d8591094cdaabcf3fa469cbf8.f9.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/05/workflows/b8f5ff483d22437da59977d9cc7987de/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=4h8h9gq_LpLr1lG9DdVsm6iYOen3GGf6LqT5_1ddniQ";
@@ -134,13 +134,13 @@ exports.createClaimimage = async (req, res) => {
         .json({ status: false, message: "กรุณาแนบไฟล์รูปภาพ" });
     }
 
-    const image_path = `/uploads/claims/${req.file.filename}`;
+    const relative_path = `/uploads/claims/${req.file.filename}`;
 
     const pool = await connectDB();
     const result = await pool
       .request()
       .input("claim_id", sql.Int, claim_id)
-      .input("image_path", sql.VarChar, image_path)
+      .input("image_path", sql.VarChar, relative_path)
       .input("image_type", sql.VarChar, image_type).query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_images]
                 (
@@ -159,11 +159,16 @@ exports.createClaimimage = async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS image_id;
             `);
 
+    // 🟢 ดึง Host และ Protocol ของเครื่อง Server (เครื่อง A) อัตโนมัติ
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const full_image_url = `${baseUrl}${relative_path}`;
+
     res.json({
       status: true,
       message: "Insert Success",
       image_id: result.recordset[0].image_id,
-      image_path: image_path,
+      image_path: relative_path, // สำหรับใช้ภายในระบบเดิม
+      image_url: full_image_url, // 🟢 สำหรับให้ Frontend เครื่อง B เอาไป <img src="..."> ได้เลย
     });
   } catch (error) {
     res.status(500).json({
@@ -282,9 +287,18 @@ exports.getClaimImages = async (req, res) => {
                 ORDER BY image_id ASC
             `);
 
+    // 🟢 สร้าง Base URL จาก IP/Domain ของเซิร์ฟเวอร์
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+    // 🟢 เพิ่ม image_url ให้กับทุกรายการรูปภาพ
+    const formattedData = result.recordset.map((img) => ({
+      ...img,
+      image_url: `${baseUrl}${img.image_path}`,
+    }));
+
     res.json({
       status: true,
-      data: result.recordset,
+      data: formattedData, // 🟢 แก้ไขตรงนี้ให้ใช้ formattedData
     });
   } catch (error) {
     res.status(500).json({

@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+
 require("dotenv").config();
 const userRoute = require("./src/routes/userRoute");
 const roleRoute=require("./src/routes/roleRoute");
@@ -13,7 +15,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use('/uploads', express.static('uploads'));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api", userRoute);
 app.use("/api",roleRoute);

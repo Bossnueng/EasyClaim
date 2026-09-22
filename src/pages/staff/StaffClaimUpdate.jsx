@@ -198,9 +198,13 @@ const StaffClaimUpdate = () => {
           try {
             const resImages = await claimService.getClaimImages(currentClaim.claim_id);
             if (resImages?.data && Array.isArray(resImages.data)) {
-              imageUrls = resImages.data.map(
-                (img) => `http://localhost:5000${img.image_path}`
-              );
+              const currentHost = window.location.hostname; // IP เครื่อง Server A
+
+              imageUrls = resImages.data.map((img) => {
+                const rawUrl = img.image_url || img.image_path || "";
+                // 🟢 หาก Backend ส่ง localhost กลับมา ให้แทนที่ด้วย IP เครื่อง A ทันที
+                return rawUrl.replace("localhost", currentHost);
+              });
             }
           } catch (imgErr) {
             console.error("ดึงรูปภาพไม่สำเร็จ:", imgErr);

@@ -130,7 +130,18 @@ const CustomerClaimDetail = () => {
           try {
             const resImages = await claimService.getClaimImages(currentClaim.claim_id);
             if (resImages?.data && Array.isArray(resImages.data)) {
-              imageUrls = resImages.data.map((img) => `http://localhost:5000${img.image_path}`);
+              const currentHost = window.location.hostname; // ดึง IP หรือ Domain ของเครื่อง Server จาก Browser
+
+              imageUrls = resImages.data.map((img) => {
+                // 🟢 กรณีที่ 1: Backend ส่ง image_url แบบสมบูรณ์มาแล้ว
+                if (img.image_url) {
+                  return img.image_url.replace("localhost", currentHost);
+                }
+                
+                // 🟢 กรณีที่ 2: Backend ส่งมาเฉพาะ image_path (Fallback)
+                const path = img.image_path.startsWith("/") ? img.image_path : `/${img.image_path}`;
+                return `http://${currentHost}:5000${path}`;
+              });
             }
           } catch (imgErr) {
             console.error("ดึงรูปภาพไม่สำเร็จ:", imgErr);

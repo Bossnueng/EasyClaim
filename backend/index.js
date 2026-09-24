@@ -17,7 +17,7 @@ app.use(express.json());
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-app.use("/api", userRoute);
+app.use("/api",userRoute);
 app.use("/api",roleRoute);
 app.use("/api",itemRoute);
 app.use("/api",claimRoute);

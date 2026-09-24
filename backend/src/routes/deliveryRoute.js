@@ -12,4 +12,4 @@ router.post("/UpdataDelivery",deliveryController.UpdataDelivery);
 
 router.delete("/DelDelivery",deliveryController.DelDelivery);
 
-module.exports = router;
+module.exports=router;

@@ -3,6 +3,7 @@ const router = express.Router();
 
 const ClaimController = require("../controllers/claimController");
 const { verifyToken } = require("../middleware/authMiddleware");
+const upload=require('../middleware/uplodad');
 
 // GET
 router.get("/getClaim",ClaimController.getClaim);
@@ -15,7 +16,7 @@ router.get("/getClaimByAgent/:agent_id", ClaimController.getClaimByAgent);
 
 
 // INSERT
-router.post("/Claim", ClaimController.creartClaim);
+router.post("/Claim",upload.any(), ClaimController.creartClaim);
 router.post("/ClaimStatusLogs", ClaimController.createClaimStatusLogs);
 router.post("/Claimapproves", ClaimController.createClaimapproves);
 //router.post("/Claimimage", ClaimController.createClaimimage);

@@ -2,9 +2,9 @@ const { sql, connectDB } = require("../config/db");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const axios = require("axios"); // 🟢 Import axios สำหรับส่ง Webhook หา MS Teams
+const axios = require("axios");
 
-// 🟢 1. ตั้งค่าการจัดเก็บไฟล์ภาพลงเครื่อง Server
+//ตั้งค่าการจัดเก็บไฟล์ภาพลงเครื่อง Server
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = "uploads/claims";
@@ -21,7 +21,7 @@ const storage = multer.diskStorage({
 
 exports.upload = multer({ storage: storage });
 
-// 🟢 2. ฟังก์ชันสำหรับส่งการแจ้งเตือนเข้า Microsoft Teams
+//ฟังก์ชันสำหรับส่งการแจ้งเตือนเข้า Microsoft Teams
 const sendTeamsNotification = async (claimData) => {
   //  นำ Webhook URL จาก MS Teams Channel มาตั้งค่าผ่าน .env หรือใส่ URL ตรงนี้
   const webhookUrl =
@@ -103,46 +103,50 @@ exports.getclaimstatuslog = async (req, res) => {
 };
 
 exports.createClaimStatusLogs = async (req, res) => {
-  try {
-    const { claim_id, status, remark, update_by } = req.body;
-    const pool = await connectDB();
-    const result = await pool
-      .request()
-      .input("claim_id", sql.NVarChar, claim_id)
-      .input("status", sql.NVarChar, status)
-      .input("remark", sql.NVarChar(sql.MAX), remark)
-      .input("update_by", sql.Int, update_by).query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
-                (
-                    claim_id,
-                    status,
-                    remark,
-                    update_by,
-                    update_date
-                )
-                VALUES
-                (
-                    @claim_id,
-                    @status,
-                    @remark,
-                    @update_by,
-                    GETDATE()
-                );
-                SELECT SCOPE_IDENTITY() AS log_id;
-            `);
 
-    res.json({
-      status: true,
-      message: "Insert Success",
-      log_id: result.recordset[0].log_id,
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: false,
-      message: error.message,
-    });
-  }
-};
+    try {
+        const { claim_id, status, remark, update_by } = req.body;
+        const update_date = datatime();
+        const pool = await connectDB();
+        const result = await pool.request()
+            .input("claim_id", sql.NVarChar, claim_id)
+            .input("status", sql.NVarChar, status)
+            .input("remark", sql.NVarChar, remark)
+            .input("update_by", sql.Int, update_by)
+            .query(`
+                INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
+            (
+                claim_id,
+                status,
+                remark,
+                update_by,
+                update_date,
+            )
+                VALUES
+            (
+                @claim_id,
+                @status,
+                @remark,
+                @update_by,
+               GETDATE()
+            );
+             SELECT SCOPE_IDENTITY() AS log_id;
+            `);
+        res.json({
+
+            status: true,
+            message: "Insert Success",
+            item_id: result.recordset[0].item_id
+
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+
+}
 
 exports.createClaimimage = async (req, res) => {
   try {

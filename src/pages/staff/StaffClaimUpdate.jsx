@@ -93,7 +93,10 @@ const isValidStatusTransition = (currentStatus, newStatus) => {
 const formatDate = (date) => {
   if (!date) return "-";
   const parsed = dayjs(date);
-  return parsed.isValid() ? parsed.format("DD/MM/YYYY HH:mm") : "-";
+  if (!parsed.isValid()) return "-";
+  
+  // คืนค่าเป็น String รูปแบบ "DD/MM/YYYY HH:mm"
+  return parsed.format("DD/MM/YYYY HH:mm");
 };
 
 const StaffClaimUpdate = () => {
@@ -592,6 +595,7 @@ const StaffClaimUpdate = () => {
         const isReceiveStatus = targetStatusId === 4 || status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว";
         const isDeliveryStatus = targetStatusId === 9 || status === "กำลังจัดส่งสินค้าเคลม";
 
+        // 1. ปรับ deliveryPayload ให้ส่งเฉพาะข้อมูลที่ Backend ตาราง deliveries ต้องการจริง (เพื่อไม่ให้เกิด Error Invalid column name)
         if (isReceiveStatus || isDeliveryStatus) {
           try {
             const rawId = realClaimId;
@@ -602,27 +606,26 @@ const StaffClaimUpdate = () => {
             if (!isNaN(numericClaimId) && numericClaimId > 0) {
               const deliveryPayload = {
                 claim_id: numericClaimId,
-                claim_no: claimNoInput || cleanData.claim_no,
                 driver_id: validDriverId,
-                delivery_status: isReceiveStatus ? "4" : "9",
-                
-                driver_name: isReceiveStatus ? driverName : deliveryDriver,
-                truck_plate: isReceiveStatus ? truckPlate : deliveryPlate,
-                
-                estimated_delivery_date: formatDatePayload(estimatedDeliveryDate),
-                withdraw_date: formatDatePayload(withdrawDate),
-                returned_qty: returnedQty ? Number(returnedQty) : null,
-                approved_qty: approvedQty ? Number(approvedQty) : null,
+                delivery_status: isReceiveStatus ? 4 : 9,
+                receive_date: new Date().toISOString(),
               };
 
               await deliveryService.createDelivery(deliveryPayload);
-            } else {
-              console.error("สร้าง Delivery ไม่สำเร็จเนื่องจาก claim_id ไม่ใช่ Integer:", rawId);
             }
           } catch (delErr) {
             console.error("Error จาก Backend createDelivery:", delErr?.response?.data || delErr.message);
           }
         }
+
+        // 2. บันทึกข้อมูลรายละเอียดทั้งหมดลงใน remark ของ ClaimStatusLog ตามรูปแบบ DATA JSON ในรูปภาพตัวอย่าง
+        await claimService.createClaimStatusLogs({
+          claim_id: String(realClaimId),
+          status: String(statusId),
+          remark: fullRemark, // ใน fullRemark มีการผูก | DATA:{...} ไว้อยู่แล้ว
+          update_by: currentUserId,
+          user_id: currentUserId,
+        });
 
         await claimService.createClaimStatusLogs({
           claim_id: String(realClaimId),
@@ -859,8 +862,8 @@ const StaffClaimUpdate = () => {
 
       <Card
         title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
-        className="rounded-2xl shadow-sm border-gray-200 w-full"
-        bodyStyle={{ padding: "24px 20px" }}
+        className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden"
+        bodyStyle={{ padding: "20px 12px" }}
       >
         <ConfigProvider
           theme={{
@@ -870,18 +873,23 @@ const StaffClaimUpdate = () => {
             },
             components: {
               Steps: {
-                lineWidth: 4,
-                iconSize: 40,
+                lineWidth: 1.5,
+                iconSize: 20,
+                customIconSize: 20,
+                titleFontSize: 11,
+                descriptionFontSize: 8,
               },
             },
           }}
         >
-          <Steps
-            current={getCurrentStep()}
-            status={isRejectedInDB ? "error" : "process"}
-            responsive
-            items={getStepItems()}
-          />
+          <div className="custom-steps-compact w-full overflow-x-auto pb-2">
+            <Steps
+  responsive={true}
+  current={getCurrentStep()}
+  status={isRejectedInDB ? "error" : "process"}
+  items={getStepItems()}
+/>
+          </div>
         </ConfigProvider>
       </Card>
 

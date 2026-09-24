@@ -74,9 +74,15 @@ const MenuList = () => {
             <NavLink to="/staff/list-claim">รายการเคลม</NavLink>
           </Menu.Item>
 
-          <Menu.Item key="staff-chat" icon={<WechatOutlined />}>
+          {/**
+           * 
+           * <Menu.Item key="staff-chat" icon={<WechatOutlined />}>
             <NavLink to="/staff/chat">สนทนาเคส</NavLink>
           </Menu.Item>
+           * 
+           * 
+           */}
+          
 
           <Menu.Item key="staff-setting" icon={<SettingFilled />}>
             <NavLink to="/staff/setting">ตั้งค่า</NavLink>
@@ -99,10 +105,15 @@ const MenuList = () => {
             <NavLink to="/customer/list-claim">รายการเคลม</NavLink>
           </Menu.Item>
 
-          <Menu.Item key="customer-chat" icon={<WechatOutlined />}>
+          {/**
+           * 
+           * <Menu.Item key="customer-chat" icon={<WechatOutlined />}>
             <NavLink to="/customer/chat">สนทนาเคส</NavLink>
           </Menu.Item>
 
+           * 
+           */}
+          
           <Menu.Item key="customer-setting" icon={<SettingFilled />}>
             <NavLink to="/customer/setting">ตั้งค่า</NavLink>
           </Menu.Item>

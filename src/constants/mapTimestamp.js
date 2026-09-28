@@ -1,39 +1,42 @@
 import dayjs from "dayjs";
-import { CLAIM_STATUS_MAP } from "./claimStatus";
+import { CLAIM_STATUS_MAP } from "./claimStatus"; // ดึง Mapping Constants มาใช้แทน Hardcode
 
-// 🎯 แปลงวันที่ให้เป็นเวลา Local แบบเรียบง่าย
-const formatDbDate = (dateString, format = "DD/MM/YYYY HH:mm") => {
-  if (!dateString) return null;
-  const parsed = dayjs(dateString);
-  return parsed.isValid() ? parsed.format(format) : null;
+const DATE_FORMAT = "DD/MM/YYYY HH:mm";
+
+// Helper สำหรับ Format Date ให้ปลอดภัย
+const formatDate = (dateStr) => {
+  if (!dateStr) return null;
+  const parsed = dayjs(dateStr);
+  return parsed.isValid() ? parsed.format(DATE_FORMAT) : null;
 };
 
-export const getClaimStatusTimestamps = (claimData) => {
-  if (!claimData) return {};
+/**
+ * แปลงรายการ Logs ให้เป็น Map ของเวลาตาม Status ID
+ * @param {Array} logs - รายการ claim_status_logs จาก API
+ * @returns {Object} Key เป็น Status ID และ Value เป็นวันที่ที่ Format แล้ว
+ */
+export const getStatusTimeMap = (logs = []) => {
+  if (!Array.isArray(logs)) return {};
 
-  const fieldMapping = {
-    "1": claimData.claim_date || claimData.created_at,
-    "5": claimData.claim_date || claimData.created_at,
-    "2": claimData.approve_date,
-    "3": claimData.updated_at,
-    "4": claimData.warehouse_receive_date || claimData.driver_receive_date,
-    "6": claimData.approve_date,
-    "7": claimData.updated_at,
-    "8": claimData.withdraw_date || claimData.updated_at,
-    "9": claimData.delivery_date,
-    "10": claimData.receive_finish_date,
+  return logs.reduce((acc, log) => {
+    if (log?.status && log?.update_date) {
+      acc[String(log.status)] = formatDate(log.update_date);
+    }
+    return acc;
+  }, {});
+};
+
+/**
+ * ดึงเวลาของแต่ละสถานะเพื่อนำไปแสดงผล
+ */
+export const getTimestampFromLogs = (logs = []) => {
+  const statusTimes = getStatusTimeMap(logs);
+
+  return {
+    createdTime: statusTimes["1"] ?? "-",
+    pendingTime: statusTimes["5"] ?? "-",
+    approvedTime: statusTimes["6"] || statusTimes["2"] || "-",
+    deliveredTime: statusTimes["9"] ?? "-",
+    finishTime: statusTimes["10"] ?? "-",
   };
-
-  const timestamps = {};
-
-  Object.entries(CLAIM_STATUS_MAP).forEach(([key, config]) => {
-    const rawDate = fieldMapping[key];
-    const formattedDate = rawDate ? formatDbDate(rawDate) : "-";
-
-    timestamps[key] = formattedDate;
-    timestamps[config.name] = formattedDate;
-    timestamps[config.customerName] = formattedDate;
-  });
-
-  return timestamps;
 };

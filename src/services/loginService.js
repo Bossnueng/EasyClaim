@@ -1,10 +1,6 @@
 import api from "./api";
 
 export const loginService = {
-  /**
-   * ล็อกอินเข้าสู่ระบบ (POST /checklogin อ้างอิงจาก loginRoute ใน index.js)
-   * @param {Object} credentials - { username, password }
-   */
   login: async (credentials) => {
     try {
       const response = await api.post("/checklogin", {
@@ -25,20 +21,22 @@ export const loginService = {
     }
   },
 
-  /**
-   * ออกจากระบบ
-   */
   logout: () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
   },
 
-  /**
-   * ดึงข้อมูลผู้ใช้งานที่กำลังเข้าสู่ระบบ
-   */
   getCurrentUser: () => {
     const userStr = localStorage.getItem("user");
     return userStr ? JSON.parse(userStr) : null;
+  },
+
+  getToken: () => {
+    return localStorage.getItem("token");
+  },
+
+  isAuthenticated: () => {
+    return !!localStorage.getItem("token");
   },
 };
 

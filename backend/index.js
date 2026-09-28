@@ -15,7 +15,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use('/uploads', express.static(path.join(__dirname, 'src', 'uploads')));
 
 app.use("/api",userRoute);
 app.use("/api",roleRoute);
@@ -34,5 +34,5 @@ app.listen(PORT, () => {
 
 // แก้ไขจากเดิม
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server Running on port ${PORT} (Binding to 0.0.0.0)`);
+    console.log(`Server Running on port ${PORT} (Binding to 0.0.0.0) is connected to DB: ${process.env.DB_DATABASE}`);
 });

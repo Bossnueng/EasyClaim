@@ -1,5 +1,3 @@
-// src/components/StaffClaimCard.jsx
-
 import React from "react";
 import { Popconfirm } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -17,26 +15,39 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
   const navigate = useNavigate();
 
   const claim_id = claim?.claim_id;
-  const claim_no = claim?.claim_no;
+  const claim_no = claim?.claim_no || claim_id;
   const status = claim?.current_status || claim?.status;
-  const productName = claim?.item_name;
+  
+  // 🟢 รวมชื่อรายการสินค้าทั้งหมดด้วยเครื่องหมาย " + "
+  const productName = (() => {
+    if (claim?.item_name && claim.item_name !== "-") {
+      return claim.item_name;
+    }
+    if (Array.isArray(claim?.items) && claim.items.length > 0) {
+      return claim.items
+        .map((i) => i.item_name || i.name || (i.item_id ? `สินค้า ID: ${i.item_id}` : null))
+        .filter(Boolean)
+        .join(" + ");
+    }
+    return "-";
+  })();
+
   const rawDate = claim?.claim_date || claim?.created_at || claim?.createdDate;
   const qty = claim?.qty || 0;
-  const agentName = claim?.agent_name || claim?.agentName || "-";
+  const agentName = claim?.agent_name || claim?.agentName;
 
   const rawRemark = claim?.remark || claim?.claim_reason || claim?.claim_type || claim?.detail || "";
   const claimTypeMatch = rawRemark.match(/\[(.*?)\]/);
   const claimType = claimTypeMatch ? claimTypeMatch[1] : (rawRemark.trim() || "-");
 
   const formattedDate = rawDate && dayjs(rawDate).isValid()
-    ? dayjs(rawDate).format("DD/MM/YY HH:mm")
+    ? dayjs(rawDate).format("DD/MM/YY")
     : rawDate || "-";
 
   const isDisableDelete = NON_DELETABLE_STATUSES.includes(status);
 
   const renderDeleteButton = () => {
     if (!onDelete) return null;
-
     const targetClaimId = claim?.claim_id || claim?.claim_no;
 
     if (isDisableDelete) {
@@ -77,21 +88,23 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
   if (layout === "horizontal") {
     return (
       <div
-        // 🟢 2. แก้ไขการ navigate จาก claim_no เป็น claim_id (หรือใช้ fallback เป็น claim_no)
         onClick={() => navigate(`/staff/update-claim/${claim_id || claim_no}`)}
         style={{ boxSizing: "border-box", padding: "16px 20px" }}
         className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500 transition-all cursor-pointer flex justify-between items-start gap-4 w-full"
       >
-        {/* ฝั่งซ้าย: ชื่อสินค้า, Agent, ประเภทการเคลม, จำนวน */}
+        {/* ฝั่งซ้าย: ชื่อสินค้า, ID, Agent, ประเภทการเคลม, จำนวน */}
         <div className="flex flex-col gap-1.5 min-w-0 flex-1">
           <h4 className="font-bold text-xs sm:text-sm text-slate-800 m-0 break-words leading-snug">
             {productName}
           </h4>
 
           <div className="flex flex-col gap-1 text-[11px] sm:text-xs text-gray-500 font-mono mt-1">
-            <div className="text-emerald-700 font-semibold break-words">
-              Agent: {agentName}
-            </div>
+            {agentName && (
+              <div className="text-emerald-700 font-semibold break-words">
+                Agent: {agentName}
+              </div>
+            )}
+            <div>ID: {claim_no}</div>
             <div className="break-words">
               ประเภทการเคลม : {claimType}
             </div>
@@ -101,20 +114,15 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
           </div>
         </div>
 
-        {/* ฝั่งขวา: สถานะ, ปุ่มลบ, ID (สีดำ ปกติ), วันเวลา */}
+        {/* ฝั่งขวา: สถานะ, ปุ่มลบ, วันเวลา */}
         <div className="flex flex-col items-end justify-between self-stretch gap-2 shrink-0">
           <div className="flex items-center gap-1">
             <ClaimStatusTag status={status} role="staff" />
             {renderDeleteButton()}
           </div>
-          <div className="flex flex-col items-end gap-0.5 font-mono">
-            <span className="text-xs sm:text-sm text-slate-800">
-              ID: {claim_no}
-            </span>
-            <span className="text-[10px] sm:text-xs text-gray-400">
-              {formattedDate}
-            </span>
-          </div>
+          <span className="text-[10px] sm:text-xs text-gray-400 font-mono">
+            {formattedDate}
+          </span>
         </div>
       </div>
     );
@@ -123,7 +131,6 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
   // Layout แนวตั้ง (Vertical)
   return (
     <div
-      // 🟢 3. แก้ไขจุดนี้เช่นกัน
       onClick={() => navigate(`/staff/update-claim/${claim_id || claim_no}`)}
       style={{ boxSizing: "border-box", padding: "20px" }}
       className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500 transition-all cursor-pointer flex flex-col justify-between gap-4 w-full relative group"
@@ -139,19 +146,17 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
       </div>
 
       <div className="flex flex-col gap-1 min-w-0">
-        <div className="flex justify-between items-start gap-2">
-          <h3 className="font-bold text-sm sm:text-base text-slate-800 m-0 break-words leading-snug flex-1">
-            {productName}
-          </h3>
-          <span className="text-sm sm:text-base text-slate-800 font-mono shrink-0">
-            ID: {claim_no}
-          </span>
-        </div>
+        <h3 className="font-bold text-sm sm:text-base text-slate-800 m-0 break-words leading-snug">
+          {productName}
+        </h3>
         
         <div className="flex flex-col gap-1 text-[11px] sm:text-xs text-gray-500 font-mono mt-1">
-          <div className="text-emerald-700 font-semibold break-words">
-            Agent: {agentName}
-          </div>
+          {agentName && (
+            <div className="text-emerald-700 font-semibold break-words">
+              Agent: {agentName}
+            </div>
+          )}
+          <div>ID: {claim_no}</div>
           <div className="break-words">ประเภทการเคลม : {claimType}</div>
         </div>
       </div>

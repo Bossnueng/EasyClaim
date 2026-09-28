@@ -29,7 +29,7 @@ export const claimService = {
     }
   },
 
-  // 🟢 เพิ่ม alias ฟังก์ชันเพื่อให้รองรับ camelCase แบบที่เรียกใช้งานใน UI
+  
   getClaimStatusLogs: async (claimId) => {
     try {
       const response = await api.get("/getclaimstatuslog");
@@ -57,9 +57,22 @@ export const claimService = {
     }
   },    
 
-  createClaim: async (claimData) => {
+  getClaimItems: async (claimId) => {
     try {
-      const response = await api.post("/Claim", claimData);
+      const response = await api.get(`/getClaimItems/${claimId}`);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+  
+  createClaim: async (formData) => {
+    try {
+      const response = await api.post("/Claim", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : new Error(error.message);

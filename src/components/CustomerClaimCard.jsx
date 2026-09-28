@@ -4,30 +4,43 @@ import React from "react";
 import { Popconfirm } from "antd";
 import { useNavigate } from "react-router-dom";
 import { RightOutlined, CodeSandboxOutlined, DeleteOutlined } from "@ant-design/icons";
+import dayjs from "dayjs"; // 🟢 นำเข้า dayjs
 import ClaimStatusTag from "./ClaimStatusTag";
+import { getStatusName } from "../constants/claimStatus";
 
 const NON_DELETABLE_STATUSES = [
   "ไม่มีสิทธิ์เคลม",
   "ไม่อนุมัติเคลมสินค้า",
   "จัดส่งสินค้าเคลมสำเร็จ",
+  "REJECTED",
+  "COMPLETED",
+  "APPROVED"
 ];
 
 const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout = "horizontal" }) => {
   const navigate = useNavigate();
 
   const claim_id = claim?.claim_id;
-  const claim_no = claim?.claim_no;
-  const status = claim?.current_status || claim?.status;
-  const productName = claim?.item_name;
+  const claim_no = claim?.claim_no || claim_id;
+  const rawStatus = claim?.current_status || claim?.status;
+  const displayStatus = getStatusName(rawStatus, "customer");
+  const productName = claim?.item_name || "ไม่พบชื่อสินค้า";
   
-  const createdDate = claim?.created_at_formatted || claim?.createdDate || "-";
+  // 🟢 ดึงค่าวันที่ดิบ
+  const rawDate = claim?.created_at || claim?.created_at_formatted || claim?.createdDate;
+  
+  // 🟢 ตัดเวลาออก แสดงเฉพาะวันที่ DD/MM/YYYY หรือ DD/MM/YY
+  const formattedDate = rawDate && dayjs(rawDate).isValid()
+    ? dayjs(rawDate).format("DD/MM/YY")
+    : (rawDate ? String(rawDate).split(" ")[0] : "-");
+  
   const qty = claim?.qty || 0;
 
   const rawRemark = claim?.remark || claim?.claim_reason || claim?.claim_type || claim?.detail || "";
   const claimTypeMatch = rawRemark.match(/\[(.*?)\]/);
   const claimType = claimTypeMatch ? claimTypeMatch[1] : (rawRemark.trim() || "-");
 
-  const isDisableDelete = NON_DELETABLE_STATUSES.includes(status);
+  const isDisableDelete = NON_DELETABLE_STATUSES.includes(rawStatus) || NON_DELETABLE_STATUSES.includes(displayStatus);
 
   const renderDeleteButton = () => {
     if (!onDelete) return null;
@@ -71,18 +84,15 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
   if (layout === "horizontal") {
     return (
       <div
-        // 🟢 แก้ไขจุดนี้: ใช้ claim_id แทน claim_no
         onClick={() => navigate(`/customer/detail-claim/${claim_id || claim_no}`)}
         style={{ boxSizing: "border-box", padding: "16px 20px" }}
         className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500 transition-all cursor-pointer flex justify-between items-start gap-4 w-full"
       >
         <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-          {/* 🟢 ลดเฉพาะขนาด Font ชื่อสินค้า */}
           <h4 className="font-bold text-xs sm:text-sm text-slate-800 m-0 break-words leading-snug">
             {productName}
           </h4>
           
-          {/* 🟢 ลดเฉพาะขนาด Font รายละเอียด */}
           <div className="flex flex-col gap-1 text-[11px] sm:text-xs text-gray-500 font-mono mt-1">
             <div>ID: {claim_no}</div>
             <div className="break-words">ประเภทการเคลม : {claimType}</div>
@@ -92,13 +102,13 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
           </div>
         </div>
 
-        {/* ฝั่งขวา: ปรับ gap จาก 8px เป็น 4px (gap-1) เพื่อประหยัดพื้นที่ */}
         <div className="flex flex-col items-end justify-between self-stretch gap-2 shrink-0">
           <div className="flex items-center gap-1">
-            <ClaimStatusTag status={status} />
+            <ClaimStatusTag status={rawStatus} role="customer" />
             {renderDeleteButton()}
           </div>
-          <span className="text-[10px] sm:text-xs text-gray-400 font-mono">{createdDate}</span>
+          {/* 🟢 แสดงวันที่โดยไม่มีเวลา */}
+          <span className="text-[10px] sm:text-xs text-gray-400 font-mono">{formattedDate}</span>
         </div>
       </div>
     );
@@ -107,7 +117,6 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
   // Layout แนวตั้ง (Vertical)
   return (
     <div
-      // 🟢 แก้ไขจุดนี้ด้วยเช่นกัน
       onClick={() => navigate(`/customer/detail-claim/${claim_id || claim_no}`)}
       style={{ boxSizing: "border-box", padding: "20px" }}
       className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-500 transition-all cursor-pointer flex flex-col justify-between gap-4 w-full relative group"
@@ -117,7 +126,7 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
           <CodeSandboxOutlined className="text-lg sm:text-xl" />
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <ClaimStatusTag status={status} role="customer" />
+          <ClaimStatusTag status={rawStatus} role="customer" />
           {renderDeleteButton()}
         </div>
       </div>
@@ -141,7 +150,8 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
           จำนวน: <span className="text-emerald-700 font-bold">{qty}</span> ขวด/กระป๋อง
         </span>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] sm:text-xs text-gray-400 font-mono">{createdDate}</span>
+          {/* 🟢 แสดงวันที่โดยไม่มีเวลา */}
+          <span className="text-[10px] sm:text-xs text-gray-400 font-mono">{formattedDate}</span>
           <RightOutlined style={{ fontSize: "10px" }} className="text-emerald-600" />
         </div>
       </div>

@@ -1,3 +1,4 @@
+// src/pages/staff/StaffClaimList.jsx
 import React, { useState, useEffect } from "react";
 import { Input, Empty, message, Spin, DatePicker, Button, Select } from "antd";
 import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined } from "@ant-design/icons";
@@ -10,7 +11,6 @@ import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
 
-// 🔹 เพิ่ม Helper Function สำหรับแกะ DATA จาก remark ของ claimLogs
 const parseDataFromLogs = (logs) => {
   if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
   
@@ -74,12 +74,12 @@ const StaffClaimList = () => {
         setUsersList(usersData);
       }
 
+      const itemMap = {};
       if (resItems && resItems.data) {
-        const map = {};
         resItems.data.forEach((item) => {
-          map[item.item_id] = item.item_name;
+          itemMap[item.item_id] = item.item_name;
         });
-        setItemsMap(map);
+        setItemsMap(itemMap);
       }
 
       const logsData = resLogs?.data || resLogs || [];
@@ -93,9 +93,35 @@ const StaffClaimList = () => {
         setClaimLogsMap(lMap);
       }
 
-      if (resClaim && resClaim.status) {
-        setClaims(resClaim.data);
-      }
+      const rawClaims = resClaim && resClaim.status ? resClaim.data : [];
+
+      // ดึงรายละเอียด Item แต่ละรายการเพิ่ม เพื่อให้ Card แสดงผลได้ครบ
+      const claimsWithItems = await Promise.all(
+  rawClaims.map(async (claim) => {
+    try {
+      const itemRes = await claimService.getClaimItems(claim.claim_id);
+      const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
+      const itemDetails = rawItems[0] || {};
+      
+      // รวมจำนวน qty ทั้งหมดจากทุก items
+      const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+
+      return {
+        ...claim,
+        items: rawItems, // 👈 เก็บรายการสินค้าทั้งหมดลงใน array items
+        item_id: itemDetails.item_id || claim.item_id,
+        qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
+        qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
+        lot_no: itemDetails.lot_no || claim.lot_no || "-",
+        remark: itemDetails.remark || claim.remark || "",
+      };
+    } catch {
+      return claim;
+    }
+  })
+);
+
+      setClaims(claimsWithItems);
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
@@ -148,30 +174,13 @@ const StaffClaimList = () => {
     }
 
     const headers = [
-      "No",
-      "คลังสินค้า",
-      "Date",
-      "เล่มที่",
-      "เลขที่",
-      "ชื่อ พขร. ที่รับสินค้า",
-      "ทะเบียนรถ",
-      "Customer_Category",
-      "Customer_Name",
-      "Item_Category",
-      "Item_Describtion",
-      "รับคืน (ขวด/กระป๋อง)",
-      "แตก (ขวด/กระป๋อง)",
-      "Category_Damage",
-      "สาเหตุการแตก",
-      "ส่วนงาน Case Pick กรอกวันที่เปลี่ยนสินค้า",
-      "ส่วนงาน Case Pick กรอกเวลาเปลี่ยนสินค้า",
-      "เลขที่ใบส่งของ",
-      "วันที่ส่งคืนร้านค้า",
-      "ชื่อ พขร. ที่นำสินค้าแตกส่งคืน",
-      "ทะเบียนรถ2",
-      "วันที่ส่งถึงลูกค้า",
-      "สถานะสินค้า",
-      "มูลค่า (บาท)"
+      "No", "คลังสินค้า", "Date", "เล่มที่", "เลขที่", "ชื่อ พขร. ที่รับสินค้า", 
+      "ทะเบียนรถ", "Customer_Category", "Customer_Name", "Item_Category", 
+      "Item_Describtion", "รับคืน (ขวด/กระป๋อง)", "แตก (ขวด/กระป๋อง)", 
+      "Category_Damage", "สาเหตุการแตก", "ส่วนงาน Case Pick กรอกวันที่เปลี่ยนสินค้า", 
+      "ส่วนงาน Case Pick กรอกเวลาเปลี่ยนสินค้า", "เลขที่ใบส่งของ", 
+      "วันที่ส่งคืนร้านค้า", "ชื่อ พขร. ที่นำสินค้าแตกส่งคืน", "ทะเบียนรถ2", 
+      "วันที่ส่งถึงลูกค้า", "สถานะสินค้า", "มูลค่า (บาท)"
     ];
 
     const csvRows = [headers.join(",")];
@@ -200,34 +209,33 @@ const StaffClaimList = () => {
       const changeDate = withdrawDateTime && withdrawDateTime.isValid() ? withdrawDateTime.format("DD/MM/YYYY") : "-";
       const changeTime = withdrawDateTime && withdrawDateTime.isValid() ? withdrawDateTime.format("HH:mm") : "-";
 
-      // 🔹 แปลงตัวเลขสถานะเป็นชื่อภาษาไทยที่อ่านง่ายด้วย getStatusName
       const displayStatusName = getStatusName(claim.current_status || claim.status, "staff");
 
       const row = [
-        cleanStr(index + 1),                                                              // No
-        cleanStr(claim.warehouse_name || claim.warehouse || "ศูนย์กระจายสินค้าภูมิภาค ขอนแก่น"), // คลังสินค้า
-        cleanStr(claim.claim_date ? dayjs(claim.claim_date).format("M/D/YYYY") : "-"),    // Date
-        cleanStr(claim.book_no || "-"),                                                  // เล่มที่
-        cleanStr(claim.claim_no || logData.claimNoInput || claim.claim_id || "-"),        // เลขที่
-        cleanStr(driverName),                                                             // ชื่อ พขร. ที่รับสินค้า (จาก Log)
-        cleanStr(truckPlate),                                                             // ทะเบียนรถ (จาก Log)
-        cleanStr(claim.customer_category || "CV เมือง 1 จ.ขอนแก่น"),                     // Customer_Category
-        cleanStr(agentName),                                                             // Customer_Name
-        cleanStr(claim.item_category || "GBeer"),                                        // Item_Category
-        cleanStr(itemName),                                                              // Item_Describtion
-        cleanStr(claim.returned_qty ?? logData.returnedQty ?? claim.qty ?? 0),           // รับคืน (ขวด/กระป๋อง)
-        cleanStr(claim.approved_qty ?? logData.approvedQty ?? claim.qty ?? 0),           // แตก (ขวด/กระป๋อง)
-        cleanStr(claim.category_damage || "AGENT"),                                      // Category_Damage
-        cleanStr(claim.remark || claim.claim_reason || "-"),                             // สาเหตุการแตก
-        cleanStr(changeDate),                                                            // ส่วนงาน Case Pick กรอกวันที่เปลี่ยนสินค้า
-        cleanStr(changeTime),                                                            // ส่วนงาน Case Pick กรอกเวลาเปลี่ยนสินค้า
-        cleanStr(claim.delivery_no || "-"),                                              // เลขที่ใบส่งของ
-        cleanStr(claim.delivery_date ? dayjs(claim.delivery_date).format("DD/MM/YYYY") : "-"), // วันที่ส่งคืนร้านค้า
-        cleanStr(deliveryDriver),                                                        // ชื่อ พขร. ที่นำสินค้าแตกส่งคืน
-        cleanStr(deliveryPlate),                                                         // ทะเบียนรถ2
-        cleanStr(claim.estimated_delivery_date || logData.estimatedDeliveryDate ? dayjs(claim.estimated_delivery_date || logData.estimatedDeliveryDate).format("DD/MM/YYYY") : "-"), // วันที่ส่งถึงลูกค้า
-        cleanStr(displayStatusName),                                                     // สถานะสินค้า (เปลี่ยนตัวเลขเป็นภาษาไทยแล้ว)
-        cleanStr(claim.amount || claim.price || 0)                                       // มูลค่า (บาท)
+        cleanStr(index + 1),
+        cleanStr(claim.warehouse_name || claim.warehouse || "ศูนย์กระจายสินค้าภูมิภาค ขอนแก่น"),
+        cleanStr(claim.claim_date ? dayjs(claim.claim_date).format("M/D/YYYY") : "-"),
+        cleanStr(claim.book_no || "-"),
+        cleanStr(claim.claim_no || logData.claimNoInput || claim.claim_id || "-"),
+        cleanStr(driverName),
+        cleanStr(truckPlate),
+        cleanStr(claim.customer_category || "CV เมือง 1 จ.ขอนแก่น"),
+        cleanStr(agentName),
+        cleanStr(claim.item_category || "GBeer"),
+        cleanStr(itemName),
+        cleanStr(claim.returned_qty ?? logData.returnedQty ?? claim.qty ?? 0),
+        cleanStr(claim.approved_qty ?? logData.approvedQty ?? claim.qtychang ?? claim.qty ?? 0),
+        cleanStr(claim.category_damage || "AGENT"),
+        cleanStr(claim.remark || claim.claim_reason || "-"),
+        cleanStr(changeDate),
+        cleanStr(changeTime),
+        cleanStr(claim.delivery_no || "-"),
+        cleanStr(claim.delivery_date ? dayjs(claim.delivery_date).format("DD/MM/YYYY") : "-"),
+        cleanStr(deliveryDriver),
+        cleanStr(deliveryPlate),
+        cleanStr(claim.estimated_delivery_date || logData.estimatedDeliveryDate ? dayjs(claim.estimated_delivery_date || logData.estimatedDeliveryDate).format("DD/MM/YYYY") : "-"),
+        cleanStr(displayStatusName),
+        cleanStr(claim.amount || claim.price || 0)
       ];
 
       csvRows.push(row.join(","));
@@ -355,7 +363,6 @@ const StaffClaimList = () => {
 
         {/* Filter Section */}
         <div className="flex flex-col lg:flex-row gap-2 w-full">
-          {/* ช่องค้นหา */}
           <div className="flex-1 min-w-0">
             <Input
               placeholder="ค้นหาตามชื่อสินค้า, Claim ID หรือชื่อ Agent..."
@@ -367,7 +374,6 @@ const StaffClaimList = () => {
             />
           </div>
 
-          {/* ช่วงวันที่ */}
           <div className="flex gap-2 lg:w-80 shrink-0">
             <DatePicker
               placeholder="เริ่มวันไหน"
@@ -391,7 +397,6 @@ const StaffClaimList = () => {
             />
           </div>
 
-          {/* Dropdown เลือกสถานะ */}
           <div className="lg:w-56 shrink-0">
             <Select
               value={selectedStatus}
@@ -409,10 +414,7 @@ const StaffClaimList = () => {
                     : tabCounts[value] ?? statusCounts[value] ?? 0;
                 return (
                   <div className="flex justify-between items-center w-full pr-1">
-                    <span 
-                      className="text-xs font-medium text-slate-700"
-                      style={{ paddingLeft: "4px" }}
-                    >
+                    <span className="text-xs font-medium text-slate-700" style={{ paddingLeft: "4px" }}>
                       {value}
                     </span>
                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
@@ -449,29 +451,47 @@ const StaffClaimList = () => {
           </div>
         ) : filteredClaims.length > 0 ? (
           <div className="flex flex-col gap-2.5 sm:gap-3 w-full">
-            {filteredClaims.map((claim) => {
-              const agentName = getAgentNameForClaim(claim);
 
-              return (
-                <StaffClaimCard
-                  key={claim.claim_id || claim.claim_no}
-                  claim={{
-                    ...claim,
-                    // 🔹 แปลงค่าสถานะของรายการแต่ละตัวเป็นชื่อภาษาไทยที่อ่านง่ายก่อนส่งให้ Card
-                    current_status: getStatusName(claim.current_status || claim.status, "staff"),
-                    status: getStatusName(claim.status || claim.current_status, "staff"),
-                    item_name:
-                      itemsMap[claim.item_id] ||
-                      claim.item_name ||
-                      `สินค้า ID: ${claim.item_id}`,
-                    agent_name: agentName,
-                  }}
-                  onDelete={handleDeleteClaim}
-                  hideDeleteWhenDisabled={true}
-                  layout="horizontal"
-                />
-              );
-            })}
+{filteredClaims.map((claim) => {
+  const agentName = getAgentNameForClaim(claim);
+
+  // ฟังก์ชันดึงชื่อสินค้าทั้งหมดและเชื่อมด้วยเครื่องหมาย "+"
+  const getDisplayProductName = () => {
+    if (Array.isArray(claim.items) && claim.items.length > 0) {
+      const names = claim.items
+        .map((i) => {
+          const idStr = String(i.item_id || "");
+          return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
+        })
+        .filter(Boolean);
+
+      if (names.length > 0) return names.join(" + ");
+    }
+
+    const singleIdStr = String(claim.item_id || "");
+    return (
+      itemsMap[singleIdStr] ||
+      claim.item_name ||
+      (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
+    );
+  };
+
+  return (
+    <StaffClaimCard
+      key={claim.claim_id || claim.claim_no}
+      claim={{
+        ...claim,
+        current_status: getStatusName(claim.current_status || claim.status, "staff"),
+        status: getStatusName(claim.status || claim.current_status, "staff"),
+        item_name: getDisplayProductName(),
+        agent_name: agentName,
+      }}
+      onDelete={handleDeleteClaim}
+      hideDeleteWhenDisabled={true}
+      layout="horizontal"
+    />
+  );
+})}
           </div>
         ) : (
           <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 sm:p-12 text-center my-2 w-full">

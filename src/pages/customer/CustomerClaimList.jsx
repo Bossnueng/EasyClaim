@@ -48,6 +48,7 @@ const CustomerClaimList = () => {
 
     setLoading(true);
     try {
+      // 1. ดึงข้อมูล Master Items และ รายการ Claims เฉพาะ Agent ตัวเอง
       const [resClaim, resItems] = await Promise.all([
         claimService.getClaimByAgent(agentId),
         itemService.getItems(),
@@ -61,11 +62,34 @@ const CustomerClaimList = () => {
         setItemsMap(map);
       }
 
-      if (resClaim.status) {
-        setClaims(resClaim.data);
+      if (resClaim.status && Array.isArray(resClaim.data)) {
+        // 2. ดึง claim_items เพื่อนำมาแมปรายละเอียดสินค้า (item_id, qty, remark) ใส่แต่ละ claim
+        const claimsWithItems = await Promise.all(
+          resClaim.data.map(async (claim) => {
+            try {
+              const resItems = await claimService.getClaimItems(claim.claim_id);
+              if (resItems && resItems.status && resItems.data?.length > 0) {
+                const firstItem = resItems.data[0];
+                return {
+                  ...claim,
+                  item_id: firstItem.item_id,
+                  qty: firstItem.qty,
+                  remark: firstItem.remark,
+                  lot_no: firstItem.lot_no,
+                  items: resItems.data
+                };
+              }
+            } catch (err) {
+              console.error(`Error fetching items for claim ${claim.claim_id}`, err);
+            }
+            return claim;
+          })
+        );
+
+        setClaims(claimsWithItems);
       }
     } catch (error) {
-      message.error("ไม่สามารถดึงข้อมูลได้: " + error.message);
+      message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
       setLoading(false);
     }
@@ -115,7 +139,6 @@ const CustomerClaimList = () => {
       const itemName = itemsMap[claim.item_id] || claim.item_name || "-";
       const cleanRemark = (claim.remark || "").replace(/"/g, '""').replace(/\n/g, " ");
 
-      // 🔹 แปลงรหัสสถานะเป็นชื่อภาษาไทยสำหรับมุมมองลูกค้า
       const displayStatus = getStatusName(claim.current_status || claim.status, "customer");
 
       const row = [
@@ -247,7 +270,6 @@ const CustomerClaimList = () => {
 
         {/* Filter Section */}
         <div className="flex flex-col lg:flex-row gap-2 w-full">
-          {/* ช่องค้นหา */}
           <div className="flex-1 min-w-0">
             <Input
               placeholder="ค้นหาตามชื่อสินค้า หรือ Claim ID..."
@@ -259,7 +281,6 @@ const CustomerClaimList = () => {
             />
           </div>
 
-          {/* ช่วงวันที่ */}
           <div className="flex gap-2 lg:w-80 shrink-0">
             <DatePicker
               placeholder="เริ่มวันไหน"
@@ -283,7 +304,6 @@ const CustomerClaimList = () => {
             />
           </div>
 
-          {/* Dropdown เลือกสถานะ */}
           <div className="lg:w-56 shrink-0">
             <Select
               value={selectedStatus}
@@ -341,26 +361,38 @@ const CustomerClaimList = () => {
           </div>
         ) : filteredClaims.length > 0 ? (
           <div className="flex flex-col gap-2.5 sm:gap-3 w-full">
-            {filteredClaims.map((claim) => (
-              <CustomerClaimCard
-                key={claim.claim_id || claim.claim_no}
-                claim={{
-                  ...claim,
-                  // 🔹 แปลงรหัสสถานะเป็นชื่อภาษาไทยที่อ่านง่ายก่อนส่งให้ Card
-                  current_status: getStatusName(claim.current_status || claim.status, "customer"),
-                  status: getStatusName(claim.status || claim.current_status, "customer"),
-                  agent_name: claim.agent_name || claim.agent_id || "-",
-                  item_name:
-                    itemsMap[claim.item_id] ||
-                    claim.item_name ||
-                    `สินค้า ID: ${claim.item_id}`,
-                  created_at_formatted: dayjs(claim.claim_date || claim.created_at).format("DD/MM/YY HH:mm"),
-                }}
-                onDelete={handleDeleteClaim}
-                hideDeleteWhenDisabled={true}
-                layout="horizontal"
-              />
-            ))}
+            
+{filteredClaims.map((claim) => {
+  // ฟังก์ชันหาชื่อสินค้าเดี่ยวหรือรวมชื่อหลายรายการจาก itemsMap
+  const getDisplayProductName = () => {
+    if (Array.isArray(claim.items) && claim.items.length > 0) {
+      return claim.items
+        .map((i) => itemsMap[i.item_id] || i.item_name || i.name || `สินค้า ID: ${i.item_id}`)
+        .join(" + ");
+    }
+    return (
+      itemsMap[claim.item_id] ||
+      claim.item_name ||
+      (claim.item_id ? `สินค้า ID: ${claim.item_id}` : "ไม่พบข้อมูลสินค้า")
+    );
+  };
+
+  return (
+    <CustomerClaimCard
+      key={claim.claim_id || claim.claim_no}
+      claim={{
+        ...claim,
+        current_status: claim.current_status || claim.status,
+        agent_name: claim.agent_name || claim.agent_id || "-",
+        item_name: getDisplayProductName(),
+        created_at_formatted: dayjs(claim.claim_date || claim.created_at).format("DD/MM/YY HH:mm"),
+      }}
+      onDelete={handleDeleteClaim}
+      hideDeleteWhenDisabled={true}
+      layout="horizontal"
+    />
+  );
+})}
           </div>
         ) : (
           <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 sm:p-12 text-center my-2 w-full">

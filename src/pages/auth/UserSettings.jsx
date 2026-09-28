@@ -4,25 +4,38 @@ import { UserOutlined, LogoutOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import loginService from "../../services/loginService";
 import roleService from "../../services/roleService";
+import agentService from "../../services/agentService";
 
 const UserSettings = () => {
   const navigate = useNavigate();
   const [roles, setRoles] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ดึงข้อมูล User จาก localStorage
   const user = loginService.getCurrentUser();
 
-  // ดึงข้อมูล Roles ทั้งหมดจาก Backend
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const res = await roleService.getRoles();
-        if (res.status && Array.isArray(res.data)) {
-          setRoles(res.data);
+        const [rolesRes, agentsRes] = await Promise.all([
+          roleService.getRoles().catch(() => []),
+          agentService.getAgent().catch(() => []),
+        ]);
+
+        if (rolesRes && rolesRes.status && Array.isArray(rolesRes.data)) {
+          setRoles(rolesRes.data);
+        } else if (Array.isArray(rolesRes)) {
+          setRoles(rolesRes);
+        }
+
+        // จัดเก็บข้อมูล Agents
+        if (Array.isArray(agentsRes)) {
+          setAgents(agentsRes);
+        } else if (agentsRes && Array.isArray(agentsRes.data)) {
+          setAgents(agentsRes.data);
         }
       } catch (error) {
-        message.error("ไม่สามารถดึงข้อมูลบทบาทผู้ใช้ได้");
+        console.error("Fetch Roles Error:", error);
       } finally {
         setLoading(false);
       }
@@ -31,13 +44,35 @@ const UserSettings = () => {
     fetchRoles();
   }, []);
 
-  // ฟังก์ชันค้นหา role_name จาก role_id
   const getRoleName = (roleId) => {
-    const foundRole = roles.find((r) => r.role_id === roleId);
-    return foundRole ? foundRole.description : `Role ID: ${roleId || "-"}`;
+    if (!roleId) return "ไม่ระบุสิทธิ์";
+    const foundRole = roles.find((r) => Number(r.role_id) === Number(roleId));
+    if (foundRole) {
+      return foundRole.role_name || foundRole.description || `Role ID: ${roleId}`;
+    }
+    
+    // Mapping สำรองสำหรับสิทธิ์มาตรฐาน
+    const defaultRoles = {
+      1: "ผู้ดูแลระบบ (Admin)",
+      2: "ตัวแทนจำหน่าย (Customer/Agent)",
+      3: "เจ้าหน้าที่ (Staff)",
+    };
+    return defaultRoles[roleId] || `Role ID: ${roleId}`;
   };
 
-  // ฟังก์ชัน Logout
+  const getAgentName = (agentId) => {
+    if (!agentId) return "-";
+
+    // ค้นหาเปรียบเทียบกับ agent_code หรือ agent_id (แปลงเป็น String ทั้งคู่)
+    const foundAgent = agents.find(
+      (a) =>
+        String(a.agent_code).trim() === String(agentId).trim() ||
+        String(a.agent_id).trim() === String(agentId).trim()
+    );
+
+    return foundAgent ? foundAgent.agent_name : `ไม่พบชื่อตัวแทน: ${agentId}`;
+  };
+
   const handleLogout = () => {
     loginService.logout();
     message.success("ออกจากระบบเรียบร้อยแล้ว");
@@ -45,12 +80,10 @@ const UserSettings = () => {
   };
 
   return (
-    // ปรับ Padding ด้านนอกเป็น p-3 sm:p-4 md:p-5 และใช้ w-full เพื่อลดพื้นที่ขอบสีเทา
     <div className="min-h-screen bg-gray-50/50 p-3 sm:p-4 md:p-5 w-full">
       <div className="w-full">
         <Card className="w-full rounded-2xl shadow-sm border border-slate-200">
           <Spin spinning={loading}>
-            {/* Header ส่วนโปรไฟล์ */}
             <div className="flex flex-col items-center pb-4">
               <Avatar
                 size={88}
@@ -68,7 +101,6 @@ const UserSettings = () => {
               </Tag>
             </div>
 
-            {/* ข้อมูลโปรไฟล์ผู้ใช้ */}
             <Descriptions
               title={<span className="text-slate-700 font-semibold">ข้อมูลส่วนตัว</span>}
               column={1}
@@ -93,14 +125,15 @@ const UserSettings = () => {
               <Descriptions.Item label="สิทธิ์การใช้งาน">
                 {getRoleName(user?.role_id)}
               </Descriptions.Item>
+              
+              {/* 5. ปรับส่วนแสดงผลชื่อตัวแทน */}
               {user?.agent_id && (
-                <Descriptions.Item label="รหัสตัวแทน (Agent ID)">
-                  {user.agent_id}
+                <Descriptions.Item label="ตัวแทนจำหน่าย">
+                  {getAgentName(user.agent_id)}
                 </Descriptions.Item>
               )}
             </Descriptions>
 
-            {/* ปุ่ม Logout */}
             <Button
               type="primary"
               danger
@@ -117,6 +150,7 @@ const UserSettings = () => {
       </div>
     </div>
   );
+
 };
 
 export default UserSettings;

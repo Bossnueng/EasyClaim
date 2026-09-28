@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Form, Input, Button, message } from "antd";
+import { Form, Input, Button, Alert } from "antd"; // 👈 เพิ่ม Alert เข้ามา
 import { useNavigate } from "react-router-dom";
 import { SafetyCertificateFilled, UserOutlined, LockOutlined } from "@ant-design/icons";
 import loginService from "../../services/loginService";
@@ -7,14 +7,15 @@ import loginService from "../../services/loginService";
 const Login = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(""); // 👈 State สำหรับเก็บข้อความแจ้งเตือน Error
 
   const onFinish = async (values) => {
     setLoading(true);
+    setErrorMessage(""); // ล้างข้อความ Error เก่าออกก่อนส่ง request ใหม่
     try {
       const res = await loginService.login(values);
 
       if (res.status) {
-        message.success(res.message || `ยินดีต้อนรับ ${res.data?.full_name || ""}`);
         const roleId = Number(res.data?.role_id);
 
         if (roleId === 2) {
@@ -22,13 +23,15 @@ const Login = () => {
         } else {
           navigate("/staff");
         }
-      } else {
-        message.error(res.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       }
     } catch (error) {
-      message.error(
-        error.message || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบ Backend"
-      );
+      // ดึงข้อความ error จาก Backend หรือใช้ข้อความ Default
+      const errorMsg =
+        error?.response?.data?.message ||
+        error?.message ||
+        (typeof error === "string" ? error : "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      
+      setErrorMessage(errorMsg); // 👈 นำข้อความไปแสดงใน Alert
     } finally {
       setLoading(false);
     }
@@ -44,7 +47,7 @@ const Login = () => {
         backgroundColor: "#f8fafc",
         padding: "20px",
         boxSizing: "border-box",
-        fontFamily: "'Prompt', 'Kanit', 'Inter', sans-serif", // กำหนด Font อ่านง่าย
+        fontFamily: "'Prompt', 'Kanit', 'Inter', sans-serif",
       }}
     >
       <div
@@ -60,7 +63,6 @@ const Login = () => {
           textAlign: "center",
         }}
       >
-        {/* === Shield Icon Header === */}
         <div
           style={{
             display: "inline-flex",
@@ -76,26 +78,45 @@ const Login = () => {
           <SafetyCertificateFilled style={{ fontSize: "42px", color: "#059669" }} />
         </div>
 
-        {/* === Title Section === */}
         <h2
           style={{
             fontSize: "24px",
-            fontWeight: "600", // ลดความหนาลงนิดหน่อยให้อ่านสบายตาขึ้น
+            fontWeight: "600",
             color: "#0f172a",
             margin: "0 0 8px 0",
-            letterSpacing: "0.5px", // เพิ่มระยะห่างช่องไฟ
+            letterSpacing: "0.5px",
           }}
         >
           เข้าสู่ระบบ
         </h2>
 
-        <p style={{ fontSize: "14px", color: "#64748b", margin: "0 0 28px 0" }}>
+        <p style={{ fontSize: "14px", color: "#64748b", margin: "0 0 24px 0" }}>
           กรอกข้อมูลชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่ระบบ
         </p>
 
-        {/* === Form Section === */}
-        <Form name="login_form" layout="vertical" onFinish={onFinish} requiredMark={false}>
-          {/* --- Username --- */}
+        {/* 👈 แสดงกล่องข้อความแจ้งเตือนแบบชัดเจนเมื่อเกิด Error */}
+        {errorMessage && (
+          <Alert
+            message={errorMessage}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setErrorMessage("")}
+            style={{
+              marginBottom: "20px",
+              textAlign: "left",
+              borderRadius: "10px",
+              fontSize: "14px",
+            }}
+          />
+        )}
+
+        <Form 
+          name="login_form" 
+          layout="vertical" 
+          onFinish={onFinish} 
+          requiredMark={false}
+        >
           <Form.Item
             label={<span style={{ fontWeight: "600", color: "#334155" }}>ชื่อผู้ใช้</span>}
             name="username"
@@ -106,26 +127,26 @@ const Login = () => {
               prefix={<UserOutlined style={{ color: "#94a3b8", marginRight: "8px" }} />}
               placeholder="กรอกชื่อผู้ใช้ของคุณ"
               size="large"
+              onChange={() => setErrorMessage("")} // เคลียร์ข้อความแจ้งเตือนเมื่อเริ่มพิมพ์ใหม่
               style={{ borderRadius: "12px", padding: "10px 16px", borderColor: "#cbd5e1" }}
             />
           </Form.Item>
 
-          {/* --- Password --- */}
           <Form.Item
             label={<span style={{ fontWeight: "600", color: "#334155" }}>รหัสผ่าน</span>}
             name="password"
             rules={[{ required: true, message: "กรุณากรอก Password!" }]}
-            style={{ marginBottom: "32px", textAlign: "left" }}
+            style={{ marginBottom: "28px", textAlign: "left" }}
           >
             <Input.Password
               prefix={<LockOutlined style={{ color: "#94a3b8", marginRight: "8px" }} />}
               placeholder="กรอกรหัสผ่านของคุณ"
               size="large"
+              onChange={() => setErrorMessage("")} // เคลียร์ข้อความแจ้งเตือนเมื่อเริ่มพิมพ์ใหม่
               style={{ borderRadius: "12px", padding: "10px 16px", borderColor: "#cbd5e1" }}
             />
           </Form.Item>
 
-          {/* --- Submit Button --- */}
           <Form.Item style={{ marginBottom: 0 }}>
             <Button
               type="primary"

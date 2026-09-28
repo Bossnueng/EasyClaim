@@ -7,9 +7,11 @@ const upload=require('../middleware/uplodad');
 
 // GET
 router.get("/getClaim",ClaimController.getClaim);
+router.get("/getClaimItems/:claim_id", ClaimController.getClaimItems);
 router.get("/getclaimstatuslog",ClaimController.getclaimstatuslog);
 router.get("/getclaimapproves",ClaimController.getclaimapproves);
 router.get("/getClaimImages/:claim_id",ClaimController.getClaimImages);
+
 
 // เพิ่ม Route สำหรับรับ agent_id
 router.get("/getClaimByAgent/:agent_id", ClaimController.getClaimByAgent);
@@ -22,7 +24,7 @@ router.post("/Claimapproves", ClaimController.createClaimapproves);
 //router.post("/Claimimage", ClaimController.createClaimimage);
 // 🟢 เพิ่ม upload.single("file")
 router.post("/Claimimage", ClaimController.upload.single("file"), ClaimController.createClaimimage);
-router.post("/updateClaim", ClaimController.updateClaim);
+router.post("/updateClaim", ClaimController.updateclaim);
 
 //Delete
 router.delete("/delClaim", ClaimController.delClaim);

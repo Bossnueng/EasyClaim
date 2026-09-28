@@ -60,7 +60,6 @@ const StaffHome = () => {
         userService.getUsers(),
       ]);
 
-      // 1. สร้าง agentsMap
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       if (Array.isArray(agentsData)) {
@@ -74,19 +73,18 @@ const StaffHome = () => {
         setAgentsMap(aMap);
       }
 
-      // 2. เก็บ usersList
       const usersData = resUsers?.data || resUsers || [];
       if (Array.isArray(usersData)) {
         setUsersList(usersData);
       }
 
-      // 3. สร้าง itemsMap
+      // 🟢 แก้ไข: แปลง item_id เป็น String เสมอเพื่อป้องกัน Mismatch Type
       const itemsData = resItems?.data || resItems || [];
       const map = {};
       if (Array.isArray(itemsData)) {
         itemsData.forEach((item) => {
           if (item && item.item_id) {
-            map[item.item_id] = item.item_name;
+            map[String(item.item_id)] = item.item_name;
           }
         });
         setItemsMap(map);
@@ -96,10 +94,34 @@ const StaffHome = () => {
         ? resClaim
         : resClaim?.data || [];
 
-      setAllClaims(claimData);
+      const claimWithDetails = await Promise.all(
+        claimData.map(async (claim) => {
+          try {
+            const itemRes = await claimService.getClaimItems(claim.claim_id);
+            const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
+            const itemDetails = rawItems[0] || {};
 
-      if (claimData.length > 0) {
-        const pendingClaims = claimData.filter((item) => {
+            const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+
+            return {
+              ...claim,
+              items: rawItems,
+              item_id: itemDetails.item_id || claim.item_id,
+              qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
+              qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
+              lot_no: itemDetails.lot_no || claim.lot_no || "-",
+              remark: itemDetails.remark || claim.remark || "",
+            };
+          } catch {
+            return claim;
+          }
+        })
+      );
+
+      setAllClaims(claimWithDetails);
+
+      if (claimWithDetails.length > 0) {
+        const pendingClaims = claimWithDetails.filter((item) => {
           const priority = getPriority(item);
           return priority !== 8 && priority !== 9 && priority !== 10;
         });
@@ -155,8 +177,6 @@ const StaffHome = () => {
 
         {/* Dashboard Summary Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          
-          {/* Card 1: รายการเคลมใหม่ / รอการพิจารณา */}
           <div
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
             style={{
@@ -187,7 +207,6 @@ const StaffHome = () => {
             </div>
           </div>
 
-          {/* Card 2: ค้างดำเนินการ */}
           <div
             style={{
               boxSizing: "border-box",
@@ -218,7 +237,6 @@ const StaffHome = () => {
             </div>
           </div>
 
-          {/* Card 3: เคลมสำเร็จ */}
           <div
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
             style={{
@@ -246,7 +264,6 @@ const StaffHome = () => {
             </div>
           </div>
 
-          {/* Card 4: รายการเคลมค้างเกิน 3 วัน */}
           <div
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
             style={{
@@ -325,16 +342,35 @@ const StaffHome = () => {
                     ? matchedAgentName 
                     : (claim.agent_name || claim.agentName || "-");
 
+                // 🟢 แก้ไข: ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
+                // ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
+const getDisplayProductName = () => {
+  if (Array.isArray(claim.items) && claim.items.length > 0) {
+    const names = claim.items
+      .map((i) => {
+        const idStr = String(i.item_id || "");
+        return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
+      })
+      .filter(Boolean);
+
+    if (names.length > 0) return names.join(" + ");
+  }
+
+  const singleIdStr = String(claim.item_id || "");
+  return (
+    itemsMap[singleIdStr] ||
+    claim.item_name ||
+    (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
+  );
+};
+
                 return (
                   <StaffClaimCard
                     key={claim.claim_id || claim.claim_no}
                     claim={{
                       ...claim,
-                      item_name:
-                        itemsMap[claim.item_id] ||
-                        claim.item_name ||
-                        `สินค้า ID: ${claim.item_id}`,
-                      agent_name: agentName, // 👈 ส่งชื่อ Agent ไปยัง StaffClaimCard
+                      item_name: getDisplayProductName(),
+                      agent_name: agentName,
                     }}
                     layout="horizontal"
                   />

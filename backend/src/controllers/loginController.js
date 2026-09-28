@@ -1,3 +1,10 @@
+/*==================================
+Detail : Fix resolve merge conflicts with main 2nd
+
+๊Update by : Phonnapha.k
+Date : 24/09/2026
+==================================*/
+
 const { sql, connectDB } = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");

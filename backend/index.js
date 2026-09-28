@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+
 require("dotenv").config();
 const userRoute = require("./src/routes/userRoute");
 const roleRoute=require("./src/routes/roleRoute");
@@ -13,6 +15,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use('/uploads', express.static(path.join(__dirname, 'src', 'uploads')));
+
 app.use("/api",userRoute);
 app.use("/api",roleRoute);
 app.use("/api",itemRoute);
@@ -22,6 +26,13 @@ app.use("/api",loginRoute);
 app.use("/api",deliveryRoute);
 const PORT = process.env.PORT || 3000;
 
+/*
 app.listen(PORT, () => {
     console.log(`Server Running : http://localhost:${PORT}`);
+});
+*/
+
+// แก้ไขจากเดิม
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server Running on port ${PORT} (Binding to 0.0.0.0) is connected to DB: ${process.env.DB_DATABASE}`);
 });

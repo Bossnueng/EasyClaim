@@ -12,6 +12,7 @@ import {
   Alert,
   Table,
   Tag,
+  Input,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -23,6 +24,8 @@ import {
   ArrowLeftOutlined,
   PrinterOutlined,
   PictureOutlined,
+  SendOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -90,6 +93,11 @@ const CustomerClaimDetail = () => {
   const [allImages, setAllImages] = useState([]);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
+  // State สำหรับกล่องข้อความ Private Comments ฝั่ง Customer
+  const [chatMessages, setChatMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
+
   useEffect(() => {
     fetchClaimDetail();
   }, [claimId]);
@@ -139,9 +147,9 @@ const CustomerClaimDetail = () => {
       }
 
       const usersData = resUsers?.data || resUsers || [];
+      let uMap = {};
       if (Array.isArray(usersData)) {
         setUsersList(usersData);
-        const uMap = {};
         usersData.forEach((u) => {
           const uId = String(u.user_id || u.id);
           const name = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
@@ -166,11 +174,8 @@ const CustomerClaimDetail = () => {
         });
 
         if (currentClaim) {
-          // 1. ดึงรูปภาพทั้งหมดของ Claim
           let rawImages = [];
           const currentHost = window.location.hostname;
-
-          // ดึง API Host/Port จากตัวแปร Env หรือใช้ Port 5001 เป็นค่าเริ่มต้น
           const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || `http://${currentHost}:5001`;
 
           try {
@@ -178,21 +183,13 @@ const CustomerClaimDetail = () => {
             if (resImages?.data && Array.isArray(resImages.data)) {
               rawImages = resImages.data.map((img) => {
                 let formattedUrl = img.image_url || "";
-
-                // กรณีที่ backend ส่ง image_url มา
                 if (formattedUrl) {
-                  // เปลี่ยน localhost ให้เป็น IP/Host ปัจจุบันกรณีทดสอบผ่านมือถือหรือเครื่องอื่น
                   formattedUrl = formattedUrl.replace("localhost", currentHost);
-                } 
-                // กรณี fallback ถ้าไม่มี image_url หรือ URL ชำรุด ให้ประกอบ URL ใหม่เอง
-                else if (img.image_path) {
+                } else if (img.image_path) {
                   let path = img.image_path.startsWith("/") ? img.image_path : `/${img.image_path}`;
-                  
-                  // เติม /uploads/claims/ ถ้าใน DB เก็บมาแค่ชื่อไฟล์
                   if (!path.startsWith("/uploads")) {
                     path = `/uploads/claims${path}`;
                   }
-                  
                   formattedUrl = `${apiBaseUrl}${path}`;
                 }
 
@@ -207,20 +204,17 @@ const CustomerClaimDetail = () => {
           }
           setAllImages(rawImages);
 
-          // 2. ดึงรายการสินค้าเคลม (claim_items) และผูกรูปภาพเข้าตาม item_id / claim_item_id
           let itemsList = [];
           try {
             const resClaimItems = await claimService.getClaimItems(currentClaim.claim_id);
             if (resClaimItems?.data && Array.isArray(resClaimItems.data)) {
               itemsList = resClaimItems.data.map((ci, idx) => {
-                // 🟢 ปรับปรุงการกรองรูปภาพตรงนี้
                 const itemImgs = rawImages.filter((img) => {
                   const matchClaimItem = img.claim_item_id && ci.claim_item_id && String(img.claim_item_id) === String(ci.claim_item_id);
                   const matchItem = img.item_id && ci.item_id && String(img.item_id) === String(ci.item_id);
                   return matchClaimItem || matchItem;
                 });
 
-                // 🟢 Fallback: ถ้ารูปภาพในระบบไม่ได้ผูก claim_item_id/item_id ไว้ ให้ดึง rawImages ทั้งหมดมาแสดงแทน
                 const finalImages = itemImgs.length > 0 ? itemImgs : rawImages;
 
                 return {
@@ -233,7 +227,6 @@ const CustomerClaimDetail = () => {
             }
           } catch (itemsErr) {
             console.warn("ไม่สามารถดึงรายการสินค้าเคลมได้:", itemsErr);
-            // Fallback กรณีโครงสร้างเดิม
             if (currentClaim.item_id) {
               itemsList = [
                 {
@@ -257,6 +250,22 @@ const CustomerClaimDetail = () => {
             ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
             : [];
           setStatusLogs(filteredLogs);
+
+          // กรองและคัดแยกข้อความฝากสนทนา
+          const msgs = filteredLogs
+            .filter((log) => log.remark && log.remark.startsWith("[MSG]"))
+            .map((log) => {
+              const cleanRemark = log.remark.replace("[MSG]", "").trim();
+              const senderRole = log.remark.includes("[STAFF]") ? "staff" : "customer";
+              return {
+                id: log.log_id || log.id || Math.random(),
+                senderRole,
+                senderName: uMap[String(log.update_by || log.user_id)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
+                message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
+                time: log.update_date || log.created_at || log.created_date,
+              };
+            });
+          setChatMessages(msgs);
 
           const extraLogData = parseExtraDataFromLogs(filteredLogs);
 
@@ -296,6 +305,34 @@ const CustomerClaimDetail = () => {
     }
   };
 
+  // ฟังก์ชันส่งข้อความฝากสนทนาฝั่ง Customer
+  const handleSendMessage = async () => {
+    if (!newMessage.trim()) return;
+    setSendingMsg(true);
+    try {
+      const currentUser = loginService.getCurrentUser();
+      const userId = currentUser?.user_id || currentUser?.id || currentUser?.agent_id || "";
+      const realClaimId = data.claim_id;
+      const formattedRemark = `[MSG] [CUSTOMER] ${newMessage.trim()}`;
+
+      await claimService.createClaimStatusLogs({
+        claim_id: String(realClaimId),
+        status: String(getStatusId(data.current_status)),
+        remark: formattedRemark,
+        update_by: String(userId),
+        user_id: String(userId),
+      });
+
+      message.success("ส่งข้อความเรียบร้อยแล้ว");
+      setNewMessage("");
+      fetchClaimDetail();
+    } catch (err) {
+      message.error("ส่งข้อความไม่สำเร็จ: " + err.message);
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
   const handleConfirmDelivery = async () => {
     try {
       const currentUser = loginService.getCurrentUser();
@@ -312,7 +349,7 @@ const CustomerClaimDetail = () => {
         current_status: "10",
         status: "10",
         status_name: "จัดส่งสินค้าเคลมสำเร็จ",
-        actionsname: "receive_finish_date", // 🟢 เพิ่มบรรทัดนี้เพื่อให้ Backend รับรู้ฟิลด์ที่ต้องการ stamp
+        actionsname: "receive_finish_date",
         receive_finish_date: currentTimestamp,
         update_by: String(userId),
       };
@@ -339,7 +376,7 @@ const CustomerClaimDetail = () => {
   if (loading) {
     return (
       <div className="w-full h-64 flex justify-center items-center">
-        <Spin size="large" description="กำลังโหลดข้อมูล..." />
+        <Spin size="large" tip="กำลังโหลดข้อมูล..." />
       </div>
     );
   }
@@ -384,37 +421,33 @@ const CustomerClaimDetail = () => {
   };
 
   const getLogDate = (statusTarget) => {
-  const targetId = String(statusTarget);
-  const currentPriority = CLAIM_STATUS_MAP[String(currentStatusId)]?.priority || 0;
-  const targetPriority = CLAIM_STATUS_MAP[targetId]?.priority || 0;
+    const targetId = String(statusTarget);
+    const currentPriority = CLAIM_STATUS_MAP[String(currentStatusId)]?.priority || 0;
+    const targetPriority = CLAIM_STATUS_MAP[targetId]?.priority || 0;
 
-  // 🟢 ถ้าถอยสถานะมา แล้ว targetPriority สูงกว่าสถานะปัจจุบัน ให้ซ่อนวันที่ (คืนค่า "-")
-  if (!isRejectedInDB && targetPriority > currentPriority) {
+    if (!isRejectedInDB && targetPriority > currentPriority) {
+      return "-";
+    }
+
+    const matchingLogs = statusLogs.filter(
+      (item) => String(item.status || item.status_id) === targetId
+    );
+
+    if (matchingLogs.length > 0) {
+      const lastLog = matchingLogs[matchingLogs.length - 1];
+      const rawDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
+      return formatDate(rawDate);
+    }
+
+    if (targetId === "1" || targetId === "5") return formatDate(data.claim_date || data.created_at);
+    if (targetId === "2" || targetId === "6") return formatDate(data.approve_date);
+    if (targetId === "4") return formatDate(data.driver_receive_date || data.warehouse_receive_date);
+    if (targetId === "8") return formatDate(data.withdraw_date);
+    if (targetId === "9") return formatDate(data.delivery_date);
+    if (targetId === "10") return formatDate(data.receive_finish_date);
+
     return "-";
-  }
-
-  // กรองหา Log ล่าสุดของ statusTarget
-  const matchingLogs = statusLogs.filter(
-    (item) => String(item.status || item.status_id) === targetId
-  );
-
-  if (matchingLogs.length > 0) {
-    // 🟢 เช็คเพิ่มเติม: ถ้า Log ล่าสุดในระบบเป็น Log ถอยสถานะ ให้ข้ามไป
-    const lastLog = matchingLogs[matchingLogs.length - 1];
-    const rawDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
-    return formatDate(rawDate);
-  }
-
-  // Fallback กรณีดึงจาก DB field โดยตรง
-  if (targetId === "1" || targetId === "5") return formatDate(data.claim_date || data.created_at);
-  if (targetId === "2" || targetId === "6") return formatDate(data.approve_date);
-  if (targetId === "4") return formatDate(data.driver_receive_date || data.warehouse_receive_date);
-  if (targetId === "8") return formatDate(data.withdraw_date);
-  if (targetId === "9") return formatDate(data.delivery_date);
-  if (targetId === "10") return formatDate(data.receive_finish_date);
-
-  return "-";
-};
+  };
 
   const getCurrentStep = () => {
     const level = STATUS_PRIORITY[currentStatusInDB];
@@ -447,7 +480,7 @@ const CustomerClaimDetail = () => {
           description: (
             <div className="text-xs">
               <div>{getLogDate(currentStatusId)}</div>
-              {rejectReason && <div className="text-red-500 font-medium">{rejectReason}</div>}
+              {rejectReason && <div className="text-red-500 font-medium break-words">{rejectReason}</div>}
             </div>
           ),
           icon: renderDotIcon(CloseCircleOutlined),
@@ -485,7 +518,6 @@ const CustomerClaimDetail = () => {
   const agentNameDisplay = matchedAgentName !== "-" && matchedAgentName ? matchedAgentName : (data?.agent_name || data?.agentName || "-");
   const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || data?.reporter || "-";
 
-  // คอลัมน์สำหรับ Table รายการสินค้าเคลม
   const itemColumns = [
     {
       title: "ลำดับ",
@@ -498,9 +530,8 @@ const CustomerClaimDetail = () => {
       title: "ชื่อสินค้า",
       dataIndex: "item_name",
       key: "item_name",
-      render: (text) => <span className="font-medium text-slate-800">{text}</span>,
+      render: (text) => <span className="font-medium text-slate-800 break-words">{text}</span>,
     },
-    
     {
       title: "จำนวน",
       dataIndex: "qty",
@@ -513,16 +544,12 @@ const CustomerClaimDetail = () => {
       title: "สาเหตุและรายละเอียด",
       dataIndex: "remark",
       key: "remark",
-      render: (text) => <div className="text-xs text-slate-600 whitespace-pre-line">{text || "-"}</div>,
+      render: (text) => <div className="text-xs text-slate-600 whitespace-pre-wrap break-words">{text || "-"}</div>,
     },
-      
   ];
-
-  const totalQty = claimItems.reduce((acc, curr) => acc + (parseFloat(curr.qty) || 0), 0);
 
   return (
     <div className="w-full flex flex-col gap-6 font-normal p-4 sm:p-6" style={{ boxSizing: "border-box" }}>
-      {/* Top Header Card */}
       <Card className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" bodyStyle={{ padding: "24px" }}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
           <div className="flex flex-col gap-1 min-w-0">
@@ -590,18 +617,16 @@ const CustomerClaimDetail = () => {
         </div>
       </Card>
 
-      {/* Alert when rejected */}
       {isRejectedInDB && (
         <Alert
           message="คำร้องขอเคลมสินค้าถูกปฏิเสธ"
           description={`เหตุผล: ${data.reject_reason || data.remark || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม"}`}
           type="error"
           showIcon
-          className="rounded-2xl border-red-200"
+          className="rounded-2xl border-red-200 break-words"
         />
       )}
 
-      {/* มุมมองไทม์ไลน์สถานะ */}
       <Card
         title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
         className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden"
@@ -635,10 +660,9 @@ const CustomerClaimDetail = () => {
         </ConfigProvider>
       </Card>
 
-      {/* Detail Grid Section */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
+        {/* คอลัมน์ซ้าย (xl:col-span-2) */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
-          {/* ข้อมูลคำร้องทั่วไป */}
           <Card 
             title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>} 
             className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" 
@@ -652,7 +676,7 @@ const CustomerClaimDetail = () => {
               labelStyle={{ 
                 fontWeight: "500", 
                 color: "#475569", 
-                width: "110px", // 🟢 กำหนดความกว้างฝั่ง Label ให้พอดี
+                width: "110px", 
                 backgroundColor: "#f8fafc",
                 fontSize: "13px",
                 whiteSpace: "nowrap"
@@ -660,7 +684,7 @@ const CustomerClaimDetail = () => {
               contentStyle={{
                 color: "#1e293b",
                 fontSize: "13px",
-                wordBreak: "break-word" // 🟢 ช่วยให้ข้อความที่ยาวเกินไปยอมตัดคำแทนการดันตารางจนล้นขอบ
+                wordBreak: "break-word" 
               }}
             >
               <Descriptions.Item label="วันที่แจ้ง">
@@ -670,13 +694,13 @@ const CustomerClaimDetail = () => {
               </Descriptions.Item>
 
               <Descriptions.Item label="ชื่อ Agent">
-                <span className="font-medium text-slate-800 break-all" title={agentNameDisplay}>
+                <span className="font-medium text-slate-800 break-words" title={agentNameDisplay}>
                   {agentNameDisplay}
                 </span>
               </Descriptions.Item>
 
               <Descriptions.Item label="ผู้แจ้งส่งคืน">
-                <span className="text-slate-800 break-all" title={reporterNameDisplay}>
+                <span className="text-slate-800 break-words" title={reporterNameDisplay}>
                   {reporterNameDisplay}
                 </span>
               </Descriptions.Item>
@@ -690,7 +714,6 @@ const CustomerClaimDetail = () => {
             </Descriptions>
           </Card>
 
-          {/* รายการสินค้าเคลมหลายรายการ */}
           <Card 
             title={
               <div className="flex justify-between items-center">
@@ -720,7 +743,7 @@ const CustomerClaimDetail = () => {
                 labelStyle={{ fontWeight: "500", color: "#475569", width: "130px", backgroundColor: "#f8fafc", verticalAlign: "top" }}
                 contentStyle={{ color: "#1e293b", wordBreak: "break-word" }}
               >
-                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800">{data.driver_name || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800 break-words">{data.driver_name || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.truck_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="เลขที่เอกสารเคลม"><span className="font-mono">{data.claim_no || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="จำนวนที่รับคืน"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
@@ -737,7 +760,7 @@ const CustomerClaimDetail = () => {
                 labelStyle={{ fontWeight: "500", color: "#475569", width: "130px", backgroundColor: "#f8fafc", verticalAlign: "top" }}
                 contentStyle={{ color: "#1e293b", wordBreak: "break-word" }}
               >
-                <Descriptions.Item label="พนักงานจัดส่ง"><span className="text-slate-800">{data.delivery_driver || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="พนักงานจัดส่ง"><span className="text-slate-800 break-words">{data.delivery_driver || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="วันคาดว่าจะถึง">
                   <span className="text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
@@ -747,8 +770,9 @@ const CustomerClaimDetail = () => {
           )}
         </div>
 
+        {/* คอลัมน์ขวา (xl:col-span-1) */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          {/* รูปภาพหลักฐานรวมทั้งหมด */}
+          {/* Card รูปภาพหลักฐานทั้งหมด */}
           <Card 
             title={
               <div className="flex justify-between items-center">
@@ -782,7 +806,84 @@ const CustomerClaimDetail = () => {
             )}
           </Card>
 
-          {/* Action Button Card */}
+          {/* Private Comments - ปรับรูปแบบให้ตรงกับฝั่ง Staff (ย้ายมาไว้คอลัมน์ขวา + ใช้ดีไซน์สีอ่อนสบายตา) */}
+          <Card
+            className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60"
+            bodyStyle={{ padding: "20px" }}
+          >
+            <div className="flex flex-col gap-3">
+              
+              {/* 1. Header */}
+              <div className="flex items-center gap-2">
+                <UserOutlined className="text-slate-700 text-lg" />
+                <span className="font-semibold text-slate-800 text-sm sm:text-base">
+                  {chatMessages.length} private comments
+                </span>
+              </div>
+
+              {/* 2. รายการข้อความ */}
+              <div className="flex flex-col gap-3">
+                {chatMessages.length > 0 ? (
+                  chatMessages.map((msg) => (
+                    <div key={msg.id} className="flex flex-col gap-1 w-full">
+                      {/* ชื่อผู้ส่ง • วันที่ */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-slate-800 text-xs">
+                          {msg.senderName}
+                        </span>
+                        <span className="text-slate-400 text-[10px] font-normal">
+                          • {msg.time ? dayjs(msg.time).format("DD/MM/YYYY HH:mm") : "-"}
+                        </span>
+                      </div>
+
+                      {/* ข้อความ */}
+                      <div className="text-slate-800 text-sm sm:text-base whitespace-pre-wrap break-words font-normal leading-relaxed pl-0.5 w-full">
+                        {msg.message}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-slate-400 italic text-xs py-2">
+                    ยังไม่มีคอมเมนต์ส่วนตัว
+                  </div>
+                )}
+              </div>
+
+              {/* เส้นคั่นกลาง */}
+              <div className="border-t border-slate-200/80 w-full" />
+
+              {/* 3. กล่องพิมพ์ข้อความ */}
+              <Input.TextArea
+                rows={2}
+                autoSize={{ minRows: 2, maxRows: 4 }}
+                placeholder="เพิ่มความคิดเห็นส่วนตัว..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                className="rounded-xl border-slate-300 text-sm focus:border-blue-500 bg-white"
+              />
+
+              {/* 4. ปุ่มส่ง */}
+              <Button
+                type="primary"
+                block
+                icon={<SendOutlined />}
+                loading={sendingMsg}
+                disabled={!newMessage.trim()}
+                onClick={handleSendMessage}
+                className="bg-blue-500 hover:bg-blue-600 rounded-xl text-sm font-medium h-10 border-none shadow-sm flex items-center justify-center gap-1"
+              >
+                ส่ง
+              </Button>
+
+            </div>
+          </Card>
+
           <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px" }}>
             <div className="flex flex-col gap-3">
               {isShipping && (

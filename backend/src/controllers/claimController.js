@@ -109,8 +109,11 @@ exports.getclaimstatuslog = async (req, res) => {
 exports.createClaimStatusLogs = async (req, res) => {
     try {
         const { claim_id, status, remark, update_by } = req.body;
-        
-        // ✅ ลบบรรทัด const update_date = datetime(); ออกเรียบร้อย
+      
+        //เพิ่มเพื่อเช็คข้อความในกล่องข้อความ
+        if (!remark) {
+            return res.status(400).json({ status: false, message: "กรุณาระบุข้อความ หรือ remark" });
+        }
 
         const pool = await connectDB();
         const result = await pool.request()
@@ -140,7 +143,7 @@ exports.createClaimStatusLogs = async (req, res) => {
 
         res.json({
             status: true,
-            message: "Insert Success",
+            message: status ? "บันทึกการเปลี่ยนสถานะสำเร็จ" : "ส่งข้อความสำเร็จ",
             log_id: result.recordset[0]?.log_id || null
         });
     } catch (error) {
@@ -335,7 +338,7 @@ exports.getClaimImages = async (req, res) => {
       return {
         ...img,
         image_path: rawPath,
-        image_url: `${baseUrl}${rawPath}`, // ได้ URL ที่สมบูรณ์ เช่น http://127.0.0.1:5001/uploads/claims/xxx.jpg
+        image_url: `${baseUrl}${rawPath}`,
       };
     });
 
@@ -719,13 +722,13 @@ exports.creartClaim = async (req, res) => {
 
             
         // 3.2 Log สถานะ 5: "รอการพิจารณา" โดยระบบอัตโนมัติ (update_by = null)
-        const updateBy = req.user?.id || req.body.created_by || 0; // หากไม่มี User ให้ใช้ 0 หรือ User ID หลักของระบบ
+        const updateBy = req.user?.id || req.body.created_by || 0; 
 
         await transaction.request()
             .input("claim_id_auto", sql.Int, claim_id)
             .input("status_auto", sql.Int, 5) // ID สถานะ 5 = รอการพิจารณา
             .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
-            .input("update_by", sql.Int, parseInt(updateBy)) // 🟢 แนบค่า Integer เข้าไป
+            .input("update_by", sql.Int, parseInt(updateBy))
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
                 (
@@ -984,9 +987,6 @@ exports.updateclaim = async (req, res) => {
             claim_id,
             status,
             actionsname,
-            update_by,
-            remark,
-            is_revert // 👈 รับค่า Flag การถอยสถานะ
         } = req.body;
 
         if (!claim_id) {
@@ -1025,7 +1025,6 @@ exports.updateclaim = async (req, res) => {
                 });
             }
 
-            // กำหนด Column ที่จะ Stamp เวลา
             let dateColumn = null;
             switch (actionsname) {
                 case "driver_receive_date":
@@ -1051,7 +1050,6 @@ exports.updateclaim = async (req, res) => {
                     });
             }
 
-            // 🟢 อัปเดตสถานะและStamp เวลาทับใหม่ (GETDATE()) เมื่อมีการถอยสถานะ หรือ อัปเดตใหม่
             const result = await transaction.request()
                 .input("claim_id", sql.Int, claim_id)
                 .input("status", sql.NVarChar(50), status || null)
@@ -1094,7 +1092,6 @@ exports.updateclaim = async (req, res) => {
     }
 };
 
-// ดึงรายการ claim_items ทั้งหมดตาม claim_id
 exports.getClaimItems = async (req, res) => {
   try {
     const { claim_id } = req.params;

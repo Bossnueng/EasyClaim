@@ -14,6 +14,8 @@ import {
   Spin,
   Table,
   Tag,
+  InputNumber,
+  Form,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -28,6 +30,8 @@ import {
   EditOutlined,
   UndoOutlined,
   PictureOutlined,
+  SendOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -42,7 +46,6 @@ import deliveryService from "../../services/deliveryService";
 import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
 
-// 🟢 1. คืนค่าเป็น String สำหรับใช้ประมวลผล (.split, etc.)
 const formatDateString = (date) => {
   if (!date) return "-";
   const parsed = dayjs(date);
@@ -50,7 +53,6 @@ const formatDateString = (date) => {
   return parsed.format("DD/MM/YYYY");
 };
 
-// 🟢 2. คืนค่าเป็น JSX Element สำหรับแสดงผลบน UI Timeline
 const formatDate = (date) => {
   if (!date) return "-";
   const parsed = dayjs(date);
@@ -113,7 +115,6 @@ const isValidStatusTransition = (currentStatus, newStatus) => {
   return newLevel === currentLevel + 1 || newLevel === currentLevel - 1;
 };
 
-// 🟢 Helper Function สำหรับ Mapping Status ID หรือ Name ไปเป็น actionsname
 const getActionNameByStatus = (statusVal) => {
   const statusStr = String(statusVal);
   switch (statusStr) {
@@ -137,7 +138,7 @@ const getActionNameByStatus = (statusVal) => {
     case "จัดส่งสินค้าเคลมสำเร็จ":
       return "receive_finish_date";
     default:
-      return "approve_date"; // Fallback ป้องกัน value เป็น empty/null
+      return "approve_date";
   }
 };
 
@@ -155,6 +156,11 @@ const StaffClaimUpdate = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
 
+  // State สำหรับข้อความสนทนา
+  const [chatMessages, setChatMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
@@ -168,18 +174,22 @@ const StaffClaimUpdate = () => {
     truckPlate: "",
     claimNoInput: "",
     fullReceive: "",
-    withdrawDate: null,
-    returnedQty: "",
-    approvedQty: "",
     deliveryDriver: "",
     deliveryPlate: "",
     estimatedDeliveryDate: null,
-    lotNoChange: "",
-    mfgDateChange: null,
   });
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // อัปเดตข้อมูลรายละเอียดสินค้าแยกรายชิ้นใน Modal
+  const handleItemChange = (index, field, value) => {
+    setClaimItems((prevItems) => {
+      const updated = [...prevItems];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
 
   useEffect(() => {
@@ -217,10 +227,9 @@ const StaffClaimUpdate = () => {
       }
 
       const usersData = resUsers?.data || resUsers || [];
+      let uMap = {};
       if (Array.isArray(usersData)) {
         setUsersList(usersData);
-        
-        const uMap = {};
         usersData.forEach((u) => {
           const uId = String(u.user_id || u.id);
           const name = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
@@ -292,6 +301,12 @@ const StaffClaimUpdate = () => {
                   ...ci,
                   item_name: masterItemsMap[ci.item_id] || `สินค้า ID: ${ci.item_id}`,
                   images: finalImages.map((i) => i.formattedUrl),
+                  received_qty: ci.received_qty ?? ci.qty,
+                  approved_qty: ci.approved_qty ?? ci.qty,
+                  returned_qty: ci.returned_qty ?? ci.qty,
+                  withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
+                  lot_no_change: ci.lot_no_change || "",
+                  mfg_date_change: ci.mfg_date_change ? dayjs(ci.mfg_date_change) : null,
                 };
               });
             }
@@ -307,6 +322,12 @@ const StaffClaimUpdate = () => {
                   mfg_date: currentClaim.mfg_date,
                   expire_date: currentClaim.exp_date || currentClaim.expire_date,
                   qty: currentClaim.qty,
+                  received_qty: currentClaim.qty,
+                  approved_qty: currentClaim.qty,
+                  returned_qty: currentClaim.qty,
+                  withdraw_date: currentClaim.withdraw_date ? dayjs(currentClaim.withdraw_date) : null,
+                  lot_no_change: currentClaim.lot_no_change || "",
+                  mfg_date_change: currentClaim.mfg_date_change ? dayjs(currentClaim.mfg_date_change) : null,
                   remark: currentClaim.remark || currentClaim.claim_reason || currentClaim.detail,
                   images: rawImages.map((i) => i.formattedUrl),
                 },
@@ -321,6 +342,22 @@ const StaffClaimUpdate = () => {
             : [];
           setStatusLogs(filteredLogs);
 
+          // กรองและคัดแยกข้อความฝากสนทนา
+          const msgs = filteredLogs
+            .filter((log) => log.remark && log.remark.startsWith("[MSG]"))
+            .map((log) => {
+              const cleanRemark = log.remark.replace("[MSG]", "").trim();
+              const senderRole = log.remark.includes("[STAFF]") ? "staff" : "customer";
+              return {
+                id: log.log_id || log.id || Math.random(),
+                senderRole,
+                senderName: uMap[String(log.update_by || log.user_id)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
+                message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
+                time: log.update_date || log.created_at || log.created_date,
+              };
+            });
+          setChatMessages(msgs);
+
           const extraLogData = parseExtraDataFromLogs(filteredLogs);
 
           const mergedClaimData = {
@@ -329,14 +366,9 @@ const StaffClaimUpdate = () => {
             driver_name: currentClaim.driver_name || extraLogData.driverName || "",
             truck_plate: currentClaim.truck_plate || extraLogData.truckPlate || "",
             full_receive: currentClaim.full_receive || extraLogData.fullReceive || "",
-            withdraw_date: currentClaim.withdraw_date || extraLogData.withdrawDate || null,
-            returned_qty: currentClaim.returned_qty ?? extraLogData.returnedQty ?? "",
-            approved_qty: currentClaim.approved_qty ?? extraLogData.approvedQty ?? "",
             delivery_driver: currentClaim.delivery_driver || extraLogData.deliveryDriver || "",
             delivery_plate: currentClaim.delivery_plate || extraLogData.deliveryPlate || "",
             estimated_delivery_date: currentClaim.estimated_delivery_date || extraLogData.estimatedDeliveryDate || null,
-            lot_no_change: currentClaim.lot_no_change || extraLogData.lotNoChange || "",
-            mfg_date_change: currentClaim.mfg_date_change || extraLogData.mfgDateChange || null,
           };
 
           setData(mergedClaimData);
@@ -350,14 +382,9 @@ const StaffClaimUpdate = () => {
             truckPlate: mergedClaimData.truck_plate,
             claimNoInput: mergedClaimData.claim_no || "",
             fullReceive: mergedClaimData.full_receive,
-            withdrawDate: mergedClaimData.withdraw_date ? dayjs(mergedClaimData.withdraw_date) : null,
-            returnedQty: mergedClaimData.returned_qty,
-            approvedQty: mergedClaimData.approved_qty,
             deliveryDriver: mergedClaimData.delivery_driver,
             deliveryPlate: mergedClaimData.delivery_plate,
             estimatedDeliveryDate: mergedClaimData.estimated_delivery_date ? dayjs(mergedClaimData.estimated_delivery_date) : null,
-            lotNoChange: mergedClaimData.lot_no_change || extraLogData.lotNoChange || "",
-            mfgDateChange: mergedClaimData.mfg_date_change ? dayjs(mergedClaimData.mfg_date_change) : (extraLogData.mfg_date_change ? dayjs(extraLogData.mfg_date_change) : null),
           });
 
           const approvesData = resApproves?.data || resApproves || [];
@@ -377,6 +404,32 @@ const StaffClaimUpdate = () => {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ฟังก์ชันส่งข้อความฝากสนทนา
+  const handleSendMessage = async () => {
+    if (!newMessage.trim()) return;
+    setSendingMsg(true);
+    try {
+      const realClaimId = data.claim_id;
+      const formattedRemark = `[MSG] [STAFF] ${newMessage.trim()}`;
+
+      await claimService.createClaimStatusLogs({
+        claim_id: String(realClaimId),
+        status: String(getStatusId(data.current_status)),
+        remark: formattedRemark,
+        update_by: currentUserId,
+        user_id: currentUserId,
+      });
+
+      message.success("ส่งข้อความเรียบร้อยแล้ว");
+      setNewMessage("");
+      fetchClaimDetail();
+    } catch (err) {
+      message.error("ส่งข้อความไม่สำเร็จ: " + err.message);
+    } finally {
+      setSendingMsg(false);
     }
   };
 
@@ -479,74 +532,72 @@ const StaffClaimUpdate = () => {
     });
   };
 
-  // 🟢 1. ปรับปรุง processStatusChange (ใช้ในการถอยสถานะ)
-  // 🟢 ปรับปรุง processStatusChange สำหรับการถอยสถานะ
-const processStatusChange = async (targetStatus, isSteppingBack = false) => {
-  if (!currentUserId) {
-    message.error("ไม่พบรหัสผู้ใช้งาน กรุณาล็อกอินใหม่อีกครั้ง");
-    return;
-  }
-
-  try {
-    const { images, image, ...cleanData } = data;
-    const realClaimId = cleanData.claim_id || data.claim_id;
-    const statusId = getStatusId(targetStatus);
-    const actionsName = getActionNameByStatus(targetStatus);
-
-    // เตรียมโครงสร้าง Remark และ Extra Data
-    const extraData = {
-      driverName: formData.driverName,
-      truckPlate: formData.truckPlate,
-      claimNoInput: formData.claimNoInput,
-      fullReceive: formData.fullReceive,
-      withdrawDate: formData.withdrawDate ? dayjs(formData.withdrawDate).format("YYYY-MM-DD") : "",
-      returnedQty: formData.returnedQty,
-      approvedQty: formData.approvedQty,
-      deliveryDriver: formData.deliveryDriver,
-      deliveryPlate: formData.deliveryPlate,
-      estimatedDeliveryDate: formData.estimatedDeliveryDate ? dayjs(formData.estimatedDeliveryDate).format("YYYY-MM-DD") : "",
-      lotNoChange: formData.lotNoChange,
-      mfgDateChange: formData.mfgDateChange ? dayjs(formData.mfgDateChange).format("YYYY-MM-DD") : "",
-    };
-
-    const mainRemarkText = isSteppingBack
-      ? `ถอยสถานะย้อนกลับจาก (${currentStatusInDB}) เป็น ${targetStatus}`
-      : `เปลี่ยนสถานะเป็น ${targetStatus}`;
-
-    const fullRemark = `${mainRemarkText} | DATA:${JSON.stringify(extraData)}`;
-
-    // แนบ flag is_revert: true เพื่อให้ Backend ทราบว่าต้องแสตมป์เวลาทับใหม่
-    const updatePayload = {
-      ...cleanData,
-      claim_id: realClaimId,
-      current_status: statusId,
-      status: statusId,
-      status_name: targetStatus,
-      actionsname: actionsName,
-      is_revert: true, // 👈 ส่ง Flag สำหรับถอยสถานะไปทับเวลา
-      update_by: currentUserId,
-    };
-
-    const resUpdate = await claimService.updateClaim(updatePayload);
-
-    if (resUpdate?.status) {
-      // 🟢 บันทึกลง Log ประวัติสถานะ (gatClaimStatusLog)
-      await claimService.createClaimStatusLogs({
-        claim_id: String(realClaimId),
-        status: String(statusId),
-        remark: fullRemark,
-        update_by: currentUserId,
-        user_id: currentUserId,
-      });
-
-      message.success(isSteppingBack ? `ถอยสถานะเป็น "${targetStatus}" เรียบร้อยแล้ว` : "บันทึกข้อมูลเรียบร้อยแล้ว");
-      setIsModalOpen(false);
-      fetchClaimDetail();
+  const processStatusChange = async (targetStatus, isSteppingBack = false) => {
+    if (!currentUserId) {
+      message.error("ไม่พบรหัสผู้ใช้งาน กรุณาล็อกอินใหม่อีกครั้ง");
+      return;
     }
-  } catch (error) {
-    message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
-  }
-};
+
+    try {
+      const { images, image, ...cleanData } = data;
+      const realClaimId = cleanData.claim_id || data.claim_id;
+      const statusId = getStatusId(targetStatus);
+      const actionsName = getActionNameByStatus(targetStatus);
+
+      // ฟอร์แมตวันที่รายชิ้นของ claimItems ก่อนส่งขึ้น Backend
+      const formattedClaimItems = claimItems.map((item) => ({
+        ...item,
+        withdraw_date: item.withdraw_date ? (dayjs.isDayjs(item.withdraw_date) ? item.withdraw_date.format("YYYY-MM-DD") : item.withdraw_date) : null,
+        mfg_date_change: item.mfg_date_change ? (dayjs.isDayjs(item.mfg_date_change) ? item.mfg_date_change.format("YYYY-MM-DD") : item.mfg_date_change) : null,
+      }));
+
+      const extraData = {
+        driverName: formData.driverName,
+        truckPlate: formData.truckPlate,
+        claimNoInput: formData.claimNoInput,
+        fullReceive: formData.fullReceive,
+        deliveryDriver: formData.deliveryDriver,
+        deliveryPlate: formData.deliveryPlate,
+        estimatedDeliveryDate: formData.estimatedDeliveryDate ? dayjs(formData.estimatedDeliveryDate).format("YYYY-MM-DD") : "",
+      };
+
+      const mainRemarkText = isSteppingBack
+        ? `ถอยสถานะย้อนกลับจาก (${currentStatusInDB}) เป็น ${targetStatus}`
+        : `เปลี่ยนสถานะเป็น ${targetStatus}`;
+
+      const fullRemark = `${mainRemarkText} | DATA:${JSON.stringify(extraData)}`;
+
+      const updatePayload = {
+        ...cleanData,
+        claim_id: realClaimId,
+        current_status: statusId,
+        status: statusId,
+        status_name: targetStatus,
+        actionsname: actionsName,
+        is_revert: true,
+        update_by: currentUserId,
+        items: formattedClaimItems,
+      };
+
+      const resUpdate = await claimService.updateClaim(updatePayload);
+
+      if (resUpdate?.status) {
+        await claimService.createClaimStatusLogs({
+          claim_id: String(realClaimId),
+          status: String(statusId),
+          remark: fullRemark,
+          update_by: currentUserId,
+          user_id: currentUserId,
+        });
+
+        message.success(isSteppingBack ? `ถอยสถานะเป็น "${targetStatus}" เรียบร้อยแล้ว` : "บันทึกข้อมูลเรียบร้อยแล้ว");
+        setIsModalOpen(false);
+        fetchClaimDetail();
+      }
+    } catch (error) {
+      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+    }
+  };
 
   const handleOpenRevertModal = () => {
     let targetStatus = currentStatusInDB;
@@ -559,7 +610,6 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
     }
 
     handleInputChange("status", targetStatus);
-    handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
     handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
     setIsModalOpen(true);
   };
@@ -621,7 +671,7 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
   };
 
   const validateForm = () => {
-    const { status, rejectReason, driverName, truckPlate, withdrawDate, returnedQty, approvedQty, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
+    const { status, rejectReason, driverName, truckPlate, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
 
     if (!isValidStatusTransition(currentStatusInDB, status)) {
       message.error(`ไม่สามารถเปลี่ยนจาก "${currentStatusInDB}" ไปเป็น "${status}" ได้`);
@@ -635,9 +685,14 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
       message.error("กรุณาระบุชื่อ พขร. และทะเบียนรถผู้ไปรับสินค้า");
       return false;
     }
-    if (status === "กำลังดำเนินการเปลี่ยนสินค้า" && (!withdrawDate || !returnedQty.toString().trim() || !approvedQty.toString().trim())) {
-      message.error("กรุณาระบุวันที่เบิกสินค้า จำนวนที่ส่งคืน และจำนวนที่รับรองให้ครบถ้วน");
-      return false;
+    if (status === "กำลังดำเนินการเปลี่ยนสินค้า") {
+      for (let i = 0; i < claimItems.length; i++) {
+        const item = claimItems[i];
+        if (!item.withdraw_date || !item.returned_qty?.toString().trim() || !item.approved_qty?.toString().trim()) {
+          message.error(`กรุณาระบุวันที่เบิกสินค้า จำนวนที่ส่งคืน และจำนวนที่รองรับการเปลี่ยนให้ครบถ้วนในรายการที่ ${i + 1} (${item.item_name})`);
+          return false;
+        }
+      }
     }
     if (status === "กำลังจัดส่งสินค้าเคลม" && (!deliveryDriver.trim() || !deliveryPlate.trim() || !estimatedDeliveryDate)) {
       message.error("กรุณาระบุชื่อ พขร., ทะเบียนรถ และวันที่คาดว่าจะส่งถึงลูกค้าให้ครบถ้วน");
@@ -646,7 +701,6 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
     return true;
   };
 
-  // 🟢 2. ปรับปรุง handleSaveStatus (บันทึกสถานะหลัก)
   const handleSaveStatus = async () => {
     if (!validateForm()) return;
 
@@ -658,26 +712,21 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
     try {
       const { images, image, ...cleanData } = data;
       const realClaimId = cleanData.claim_id || data.claim_id;
-      const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, withdrawDate, returnedQty, approvedQty, deliveryDriver, deliveryPlate, estimatedDeliveryDate, lotNoChange, mfgDateChange } = formData;
+      const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
 
       const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
      
       const statusId = getStatusId(status);
-      const actionsName = getActionNameByStatus(status); // 🟢 ใช้ Helper Function แมป actionsname ให้ถูกต้อง
+      const actionsName = getActionNameByStatus(status);
 
       const extraData = {
         driverName,
         truckPlate,
         claimNoInput,
         fullReceive,
-        withdrawDate: formatDatePayload(withdrawDate),
-        returnedQty,
-        approvedQty,
         deliveryDriver,
         deliveryPlate,
         estimatedDeliveryDate: formatDatePayload(estimatedDeliveryDate),
-        lotNoChange,
-        mfgDateChange: formatDatePayload(mfgDateChange),
       };
 
       const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
@@ -712,10 +761,17 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
         timestampUpdates.receive_finish_date = nowFormattedStandard;
       }
 
+      // ฟอร์แมตวันที่รายชิ้นของ claimItems
+      const formattedClaimItems = claimItems.map((item) => ({
+        ...item,
+        withdraw_date: item.withdraw_date ? formatDatePayload(item.withdraw_date) : null,
+        mfg_date_change: item.mfg_date_change ? formatDatePayload(item.mfg_date_change) : null,
+      }));
+
       const updatePayload = {
         ...cleanData,
         claim_id: realClaimId,
-        actionsname: actionsName, // 🟢 แนบ actionsname เสมอ
+        actionsname: actionsName,
         claim_date: cleanData.claim_date ? dayjs(cleanData.claim_date).format("YYYY-MM-DD") : null,
         mfg_date: cleanData.mfg_date ? dayjs(cleanData.mfg_date).format("YYYY-MM-DD") : null,
         exp_date: cleanData.exp_date || cleanData.expire_date ? dayjs(cleanData.exp_date || cleanData.expire_date).format("YYYY-MM-DD") : null,
@@ -729,14 +785,10 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
         truck_plate: isReceiveStatus || cleanData.truck_plate ? truckPlate : "",
         claim_no: isReceiveStatus || cleanData.claim_no ? claimNoInput : cleanData.claim_no,
         full_receive: isReceiveStatus || cleanData.full_receive ? fullReceive : "",
-        withdraw_date: status === "กำลังดำเนินการเปลี่ยนสินค้า" || cleanData.withdraw_date ? formatDatePayload(withdrawDate) : "",
-        returned_qty: status === "กำลังดำเนินการเปลี่ยนสินค้า" || cleanData.returned_qty ? Number(returnedQty) : cleanData.returned_qty,
-        approved_qty: status === "กำลังดำเนินการเปลี่ยนสินค้า" || cleanData.approved_qty ? Number(approvedQty) : cleanData.approved_qty,
         delivery_driver: isDeliveryStatus || cleanData.delivery_driver ? deliveryDriver : "",
         delivery_plate: isDeliveryStatus || cleanData.delivery_plate ? deliveryPlate : "",
         estimated_delivery_date: isDeliveryStatus || cleanData.estimated_delivery_date ? formatDatePayload(estimatedDeliveryDate) : "",
-        lot_no_change: status === "กำลังดำเนินการเปลี่ยนสินค้า" && lotNoChange ? lotNoChange : cleanData.lot_no_change,
-        mfg_date_change: status === "กำลังดำเนินการเปลี่ยนสินค้า" && mfgDateChange ? formatDatePayload(mfgDateChange) : cleanData.mfg_date_change,
+        items: formattedClaimItems,
         ...timestampUpdates,
         update_by: currentUserId,
       };
@@ -825,7 +877,7 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
           description: (
             <div className="text-xs">
               <div>{getLogDate(currentStatusId)}</div>
-              {rejectReason && <div className="text-red-500 font-medium">{rejectReason}</div>}
+              {rejectReason && <div className="text-red-500 font-medium break-words">{rejectReason}</div>}
             </div>
           ),
           icon: renderDotIcon(CloseCircleOutlined),
@@ -891,21 +943,31 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
       title: "ชื่อสินค้า",
       dataIndex: "item_name",
       key: "item_name",
-      render: (text) => <span className="font-medium text-slate-800">{text}</span>,
+      render: (text) => <span className="font-medium text-slate-800 break-words">{text}</span>,
     },
     {
-      title: "จำนวน",
+      title: "จำนวนแจ้งเคลม",
       dataIndex: "qty",
       key: "qty",
-      width: 80,
+      width: 100,
       align: "right",
-      render: (qty) => <span className="font-semibold text-emerald-600">{qty}</span>,
+      render: (qty) => <span className="font-semibold text-slate-700">{qty}</span>,
+    },
+    {
+      title: "จำนวนรับจริง",
+      dataIndex: "received_qty",
+      key: "received_qty",
+      width: 100,
+      align: "right",
+      render: (rQty, record) => (
+        <span className="font-semibold text-emerald-600">{rQty ?? record.qty}</span>
+      ),
     },
     {
       title: "สาเหตุและรายละเอียด",
       dataIndex: "remark",
       key: "remark",
-      render: (text) => <div className="text-xs text-slate-600 whitespace-pre-line">{text || "-"}</div>,
+      render: (text) => <div className="text-xs text-slate-600 whitespace-pre-wrap break-words">{text || "-"}</div>,
     },
   ];
 
@@ -1021,7 +1083,6 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
                   }
 
                   handleInputChange("status", defaultStatus);
-                  handleInputChange("withdrawDate", data.withdraw_date ? dayjs(data.withdraw_date) : null);
                   handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
                   setIsModalOpen(true);
                 }}
@@ -1067,6 +1128,7 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
+        {/* คอลัมน์ซ้าย (xl:col-span-2) */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
           <Card 
             title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>} 
@@ -1099,13 +1161,13 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
               </Descriptions.Item>
 
               <Descriptions.Item label="ชื่อ Agent">
-                <span className="font-medium text-slate-800 break-all" title={agentNameDisplay}>
+                <span className="font-medium text-slate-800 break-words" title={agentNameDisplay}>
                   {agentNameDisplay}
                 </span>
               </Descriptions.Item>
 
               <Descriptions.Item label="ผู้แจ้งส่งคืน">
-                <span className="text-slate-800 break-all" title={reporterNameDisplay}>
+                <span className="text-slate-800 break-words" title={reporterNameDisplay}>
                   {reporterNameDisplay}
                 </span>
               </Descriptions.Item>
@@ -1157,7 +1219,7 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
                   wordBreak: "break-word"
                 }}
               >
-                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800">{data.driver_name || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800 break-words">{data.driver_name || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.truck_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="เลขที่เอกสารเคลม"><span className="font-mono">{data.claim_no || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="จำนวนที่รับคืนสินค้าแตก"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
@@ -1165,39 +1227,38 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
             </Card>
           )}
 
-          {(STATUS_PRIORITY[currentStatusInDB] >= 6 || Boolean(data.withdraw_date)) && (
-            <Card title={<span className="font-medium text-slate-800">ข้อมูลการเบิกเปลี่ยนสินค้า</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions 
-                column={1} 
-                bordered 
-                size="middle" 
-                labelStyle={{ 
-                  fontWeight: "500", 
-                  color: "#475569", 
-                  width: "130px", 
-                  backgroundColor: "#f8fafc",
-                  verticalAlign: "top" 
-                }}
-                contentStyle={{
-                  color: "#1e293b",
-                  wordBreak: "break-word"
-                }}
-              >
-                <Descriptions.Item label="วันที่เบิกสินค้าจากคลัง"><span className="font-mono">{data.withdraw_date ? dayjs(data.withdraw_date).format("DD/MM/YYYY") : "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="Lot Number Change">
-                  <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-800">
-                    {data.lot_no_change || "-"}
-                  </span>
-                </Descriptions.Item>
-
-                <Descriptions.Item label="MFG Date Change">
-                  <span className="font-mono text-emerald-600 font-medium">
-                    {data.mfg_date_change ? dayjs(data.mfg_date_change).format("DD/MM/YYYY") : "-"}
-                  </span>
-                </Descriptions.Item>
-                <Descriptions.Item label="จำนวนที่ส่งสินค้าคืน"><span className="text-slate-800">{data.returned_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
-                <Descriptions.Item label="จำนวนแตกที่รับรองการเปลี่ยน"><span className="text-emerald-600">{data.approved_qty ?? "-"}</span> ขวด/กระป๋อง</Descriptions.Item>
-              </Descriptions>
+          {(STATUS_PRIORITY[currentStatusInDB] >= 6 || claimItems.some(i => i.withdraw_date)) && (
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการเบิกเปลี่ยนสินค้า (แยกรายสินค้า)</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
+              <div className="flex flex-col gap-4">
+                {claimItems.map((item, idx) => (
+                  <div key={item.key || idx} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col gap-2">
+                    <div className="font-semibold text-slate-800 text-sm border-b pb-1.5 flex justify-between items-center">
+                      <span>{idx + 1}. {item.item_name}</span>
+                      <Tag color="emerald">อนุมัติเปลี่ยน: {item.approved_qty ?? "-"} ขวด/กระป๋อง</Tag>
+                    </div>
+                    <Descriptions 
+                      column={{ xs: 1, sm: 2 }} 
+                      bordered 
+                      size="small" 
+                      labelStyle={{ fontWeight: "500", color: "#475569", backgroundColor: "#ffffff", fontSize: "12px" }}
+                      contentStyle={{ color: "#1e293b", fontSize: "12px" }}
+                    >
+                      <Descriptions.Item label="วันที่เบิกสินค้า">
+                        <span className="font-mono">{item.withdraw_date ? dayjs(item.withdraw_date).format("DD/MM/YYYY") : "-"}</span>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Lot Number ล็อตใหม่">
+                        <span className="font-mono bg-white px-2 py-0.5 rounded border text-slate-800">{item.lot_no_change || "-"}</span>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="MFG Date วันผลิตใหม่">
+                        <span className="font-mono text-emerald-600 font-medium">{item.mfg_date_change ? dayjs(item.mfg_date_change).format("DD/MM/YYYY") : "-"}</span>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="จำนวนส่งคืน / เปลี่ยนแตก">
+                        <span>ส่งคืน: <b>{item.returned_qty ?? "-"}</b> | เปลี่ยน: <b className="text-emerald-600">{item.approved_qty ?? "-"}</b></span>
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
 
@@ -1219,7 +1280,7 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
                   wordBreak: "break-word"
                 }}
               >
-                <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม"><span className="text-slate-800">{data.delivery_driver || "-"}</span></Descriptions.Item>
+                <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม"><span className="text-slate-800 break-words">{data.delivery_driver || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="วันที่คาดว่าจะส่งถึงลูกค้า">
                   <span className="text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
@@ -1229,7 +1290,9 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
           )}
         </div>
 
+        {/* คอลัมน์ขวา (xl:col-span-1) */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
+          {/* Card รูปภาพหลักฐานทั้งหมด */}
           <Card 
             title={
               <div className="flex justify-between items-center">
@@ -1263,6 +1326,84 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
             )}
           </Card>
 
+         {/* Private Comments */}
+          <Card
+            className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60"
+            bodyStyle={{ padding: "20px" }}
+          >
+            <div className="flex flex-col gap-3">
+              
+              {/* 1. Header */}
+              <div className="flex items-center gap-2">
+                <UserOutlined className="text-slate-700 text-lg" />
+                <span className="font-semibold text-slate-800 text-sm sm:text-base">
+                  {chatMessages.length} private comments
+                </span>
+              </div>
+
+              {/* 2. รายการข้อความ */}
+              <div className="flex flex-col gap-3">
+                {chatMessages.length > 0 ? (
+                  chatMessages.map((msg) => (
+                    <div key={msg.id} className="flex flex-col gap-1 w-full">
+                      {/* ชื่อผู้ส่ง • วันที่ */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-slate-800 text-xs">
+                          {msg.senderName}
+                        </span>
+                        <span className="text-slate-400 text-[10px] font-normal">
+                          • {msg.time ? dayjs(msg.time).format("DD/MM/YYYY HH:mm") : "-"}
+                        </span>
+                      </div>
+
+                      {/* ข้อความ */}
+                      <div className="text-slate-800 text-sm sm:text-base whitespace-pre-wrap break-words font-normal leading-relaxed pl-0.5 w-full">
+                        {msg.message}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-slate-400 italic text-xs py-2">
+                    ยังไม่มีคอมเมนต์ส่วนตัว
+                  </div>
+                )}
+              </div>
+
+              {/* เส้นคั่นกลาง */}
+              <div className="border-t border-slate-200/80 w-full" />
+
+              {/* 3. กล่องพิมพ์ข้อความ */}
+              <Input.TextArea
+                rows={2}
+                autoSize={{ minRows: 2, maxRows: 4 }}
+                placeholder="เพิ่มความคิดเห็นส่วนตัว..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                className="rounded-xl border-slate-300 text-sm focus:border-blue-500 bg-white"
+              />
+
+              {/* 4. ปุ่มส่ง */}
+              <Button
+                type="primary"
+                block
+                icon={<SendOutlined />}
+                loading={sendingMsg}
+                disabled={!newMessage.trim()}
+                onClick={handleSendMessage}
+                className="bg-blue-500 hover:bg-blue-600 rounded-xl text-sm font-medium h-10 border-none shadow-sm flex items-center justify-center gap-1"
+              >
+                ส่ง
+              </Button>
+
+            </div>
+          </Card>
+
           <Card 
             title={<span className="font-medium text-slate-800">ประวัติการพิจารณาอนุมัติ</span>} 
             className="rounded-2xl shadow-sm border-gray-200 w-full" 
@@ -1290,10 +1431,10 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
                         <span className="text-gray-400 font-mono">{formatDateString(item.approve_date)}</span>
                       </div>
                       <div className="text-slate-700 mt-1">
-                        <span className="font-medium">ผู้อนุมัติ:</span> {approverName}
+                        <span className="font-medium">ผู้อนุมัติ:</span> <span className="break-words">{approverName}</span>
                       </div>
                       {item.approve_remark && (
-                        <div className="text-gray-500 italic">
+                        <div className="text-gray-500 italic break-words">
                           <span className="font-medium">หมายเหตุ:</span> {item.approve_remark}
                         </div>
                       )}
@@ -1344,7 +1485,9 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
         </div>
       </div>
 
+      {/* Modal อัปเดตสถานะ */}
       <Modal
+        width={750}
         title={
           <span className="font-medium text-slate-800">
             {isFinalStatus
@@ -1379,68 +1522,145 @@ const processStatusChange = async (targetStatus, isSteppingBack = false) => {
           </div>
 
           {(formData.status === "รับสินค้าจริงแล้ว" || formData.status === "รับสินค้าแล้ว") && (
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-medium text-slate-800">ข้อมูลที่เข้ารับสินค้า</span>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อ-นามสกุล พขร.:</label>
-                <Input placeholder="เช่น นายสมชาย ใจดี" value={formData.driverName} onChange={(e) => handleInputChange("driverName", e.target.value)} />
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
+              <span className="text-sm font-medium text-slate-800 border-b pb-1">ข้อมูลที่เข้ารับสินค้า</span>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อ-นามสกุล พขร.:</label>
+                  <Input placeholder="เช่น นายสมชาย ใจดี" value={formData.driverName} onChange={(e) => handleInputChange("driverName", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ:</label>
+                  <Input placeholder="เช่น 70-1234 กทม." value={formData.truckPlate} onChange={(e) => handleInputChange("truckPlate", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">เลขที่เอกสารเคลม (เล่ม-เลขที่):</label>
+                  <Input placeholder="เช่น 055-02742" value={formData.claimNoInput} onChange={(e) => handleInputChange("claimNoInput", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่รับคืนสินค้าแตกรวม(ขวด/กระป๋อง):</label>
+                  <Input placeholder="เช่น 48" value={formData.fullReceive} onChange={(e) => handleInputChange("fullReceive", e.target.value)} />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ:</label>
-                <Input placeholder="เช่น 70-1234 กทม." value={formData.truckPlate} onChange={(e) => handleInputChange("truckPlate", e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">เลขที่เอกสารเคลม (เล่ม-เลขที่):</label>
-                <Input placeholder="เช่น 055-02742" value={formData.claimNoInput} onChange={(e) => handleInputChange("claimNoInput", e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่รับคืนสินค้าแตก(ขวด/กระป๋อง):</label>
-                <Input placeholder="เช่น 48" value={formData.fullReceive} onChange={(e) => handleInputChange("fullReceive", e.target.value)} />
+
+              {/* รายละเอียดสินค้าในการรับจริง */}
+              <div className="mt-2">
+                <span className="text-xs font-semibold text-slate-700 mb-2 block">
+                  ระบุรายละเอียดสินค้าที่รับจริง:
+                </span>
+                <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                  {claimItems.map((item, index) => (
+                    <div key={item.key || index} className="p-2.5 bg-white rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-slate-800 truncate">{item.item_name}</div>
+                        <div className="text-[11px] text-slate-500">จำนวนที่แจ้ง: {item.qty}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-28 shrink-0">
+                          <label className="text-[10px] text-slate-500 block">รับจริง (ขวด/กระป๋อง)</label>
+                          <InputNumber
+                            min={0}
+                            size="small"
+                            className="w-full"
+                            value={item.received_qty ?? item.qty}
+                            onChange={(val) => handleItemChange(index, "received_qty", val)}
+                          />
+                        </div>
+                        <div className="w-36 shrink-0">
+                          <label className="text-[10px] text-slate-500 block">หมายเหตุเพิ่มเติม</label>
+                          <Input
+                            size="small"
+                            placeholder="หมายเหตุ"
+                            value={item.item_remark || ""}
+                            onChange={(e) => handleItemChange(index, "item_remark", e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
           {formData.status === "กำลังดำเนินการเปลี่ยนสินค้า" && (
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-medium text-slate-800">ข้อมูลการเบิกและรับรองเปลี่ยนสินค้า</span>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">วันที่เบิกสินค้าจากคลัง:</label>
-                <DatePicker
-                  className="w-full"
-                  format="DD/MM/YYYY"
-                  placeholder="เลือกวันที่เบิกสินค้า"
-                  value={formData.withdrawDate ? (dayjs.isDayjs(formData.withdrawDate) ? formData.withdrawDate : dayjs(formData.withdrawDate)) : null}
-                  onChange={(date) => handleInputChange("withdrawDate", date)}
-                />
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
+              <div className="flex justify-between items-center border-b pb-1">
+                <span className="text-sm font-medium text-slate-800">ข้อมูลการเบิกและรับรองเปลี่ยนสินค้า (แยกรายสินค้า)</span>
+                <span className="text-xs text-slate-500">{claimItems.length} รายการ</span>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Lot Number (ล็อตใหม่ที่เปลี่ยน):</label>
-                <Input 
-                  placeholder="เช่น LOT123456" 
-                  value={formData.lotNoChange} 
-                  onChange={(e) => handleInputChange("lotNoChange", e.target.value)} 
-                />
-              </div>
+              {/* รายละเอียดสินค้าแต่ละตัวแบบแยกกรอบ */}
+              <div className="flex flex-col gap-4 max-h-[420px] overflow-y-auto pr-1">
+                {claimItems.map((item, index) => (
+                  <div key={item.key || index} className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 shadow-sm">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                      <span className="text-xs font-bold text-slate-800 truncate">{index + 1}. {item.item_name}</span>
+                      <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">แจ้งเคลม: {item.qty} | รับจริง: {item.received_qty ?? item.qty}</span>
+                    </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">MFG Date (วันผลิตล็อตใหม่):</label>
-                <DatePicker
-                  className="w-full"
-                  format="DD/MM/YYYY"
-                  placeholder="เลือกวันที่ผลิต"
-                  value={formData.mfgDateChange ? (dayjs.isDayjs(formData.mfgDateChange) ? formData.mfgDateChange : dayjs(formData.mfgDateChange)) : null}
-                  onChange={(date) => handleInputChange("mfgDateChange", date)}
-                />
-              </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">วันที่เบิกสินค้า <span className="text-red-500">*</span>:</label>
+                        <DatePicker
+                          className="w-full"
+                          size="small"
+                          format="DD/MM/YYYY"
+                          placeholder="เลือกวันที่เบิก"
+                          value={item.withdraw_date ? (dayjs.isDayjs(item.withdraw_date) ? item.withdraw_date : dayjs(item.withdraw_date)) : null}
+                          onChange={(date) => handleItemChange(index, "withdraw_date", date)}
+                        />
+                      </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่ส่งสินค้าคืน (ขวด/กระป๋อง):</label>
-                <Input type="number" placeholder="เช่น 48" value={formData.returnedQty} onChange={(e) => handleInputChange("returnedQty", e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนแตกที่เจ้าหน้าที่คลังรับรองการเปลี่ยน (ขวด/กระป๋อง):</label>
-                <Input type="number" placeholder="เช่น 48" value={formData.approvedQty} onChange={(e) => handleInputChange("approvedQty", e.target.value)} />
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Lot Number ล็อตใหม่:</label>
+                        <Input 
+                          size="small"
+                          placeholder="เช่น LOT123456" 
+                          value={item.lot_no_change || ""} 
+                          onChange={(e) => handleItemChange(index, "lot_no_change", e.target.value)} 
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">MFG Date วันผลิตใหม่:</label>
+                        <DatePicker
+                          className="w-full"
+                          size="small"
+                          format="DD/MM/YYYY"
+                          placeholder="เลือกวันผลิต"
+                          value={item.mfg_date_change ? (dayjs.isDayjs(item.mfg_date_change) ? item.mfg_date_change : dayjs(item.mfg_date_change)) : null}
+                          onChange={(date) => handleItemChange(index, "mfg_date_change", date)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">จำนวนส่งสินค้าคืน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:</label>
+                        <InputNumber
+                          min={0}
+                          size="small"
+                          className="w-full"
+                          placeholder="จำนวนส่งคืน"
+                          value={item.returned_qty ?? item.qty}
+                          onChange={(val) => handleItemChange(index, "returned_qty", val)}
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-emerald-700 mb-1">จำนวนรับรองการเปลี่ยนแตก (ขวด/กระป๋อง) <span className="text-red-500">*</span>:</label>
+                        <InputNumber
+                          min={0}
+                          size="small"
+                          className="w-full"
+                          placeholder="จำนวนรับรองเปลี่ยน"
+                          value={item.approved_qty ?? item.qty}
+                          onChange={(val) => handleItemChange(index, "approved_qty", val)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

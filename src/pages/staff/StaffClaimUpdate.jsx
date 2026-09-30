@@ -34,6 +34,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 import dayjs from "dayjs";
 import ClaimPrintModal from "../../components/ClaimPrintModal";
 import ClaimStatusTag from "../../components/ClaimStatusTag";
@@ -163,6 +164,8 @@ const StaffClaimUpdate = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  // เพิ่ม state สำหรับป้องกันการกดซ้ำ
+const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentUser = loginService.getCurrentUser();
   const currentUserId = currentUser?.user_id || currentUser?.id;
@@ -191,6 +194,33 @@ const StaffClaimUpdate = () => {
       return updated;
     });
   };
+
+  useClaimRealtime({
+    claimId: data?.claim_id || claimId,
+    isStaff: true,
+    onStatusUpdated: (updatedData) => {
+      // เมื่อมีการอัปเดตสถานะ ให้โหลดข้อมูลรายละเอียดใหม่ทันที
+      fetchClaimDetail();
+    },
+    onCommentCreated: (newLog) => {
+      // เมื่อมี Comment ใหม่เด้งเข้ามา ให้เพิ่มเข้า chatMessages ทันทีแบบ Real-time
+      if (newLog && newLog.remark && newLog.remark.startsWith("[MSG]")) {
+        const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
+        const senderRole = newLog.remark.includes("[STAFF]") ? "staff" : "customer";
+        
+        const formattedMsg = {
+          id: newLog.log_id || Math.random(),
+          senderRole,
+          senderName: usersMap[String(newLog.update_by)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
+          message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
+          time: newLog.update_date || new Date(),
+        };
+
+        setChatMessages((prevMsgs) => [...prevMsgs, formattedMsg]);
+      }
+    },
+  });
+
 
   useEffect(() => {
     fetchClaimDetail();
@@ -709,13 +739,16 @@ const StaffClaimUpdate = () => {
       return;
     }
 
+    // ล็อกปุ่มกดป้องกันการยิง API ซ้ำ
+    setIsSubmitting(true);
+
     try {
       const { images, image, ...cleanData } = data;
       const realClaimId = cleanData.claim_id || data.claim_id;
       const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
 
       const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
-     
+    
       const statusId = getStatusId(status);
       const actionsName = getActionNameByStatus(status);
 
@@ -761,7 +794,6 @@ const StaffClaimUpdate = () => {
         timestampUpdates.receive_finish_date = nowFormattedStandard;
       }
 
-      // ฟอร์แมตวันที่รายชิ้นของ claimItems
       const formattedClaimItems = claimItems.map((item) => ({
         ...item,
         withdraw_date: item.withdraw_date ? formatDatePayload(item.withdraw_date) : null,
@@ -847,14 +879,17 @@ const StaffClaimUpdate = () => {
         }
 
         message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
+        
+        // ปิด Modal ทันที และเคลียร์สถานะ Submitting
         setIsModalOpen(false);
 
-        setTimeout(() => {
-          fetchClaimDetail();
-        }, 500);
+        // ดึงข้อมูลใหม่เพื่อ Re-render
+        await fetchClaimDetail();
       }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -959,9 +994,20 @@ const StaffClaimUpdate = () => {
       key: "received_qty",
       width: 100,
       align: "right",
-      render: (rQty, record) => (
-        <span className="font-semibold text-emerald-600">{rQty ?? record.qty}</span>
-      ),
+      render: (rQty, record) => {
+        const isReceivedStep = STATUS_PRIORITY[currentStatusInDB] >= 4;
+        
+        // ถ้ายังไม่ถึงขั้นตอนรับจริง ให้แสดง "-"
+        if (!isReceivedStep) {
+          return <span className="text-slate-400 font-normal">-</span>;
+        }
+        
+        return (
+          <span className="font-semibold text-emerald-600">
+            {rQty ?? record.qty}
+          </span>
+        );
+      },
     },
     {
       title: "สาเหตุและรายละเอียด",
@@ -1374,7 +1420,7 @@ const StaffClaimUpdate = () => {
 
               {/* 3. กล่องพิมพ์ข้อความ */}
               <Input.TextArea
-                rows={2}
+          
                 autoSize={{ minRows: 2, maxRows: 4 }}
                 placeholder="เพิ่มความคิดเห็นส่วนตัว..."
                 value={newMessage}
@@ -1499,11 +1545,12 @@ const StaffClaimUpdate = () => {
         }
         open={isModalOpen}
         onOk={handleSaveStatus}
-        onCancel={() => setIsModalOpen(false)}
+        confirmLoading={isSubmitting} // แสดงสถานะ Loading บนปุ่มตกลง
+        onCancel={() => !isSubmitting && setIsModalOpen(false)}
         okText="บันทึกเปลี่ยนสถานะ"
         cancelText="ยกเลิก"
         okButtonProps={{ 
-          disabled: !formData.status || formData.status === currentStatusInDB,
+          disabled: !formData.status || formData.status === currentStatusInDB || isSubmitting,
           className: isFinalStatus ? "bg-amber-600 hover:bg-amber-700 font-normal" : "bg-emerald-600 hover:bg-emerald-700 font-normal" 
         }}
       >
@@ -1692,7 +1739,11 @@ const StaffClaimUpdate = () => {
           {isModalStatusRejected && (
             <div className="bg-red-50 p-3 rounded-xl border border-red-200 flex flex-col gap-2">
               <label className="block text-xs font-medium text-red-700">เหตุผลการปฏิเสธการเคลม (จำเป็น):</label>
-              <Input.TextArea rows={3} placeholder="ระบุเหตุผลการไม่อนุมัติ หรือไม่มีสิทธิ์เคลม..." value={formData.rejectReason} onChange={(e) => handleInputChange("rejectReason", e.target.value)} />
+              <Input.TextArea
+              rows={3}
+              placeholder="ระบุเหตุผลการไม่อนุมัติ หรือไม่มีสิทธิ์เคลม..."
+              value={formData.rejectReason} 
+              onChange={(e) => handleInputChange("rejectReason", e.target.value)} />
             </div>
           )}
         </div>

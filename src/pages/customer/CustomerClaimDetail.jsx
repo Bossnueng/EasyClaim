@@ -28,6 +28,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import ClaimStatusTag from "../../components/ClaimStatusTag";
@@ -39,6 +40,7 @@ import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import socket from "../../services/socket";
 
 dayjs.extend(utc);
 
@@ -98,6 +100,42 @@ const CustomerClaimDetail = () => {
   const [newMessage, setNewMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
 
+  // จัดการ Socket Room
+  useEffect(() => {
+    if (!claimId) return;
+
+    socket.emit("join_claim", { claim_id: claimId });
+
+    return () => {
+      socket.emit("leave_claim", { claim_id: claimId });
+    };
+  }, [claimId]);
+
+  // ใช้ Realtime Hook ในการดักจับ Event และ Trigger โหลดข้อมูล
+  useClaimRealtime({
+    claimId: claimId,
+    isStaff: false,
+    onStatusUpdated: () => {
+      fetchClaimDetail();
+    },
+    onCommentCreated: (newLog) => {
+      if (newLog && newLog.remark && newLog.remark.startsWith("[MSG]")) {
+        const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
+        const senderRole = newLog.remark.includes("[STAFF]") ? "staff" : "customer";
+        
+        const formattedMsg = {
+          id: newLog.log_id || Math.random(),
+          senderRole,
+          senderName: usersMap[String(newLog.update_by)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
+          message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
+          time: newLog.update_date || new Date(),
+        };
+
+        setChatMessages((prevMsgs) => [...prevMsgs, formattedMsg]);
+      }
+    },
+  });
+
   useEffect(() => {
     fetchClaimDetail();
   }, [claimId]);
@@ -119,13 +157,17 @@ const CustomerClaimDetail = () => {
 
     setLoading(true);
     try {
+      // เพิ่ม .catch ป้องกัน API ล้มแล้วค้าง
       const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
-        claimService.getClaimByAgent(user.agent_id),
-        itemService.getItems(),
-        claimService.getClaimStatusLogs(),
-        claimService.getclaimapproves(),
-        userService.getUsers(),
-        agentService.getAgent(),
+        claimService.getClaimByAgent(user.agent_id).catch((err) => {
+          console.error("getClaimByAgent error:", err);
+          return { data: [] };
+        }),
+        itemService.getItems().catch(() => ({ data: [] })),
+        claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
+        claimService.getclaimapproves().catch(() => ({ data: [] })),
+        userService.getUsers().catch(() => ({ data: [] })),
+        agentService.getAgent().catch(() => ({ data: [] })),
       ]);
 
       const masterItemsMap = {};
@@ -299,6 +341,7 @@ const CustomerClaimDetail = () => {
         message.error("ไม่พบข้อมูลรายการเคลมในระบบ");
       }
     } catch (error) {
+      console.error("fetchClaimDetail error:", error);
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
       setLoading(false);
@@ -376,7 +419,8 @@ const CustomerClaimDetail = () => {
   if (loading) {
     return (
       <div className="w-full h-64 flex justify-center items-center">
-        <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+        {/* แก้ไข tip -> description ตาม Warning ของ Antd v5 */}
+        <Spin size="large" description="กำลังโหลดข้อมูล..." />
       </div>
     );
   }
@@ -541,6 +585,27 @@ const CustomerClaimDetail = () => {
       render: (qty) => <span className="font-semibold text-emerald-600">{qty}</span>,
     },
     {
+      title: "จำนวนรับจริง",
+      dataIndex: "received_qty",
+      key: "received_qty",
+      width: 100,
+      align: "right",
+      render: (rQty, record) => {
+        const isReceivedStep = STATUS_PRIORITY[currentStatusInDB] >= 4;
+        
+        // ถ้ายังไม่ถึงขั้นตอนรับสินค้าจริง (ลำดับ priority < 4) ให้แสดง "-"
+        if (!isReceivedStep) {
+          return <span className="text-slate-400 font-normal">-</span>;
+        }
+        
+        return (
+          <span className="font-semibold text-emerald-600">
+            {rQty ?? record.qty}
+          </span>
+        );
+      },
+    },
+    {
       title: "สาเหตุและรายละเอียด",
       dataIndex: "remark",
       key: "remark",
@@ -661,7 +726,6 @@ const CustomerClaimDetail = () => {
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
-        {/* คอลัมน์ซ้าย (xl:col-span-2) */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
           <Card 
             title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>} 
@@ -770,9 +834,7 @@ const CustomerClaimDetail = () => {
           )}
         </div>
 
-        {/* คอลัมน์ขวา (xl:col-span-1) */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          {/* Card รูปภาพหลักฐานทั้งหมด */}
           <Card 
             title={
               <div className="flex justify-between items-center">
@@ -806,14 +868,11 @@ const CustomerClaimDetail = () => {
             )}
           </Card>
 
-          {/* Private Comments - ปรับรูปแบบให้ตรงกับฝั่ง Staff (ย้ายมาไว้คอลัมน์ขวา + ใช้ดีไซน์สีอ่อนสบายตา) */}
           <Card
             className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60"
             bodyStyle={{ padding: "20px" }}
           >
             <div className="flex flex-col gap-3">
-              
-              {/* 1. Header */}
               <div className="flex items-center gap-2">
                 <UserOutlined className="text-slate-700 text-lg" />
                 <span className="font-semibold text-slate-800 text-sm sm:text-base">
@@ -821,12 +880,10 @@ const CustomerClaimDetail = () => {
                 </span>
               </div>
 
-              {/* 2. รายการข้อความ */}
               <div className="flex flex-col gap-3">
                 {chatMessages.length > 0 ? (
                   chatMessages.map((msg) => (
                     <div key={msg.id} className="flex flex-col gap-1 w-full">
-                      {/* ชื่อผู้ส่ง • วันที่ */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-slate-800 text-xs">
                           {msg.senderName}
@@ -836,7 +893,6 @@ const CustomerClaimDetail = () => {
                         </span>
                       </div>
 
-                      {/* ข้อความ */}
                       <div className="text-slate-800 text-sm sm:text-base whitespace-pre-wrap break-words font-normal leading-relaxed pl-0.5 w-full">
                         {msg.message}
                       </div>
@@ -849,12 +905,9 @@ const CustomerClaimDetail = () => {
                 )}
               </div>
 
-              {/* เส้นคั่นกลาง */}
               <div className="border-t border-slate-200/80 w-full" />
 
-              {/* 3. กล่องพิมพ์ข้อความ */}
               <Input.TextArea
-                rows={2}
                 autoSize={{ minRows: 2, maxRows: 4 }}
                 placeholder="เพิ่มความคิดเห็นส่วนตัว..."
                 value={newMessage}
@@ -868,7 +921,6 @@ const CustomerClaimDetail = () => {
                 className="rounded-xl border-slate-300 text-sm focus:border-blue-500 bg-white"
               />
 
-              {/* 4. ปุ่มส่ง */}
               <Button
                 type="primary"
                 block

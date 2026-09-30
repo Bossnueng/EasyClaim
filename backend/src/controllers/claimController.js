@@ -26,8 +26,6 @@ const storage = multer.diskStorage({
   },
 });
 
-exports.upload = multer({ storage: storage });
-
 const sendTeamsNotification = async (claimData) => {
   const webhookUrl =
     process.env.TEAMS_WEBHOOK_URL ||
@@ -60,26 +58,10 @@ const sendTeamsNotification = async (claimData) => {
   }
 };
 
-function parseDate(value, fieldName) {
-    console.log(fieldName, "=", value);
-    console.log("typeof =", typeof value);
+const { getIO } = require("../../socket/claimSocket");
 
-    if (
-        value === undefined ||
-        value === null ||
-        value === ""
-    ) {
-        return null;
-    }
+exports.upload = multer({ storage: storage });
 
-    const date = new Date(value);
-
-    if (isNaN(date.getTime())) {
-        throw new Error(`${fieldName} ไม่ใช่วันที่ที่ถูกต้อง: ${value}`);
-    }
-
-    return date;
-}
 
 exports.getclaimstatuslog = async (req, res) => {
   try {
@@ -110,7 +92,6 @@ exports.createClaimStatusLogs = async (req, res) => {
     try {
         const { claim_id, status, remark, update_by } = req.body;
       
-        //เพิ่มเพื่อเช็คข้อความในกล่องข้อความ
         if (!remark) {
             return res.status(400).json({ status: false, message: "กรุณาระบุข้อความ หรือ remark" });
         }
@@ -140,6 +121,24 @@ exports.createClaimStatusLogs = async (req, res) => {
                 );
                 SELECT SCOPE_IDENTITY() AS log_id;
             `);
+
+        const newLogId = result.recordset[0]?.log_id || null;
+
+        // 🟢 ส่ง Socket Event เมื่อมีการส่งข้อความ หรืออัปเดต Log
+        try {
+            const newComment = {
+                log_id: newLogId,
+                claim_id,
+                status,
+                remark,
+                update_by,
+                update_date: new Date()
+            };
+            getIO().to(`claim:${claim_id}`).emit("claim:comment_created", newComment);
+        } catch (socketErr) {
+            console.error("Socket emit error:", socketErr.message);
+        }
+
 
         res.json({
             status: true,
@@ -982,6 +981,7 @@ exports.delClaim = async (req, res) => {
   };
 
 exports.updateclaim = async (req, res) => {
+
     try {
         const {
             claim_id,
@@ -1063,6 +1063,15 @@ exports.updateclaim = async (req, res) => {
                 `);
 
             await transaction.commit();
+
+            try {
+                // 🟢 ส่ง Socket Event กระจายหาทั้ง Room เคสเคลมนี้ และ Staff
+                const updatedData = { claim_id, status, actionsname, updated_at: new Date() };
+                getIO().to(`claim:${claim_id}`).emit("claim:status_updated", updatedData);
+                getIO().to("staff").emit("claim:status_updated", updatedData);
+            } catch (socketErr) {
+                console.error("Socket emit error:", socketErr.message);
+            }
 
             return res.json({
                 status: true,

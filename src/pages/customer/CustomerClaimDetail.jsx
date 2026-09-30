@@ -351,24 +351,24 @@ const CustomerClaimDetail = () => {
   // ฟังก์ชันส่งข้อความฝากสนทนาฝั่ง Customer
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
-    setSendingMsg(true);
-    try {
-      const currentUser = loginService.getCurrentUser();
-      const userId = currentUser?.user_id || currentUser?.id || currentUser?.agent_id || "";
-      const realClaimId = data.claim_id;
-      const formattedRemark = `[MSG] [CUSTOMER] ${newMessage.trim()}`;
+    const messageToSend = newMessage.trim();
+      setSendingMsg(true);
+      try {
+        const currentUser = loginService.getCurrentUser();
+        const userId = currentUser?.user_id || currentUser?.id || currentUser?.agent_id || "";
+        const realClaimId = data.claim_id;
+        const formattedRemark = `[MSG] [CUSTOMER] ${messageToSend}`;
 
-      await claimService.createClaimStatusLogs({
-        claim_id: String(realClaimId),
-        status: String(getStatusId(data.current_status)),
-        remark: formattedRemark,
-        update_by: String(userId),
-        user_id: String(userId),
-      });
+        await claimService.createClaimStatusLogs({
+          claim_id: String(realClaimId),
+          status: String(getStatusId(data.current_status)),
+          remark: formattedRemark,
+          update_by: String(userId),
+          user_id: String(userId),
+        });
 
+        setNewMessage("");
       message.success("ส่งข้อความเรียบร้อยแล้ว");
-      setNewMessage("");
-      fetchClaimDetail();
     } catch (err) {
       message.error("ส่งข้อความไม่สำเร็จ: " + err.message);
     } finally {
@@ -593,7 +593,6 @@ const CustomerClaimDetail = () => {
       render: (rQty, record) => {
         const isReceivedStep = STATUS_PRIORITY[currentStatusInDB] >= 4;
         
-        // ถ้ายังไม่ถึงขั้นตอนรับสินค้าจริง (ลำดับ priority < 4) ให้แสดง "-"
         if (!isReceivedStep) {
           return <span className="text-slate-400 font-normal">-</span>;
         }

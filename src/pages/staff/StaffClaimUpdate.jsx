@@ -164,8 +164,7 @@ const StaffClaimUpdate = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-  // เพิ่ม state สำหรับป้องกันการกดซ้ำ
-const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentUser = loginService.getCurrentUser();
   const currentUserId = currentUser?.user_id || currentUser?.id;
@@ -186,7 +185,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // อัปเดตข้อมูลรายละเอียดสินค้าแยกรายชิ้นใน Modal
   const handleItemChange = (index, field, value) => {
     setClaimItems((prevItems) => {
       const updated = [...prevItems];
@@ -199,11 +197,9 @@ const [isSubmitting, setIsSubmitting] = useState(false);
     claimId: data?.claim_id || claimId,
     isStaff: true,
     onStatusUpdated: (updatedData) => {
-      // เมื่อมีการอัปเดตสถานะ ให้โหลดข้อมูลรายละเอียดใหม่ทันที
       fetchClaimDetail();
     },
     onCommentCreated: (newLog) => {
-      // เมื่อมี Comment ใหม่เด้งเข้ามา ให้เพิ่มเข้า chatMessages ทันทีแบบ Real-time
       if (newLog && newLog.remark && newLog.remark.startsWith("[MSG]")) {
         const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
         const senderRole = newLog.remark.includes("[STAFF]") ? "staff" : "customer";
@@ -220,7 +216,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
       }
     },
   });
-
 
   useEffect(() => {
     fetchClaimDetail();
@@ -372,7 +367,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
             : [];
           setStatusLogs(filteredLogs);
 
-          // กรองและคัดแยกข้อความฝากสนทนา
           const msgs = filteredLogs
             .filter((log) => log.remark && log.remark.startsWith("[MSG]"))
             .map((log) => {
@@ -437,13 +431,13 @@ const [isSubmitting, setIsSubmitting] = useState(false);
     }
   };
 
-  // ฟังก์ชันส่งข้อความฝากสนทนา
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
+    const messageToSend = newMessage.trim();
     setSendingMsg(true);
     try {
       const realClaimId = data.claim_id;
-      const formattedRemark = `[MSG] [STAFF] ${newMessage.trim()}`;
+      const formattedRemark = `[MSG] [STAFF] ${messageToSend}`;
 
       await claimService.createClaimStatusLogs({
         claim_id: String(realClaimId),
@@ -453,9 +447,8 @@ const [isSubmitting, setIsSubmitting] = useState(false);
         user_id: currentUserId,
       });
 
-      message.success("ส่งข้อความเรียบร้อยแล้ว");
       setNewMessage("");
-      fetchClaimDetail();
+      message.success("ส่งข้อความเรียบร้อยแล้ว");
     } catch (err) {
       message.error("ส่งข้อความไม่สำเร็จ: " + err.message);
     } finally {
@@ -466,7 +459,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
   if (loading) {
     return (
       <div className="w-full h-64 flex justify-center items-center">
-        <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+        <Spin size="large" description="กำลังโหลดข้อมูล..." />
       </div>
     );
   }
@@ -574,7 +567,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
       const statusId = getStatusId(targetStatus);
       const actionsName = getActionNameByStatus(targetStatus);
 
-      // ฟอร์แมตวันที่รายชิ้นของ claimItems ก่อนส่งขึ้น Backend
       const formattedClaimItems = claimItems.map((item) => ({
         ...item,
         withdraw_date: item.withdraw_date ? (dayjs.isDayjs(item.withdraw_date) ? item.withdraw_date.format("YYYY-MM-DD") : item.withdraw_date) : null,
@@ -620,7 +612,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
           user_id: currentUserId,
         });
 
-        message.success(isSteppingBack ? `ถอยสถานะเป็น "${targetStatus}" เรียบร้อยแล้ว` : "บันทึกข้อมูลเรียบร้อยแล้ว");
+        message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
         setIsModalOpen(false);
         fetchClaimDetail();
       }
@@ -739,7 +731,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
       return;
     }
 
-    // ล็อกปุ่มกดป้องกันการยิง API ซ้ำ
     setIsSubmitting(true);
 
     try {
@@ -880,10 +871,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
 
         message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
         
-        // ปิด Modal ทันที และเคลียร์สถานะ Submitting
         setIsModalOpen(false);
-
-        // ดึงข้อมูลใหม่เพื่อ Re-render
         await fetchClaimDetail();
       }
     } catch (error) {
@@ -997,7 +985,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
       render: (rQty, record) => {
         const isReceivedStep = STATUS_PRIORITY[currentStatusInDB] >= 4;
         
-        // ถ้ายังไม่ถึงขั้นตอนรับจริง ให้แสดง "-"
         if (!isReceivedStep) {
           return <span className="text-slate-400 font-normal">-</span>;
         }
@@ -1174,7 +1161,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
-        {/* คอลัมน์ซ้าย (xl:col-span-2) */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
           <Card 
             title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>} 
@@ -1336,9 +1322,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
           )}
         </div>
 
-        {/* คอลัมน์ขวา (xl:col-span-1) */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          {/* Card รูปภาพหลักฐานทั้งหมด */}
           <Card 
             title={
               <div className="flex justify-between items-center">
@@ -1372,14 +1356,11 @@ const [isSubmitting, setIsSubmitting] = useState(false);
             )}
           </Card>
 
-         {/* Private Comments */}
           <Card
             className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60"
             bodyStyle={{ padding: "20px" }}
           >
             <div className="flex flex-col gap-3">
-              
-              {/* 1. Header */}
               <div className="flex items-center gap-2">
                 <UserOutlined className="text-slate-700 text-lg" />
                 <span className="font-semibold text-slate-800 text-sm sm:text-base">
@@ -1387,12 +1368,10 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                 </span>
               </div>
 
-              {/* 2. รายการข้อความ */}
               <div className="flex flex-col gap-3">
                 {chatMessages.length > 0 ? (
                   chatMessages.map((msg) => (
                     <div key={msg.id} className="flex flex-col gap-1 w-full">
-                      {/* ชื่อผู้ส่ง • วันที่ */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-semibold text-slate-800 text-xs">
                           {msg.senderName}
@@ -1402,7 +1381,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                         </span>
                       </div>
 
-                      {/* ข้อความ */}
                       <div className="text-slate-800 text-sm sm:text-base whitespace-pre-wrap break-words font-normal leading-relaxed pl-0.5 w-full">
                         {msg.message}
                       </div>
@@ -1415,12 +1393,9 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                 )}
               </div>
 
-              {/* เส้นคั่นกลาง */}
               <div className="border-t border-slate-200/80 w-full" />
 
-              {/* 3. กล่องพิมพ์ข้อความ */}
               <Input.TextArea
-          
                 autoSize={{ minRows: 2, maxRows: 4 }}
                 placeholder="เพิ่มความคิดเห็นส่วนตัว..."
                 value={newMessage}
@@ -1434,7 +1409,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                 className="rounded-xl border-slate-300 text-sm focus:border-blue-500 bg-white"
               />
 
-              {/* 4. ปุ่มส่ง */}
               <Button
                 type="primary"
                 block
@@ -1531,7 +1505,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
         </div>
       </div>
 
-      {/* Modal อัปเดตสถานะ */}
       <Modal
         width={750}
         title={
@@ -1545,7 +1518,7 @@ const [isSubmitting, setIsSubmitting] = useState(false);
         }
         open={isModalOpen}
         onOk={handleSaveStatus}
-        confirmLoading={isSubmitting} // แสดงสถานะ Loading บนปุ่มตกลง
+        confirmLoading={isSubmitting}
         onCancel={() => !isSubmitting && setIsModalOpen(false)}
         okText="บันทึกเปลี่ยนสถานะ"
         cancelText="ยกเลิก"
@@ -1591,7 +1564,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                 </div>
               </div>
 
-              {/* รายละเอียดสินค้าในการรับจริง */}
               <div className="mt-2">
                 <span className="text-xs font-semibold text-slate-700 mb-2 block">
                   ระบุรายละเอียดสินค้าที่รับจริง:
@@ -1638,7 +1610,6 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                 <span className="text-xs text-slate-500">{claimItems.length} รายการ</span>
               </div>
 
-              {/* รายละเอียดสินค้าแต่ละตัวแบบแยกกรอบ */}
               <div className="flex flex-col gap-4 max-h-[420px] overflow-y-auto pr-1">
                 {claimItems.map((item, index) => (
                   <div key={item.key || index} className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 shadow-sm">
@@ -1688,19 +1659,17 @@ const [isSubmitting, setIsSubmitting] = useState(false);
                           min={0}
                           size="small"
                           className="w-full"
-                          placeholder="จำนวนส่งคืน"
                           value={item.returned_qty ?? item.qty}
                           onChange={(val) => handleItemChange(index, "returned_qty", val)}
                         />
                       </div>
 
-                      <div className="sm:col-span-2">
-                        <label className="block text-[11px] font-medium text-emerald-700 mb-1">จำนวนรับรองการเปลี่ยนแตก (ขวด/กระป๋อง) <span className="text-red-500">*</span>:</label>
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">จำนวนที่เปลี่ยนเปลี่ยน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:</label>
                         <InputNumber
                           min={0}
                           size="small"
                           className="w-full"
-                          placeholder="จำนวนรับรองเปลี่ยน"
                           value={item.approved_qty ?? item.qty}
                           onChange={(val) => handleItemChange(index, "approved_qty", val)}
                         />
@@ -1713,37 +1682,43 @@ const [isSubmitting, setIsSubmitting] = useState(false);
           )}
 
           {formData.status === "กำลังจัดส่งสินค้าเคลม" && (
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อ-นามสกุล พขร. จัดส่ง:</label>
-                <Input placeholder="เช่น นายสมศักดิ์ ขยันยิ่ง" value={formData.deliveryDriver} onChange={(e) => handleInputChange("deliveryDriver", e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถจัดส่ง:</label>
-                <Input placeholder="เช่น 80-5678 กทม." value={formData.deliveryPlate} onChange={(e) => handleInputChange("deliveryPlate", e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">วันที่คาดว่าจะส่งถึงลูกค้า:</label>
-                <DatePicker
-                  className="w-full"
-                  format="DD/MM/YYYY"
-                  placeholder="เลือกวันที่ส่งถึง"
-                  value={formData.estimatedDeliveryDate ? (dayjs.isDayjs(formData.estimatedDeliveryDate) ? formData.estimatedDeliveryDate : dayjs(formData.estimatedDeliveryDate)) : null}
-                  onChange={(date) => handleInputChange("estimatedDeliveryDate", date)}
-                />
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
+              <span className="text-sm font-medium text-slate-800 border-b pb-1">ข้อมูลการจัดส่งสินค้าเคลม</span>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">พนักงานขับรถจัดส่ง <span className="text-red-500">*</span>:</label>
+                  <Input placeholder="เช่น นายสมศักดิ์ ขยันส่ง" value={formData.deliveryDriver} onChange={(e) => handleInputChange("deliveryDriver", e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถจัดส่ง <span className="text-red-500">*</span>:</label>
+                  <Input placeholder="เช่น 80-9999 กทม." value={formData.deliveryPlate} onChange={(e) => handleInputChange("deliveryPlate", e.target.value)} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">วันที่คาดว่าจะส่งถึงลูกค้า <span className="text-red-500">*</span>:</label>
+                  <DatePicker
+                    className="w-full"
+                    format="DD/MM/YYYY"
+                    placeholder="เลือกวันที่คาดว่าจะส่งถึง"
+                    value={formData.estimatedDeliveryDate}
+                    onChange={(date) => handleInputChange("estimatedDeliveryDate", date)}
+                  />
+                </div>
               </div>
             </div>
           )}
 
           {isModalStatusRejected && (
-            <div className="bg-red-50 p-3 rounded-xl border border-red-200 flex flex-col gap-2">
-              <label className="block text-xs font-medium text-red-700">เหตุผลการปฏิเสธการเคลม (จำเป็น):</label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                เหตุผลการปฏิเสธการเคลม <span className="text-red-500">*</span>:
+              </label>
               <Input.TextArea
-              rows={3}
-              placeholder="ระบุเหตุผลการไม่อนุมัติ หรือไม่มีสิทธิ์เคลม..."
-              value={formData.rejectReason} 
-              onChange={(e) => handleInputChange("rejectReason", e.target.value)} />
+                rows={3}
+                placeholder="ระบุเหตุผลที่ไม่รับเคลมสินค้า"
+                value={formData.rejectReason}
+                onChange={(e) => handleInputChange("rejectReason", e.target.value)}
+              />
             </div>
           )}
         </div>

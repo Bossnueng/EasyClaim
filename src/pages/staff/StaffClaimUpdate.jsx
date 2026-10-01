@@ -51,7 +51,7 @@ const formatDateString = (date) => {
   if (!date) return "-";
   const parsed = dayjs(date);
   if (!parsed.isValid()) return "-";
-  return parsed.format("DD/MM/YYYY");
+  return parsed.format("DD/MM/YYYY HH:mm");
 };
 
 const formatDate = (date) => {
@@ -271,7 +271,6 @@ const StaffClaimUpdate = () => {
 
       if (claimsList.length > 0) {
         const targetId = String(claimId || "").trim();
-
         const currentClaim = claimsList.find((item) => {
           const itemClaimId = String(item.claim_id || "").trim();
           const itemClaimNo = String(item.claim_no || "").trim();
@@ -279,6 +278,28 @@ const StaffClaimUpdate = () => {
         });
 
         if (currentClaim) {
+          {/**
+            // -------------------------------------------------------------------
+            // 1. ดึงและกรอง Logs + ถอด extraLogData ออกมาก่อนเพื่อน
+            // -------------------------------------------------------------------
+            */}
+          
+        const logsData = resLogs?.data || resLogs || [];
+        const filteredLogs = Array.isArray(logsData)
+          ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
+          : [];
+        setStatusLogs(filteredLogs);
+
+        const extraLogData = parseExtraDataFromLogs(filteredLogs) || {};
+        const extraItemsMap = {};
+        if (Array.isArray(extraLogData.items)) {
+          extraLogData.items.forEach((eItem) => {
+            if (eItem.itemName) {
+              extraItemsMap[eItem.itemName] = eItem.receivedQty;
+            }
+          });
+        }
+
           let rawImages = [];
           const currentHost = window.location.hostname;
           const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || `http://${currentHost}:5001`;
@@ -320,13 +341,17 @@ const StaffClaimUpdate = () => {
                 });
 
                 const finalImages = itemImgs.length > 0 ? itemImgs : rawImages;
+                const itemName = masterItemsMap[ci.item_id] || `สินค้า ID: ${ci.item_id}`;
+
+                // 🟢 ดึงค่า receivedQty จาก extraItemsMap / extraLogData ได้อย่างถูกต้อง
+                const mappedReceivedQty = extraItemsMap[itemName] ?? extraLogData.items?.[idx]?.receivedQty ?? ci.received_qty ?? ci.qty;
 
                 return {
                   key: ci.claim_item_id || idx,
                   ...ci,
-                  item_name: masterItemsMap[ci.item_id] || `สินค้า ID: ${ci.item_id}`,
+                  item_name: itemName,
                   images: finalImages.map((i) => i.formattedUrl),
-                  received_qty: ci.received_qty ?? ci.qty,
+                  received_qty: mappedReceivedQty,
                   approved_qty: ci.approved_qty ?? ci.qty,
                   returned_qty: ci.returned_qty ?? ci.qty,
                   withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
@@ -338,16 +363,19 @@ const StaffClaimUpdate = () => {
           } catch (itemsErr) {
             console.warn("ไม่สามารถดึงรายการสินค้าเคลมได้:", itemsErr);
             if (currentClaim.item_id) {
+              const fallbackItemName = masterItemsMap[currentClaim.item_id] || `สินค้า ID: ${currentClaim.item_id}`;
+              const fallbackReceivedQty = extraItemsMap[fallbackItemName] ?? extraLogData.items?.[0]?.receivedQty ?? currentClaim.qty;
+
               itemsList = [
                 {
                   key: 1,
                   item_id: currentClaim.item_id,
-                  item_name: masterItemsMap[currentClaim.item_id] || `สินค้า ID: ${currentClaim.item_id}`,
+                  item_name: fallbackItemName,
                   lot_no: currentClaim.lot_no || currentClaim.lot,
                   mfg_date: currentClaim.mfg_date,
                   expire_date: currentClaim.exp_date || currentClaim.expire_date,
                   qty: currentClaim.qty,
-                  received_qty: currentClaim.qty,
+                  received_qty: fallbackReceivedQty, // 🟢 ใช้ค่าจาก extraData ในเคส fallback ด้วย
                   approved_qty: currentClaim.qty,
                   returned_qty: currentClaim.qty,
                   withdraw_date: currentClaim.withdraw_date ? dayjs(currentClaim.withdraw_date) : null,
@@ -361,11 +389,7 @@ const StaffClaimUpdate = () => {
           }
           setClaimItems(itemsList);
 
-          const logsData = resLogs?.data || resLogs || [];
-          const filteredLogs = Array.isArray(logsData)
-            ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
-            : [];
-          setStatusLogs(filteredLogs);
+      
 
           const msgs = filteredLogs
             .filter((log) => log.remark && log.remark.startsWith("[MSG]"))
@@ -381,9 +405,7 @@ const StaffClaimUpdate = () => {
               };
             });
           setChatMessages(msgs);
-
-          const extraLogData = parseExtraDataFromLogs(filteredLogs);
-
+          
           const mergedClaimData = {
             ...currentClaim,
             images: rawImages.map((i) => i.formattedUrl),
@@ -751,6 +773,13 @@ const StaffClaimUpdate = () => {
         deliveryDriver,
         deliveryPlate,
         estimatedDeliveryDate: formatDatePayload(estimatedDeliveryDate),
+        // เพิ่มการเก็บ items รายการสินค้าและจำนวนรับจริง
+        items: claimItems.map((item) => ({
+          itemName: item.item_name,
+          qty: item.qty,
+          receivedQty: item.received_qty ?? item.qty,
+          itemRemark: item.item_remark || "",
+        })),
       };
 
       const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
@@ -1541,6 +1570,13 @@ const StaffClaimUpdate = () => {
             />
           </div>
 
+          {/**ข้อมูลในส่วนของ modal รับสินค้าจริงแล้ว*/}
+          {/**===============================*/}
+          {/**ชื่อ พขร. = formData.driverName 
+           *  ทะเบียนรถ = formData.truckPlate
+           * claimItems.map((item, index) => ชื่อสินค้า = {item.item_name}, จำนวนสินค้า ={item.qty}
+          */}
+          {/**===============================*/}
           {(formData.status === "รับสินค้าจริงแล้ว" || formData.status === "รับสินค้าแล้ว") && (
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
               <span className="text-sm font-medium text-slate-800 border-b pb-1">ข้อมูลที่เข้ารับสินค้า</span>
@@ -1554,14 +1590,17 @@ const StaffClaimUpdate = () => {
                   <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ:</label>
                   <Input placeholder="เช่น 70-1234 กทม." value={formData.truckPlate} onChange={(e) => handleInputChange("truckPlate", e.target.value)} />
                 </div>
+                {/**
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">เลขที่เอกสารเคลม (เล่ม-เลขที่):</label>
-                  <Input placeholder="เช่น 055-02742" value={formData.claimNoInput} onChange={(e) => handleInputChange("claimNoInput", e.target.value)} />
+                  <Input placeholder="เช่น 055-02742" value={formData.claimNoInput} onChange={(e) => handleInputChange("claimNoInput", e.target.value)} disabled={true} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่รับคืนสินค้าแตกรวม(ขวด/กระป๋อง):</label>
                   <Input placeholder="เช่น 48" value={formData.fullReceive} onChange={(e) => handleInputChange("fullReceive", e.target.value)} />
                 </div>
+                 */}
+                
               </div>
 
               <div className="mt-2">
@@ -1576,16 +1615,20 @@ const StaffClaimUpdate = () => {
                         <div className="text-[11px] text-slate-500">จำนวนที่แจ้ง: {item.qty}</div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <InputNumber
+                          min={0}
+                          size="small"
+                          className="w-full"
+                          selectOnFocus // ช่วยไฮไลต์ตัวเลขทั้งหมดเมื่อคลิก ลบ/พิมพ์ใหม่สะดวกขึ้น
+                          // 🟢 ใช้การเช็กว่ามีค่าระบุไว้หรือไม่ ถ้าเคยคีย์ว่างเปล่าไว้ให้ยอมรับค่า null ได้
+                          value={item.received_qty !== undefined ? item.received_qty : item.qty}
+                          onChange={(val) => handleItemChange(index, "received_qty", val)}
+                        />
                         <div className="w-28 shrink-0">
-                          <label className="text-[10px] text-slate-500 block">รับจริง (ขวด/กระป๋อง)</label>
-                          <InputNumber
-                            min={0}
-                            size="small"
-                            className="w-full"
-                            value={item.received_qty ?? item.qty}
-                            onChange={(val) => handleItemChange(index, "received_qty", val)}
-                          />
+                          <label className="text-[10px] text-slate-500 block">ขวด/กระป๋อง</label>
+                          
                         </div>
+                        {/**
                         <div className="w-36 shrink-0">
                           <label className="text-[10px] text-slate-500 block">หมายเหตุเพิ่มเติม</label>
                           <Input
@@ -1595,6 +1638,8 @@ const StaffClaimUpdate = () => {
                             onChange={(e) => handleItemChange(index, "item_remark", e.target.value)}
                           />
                         </div>
+                         */}
+                        
                       </div>
                     </div>
                   ))}

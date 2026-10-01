@@ -3,35 +3,27 @@ const router = express.Router();
 
 const ClaimController = require("../controllers/claimController");
 const { verifyToken } = require("../middleware/authMiddleware");
-const upload=require('../middleware/uplodad');
+const upload = require("../middleware/uplodad");
 
 // GET
-router.get("/getClaim",ClaimController.getClaim);
+router.get("/getClaim", ClaimController.getClaim);
 router.get("/getClaimItems/:claim_id", ClaimController.getClaimItems);
-router.get("/getclaimstatuslog",ClaimController.getclaimstatuslog);
-router.get("/getclaimapproves",ClaimController.getclaimapproves);
-router.get("/getClaimImages/:claim_id",ClaimController.getClaimImages);
-
-
-// เพิ่ม Route สำหรับรับ agent_id
+router.get("/getclaimstatuslog", ClaimController.getclaimstatuslog);
+router.get("/getclaimapproves", ClaimController.getclaimapproves);
+router.get("/getClaimImages/:claim_id", ClaimController.getClaimImages);
 router.get("/getClaimByAgent/:agent_id", ClaimController.getClaimByAgent);
 
-
-// INSERT
-router.post("/Claim",upload.any(), ClaimController.creartClaim);
+// POST
+router.post("/Claim", upload.any(), ClaimController.creartClaim);
 router.post("/ClaimStatusLogs", ClaimController.createClaimStatusLogs);
 router.post("/Claimapproves", ClaimController.createClaimapproves);
-//router.post("/Claimimage", ClaimController.createClaimimage);
-// 🟢 เพิ่ม upload.single("file")
-router.post("/Claimimage", ClaimController.upload.single("file"), ClaimController.createClaimimage);
+router.post("/Claimimage", upload.single("file"), ClaimController.createClaimimage);
 router.post("/updateClaim", ClaimController.updateclaim);
 
-//Delete
+// DELETE
 router.delete("/delClaim", ClaimController.delClaim);
 router.delete("/delClaimApprove", ClaimController.delClaimApprove);
 router.delete("/delClaimImages", ClaimController.delClaimImages);
 router.delete("/deleteClaimimage", ClaimController.deleteClaimimage);
-
-
 
 module.exports = router;

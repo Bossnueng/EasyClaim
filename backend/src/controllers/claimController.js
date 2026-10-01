@@ -26,8 +26,6 @@ const storage = multer.diskStorage({
   },
 });
 
-exports.upload = multer({ storage: storage });
-
 const sendTeamsNotification = async (claimData) => {
   const webhookUrl =
     process.env.TEAMS_WEBHOOK_URL ||
@@ -60,26 +58,10 @@ const sendTeamsNotification = async (claimData) => {
   }
 };
 
-function parseDate(value, fieldName) {
-    console.log(fieldName, "=", value);
-    console.log("typeof =", typeof value);
+const { getIO } = require("../../socket/claimSocket");
 
-    if (
-        value === undefined ||
-        value === null ||
-        value === ""
-    ) {
-        return null;
-    }
+exports.upload = multer({ storage: storage });
 
-    const date = new Date(value);
-
-    if (isNaN(date.getTime())) {
-        throw new Error(`${fieldName} ไม่ใช่วันที่ที่ถูกต้อง: ${value}`);
-    }
-
-    return date;
-}
 
 exports.getclaimstatuslog = async (req, res) => {
   try {
@@ -109,8 +91,10 @@ exports.getclaimstatuslog = async (req, res) => {
 exports.createClaimStatusLogs = async (req, res) => {
     try {
         const { claim_id, status, remark, update_by } = req.body;
-        
-        // ✅ ลบบรรทัด const update_date = datetime(); ออกเรียบร้อย
+      
+        if (!remark) {
+            return res.status(400).json({ status: false, message: "กรุณาระบุข้อความ หรือ remark" });
+        }
 
         const pool = await connectDB();
         const result = await pool.request()
@@ -138,9 +122,27 @@ exports.createClaimStatusLogs = async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS log_id;
             `);
 
+        const newLogId = result.recordset[0]?.log_id || null;
+
+        // 🟢 ส่ง Socket Event เมื่อมีการส่งข้อความ หรืออัปเดต Log
+        try {
+            const newComment = {
+                log_id: newLogId,
+                claim_id,
+                status,
+                remark,
+                update_by,
+                update_date: new Date()
+            };
+            getIO().to(`claim:${claim_id}`).emit("claim:comment_created", newComment);
+        } catch (socketErr) {
+            console.error("Socket emit error:", socketErr.message);
+        }
+
+
         res.json({
             status: true,
-            message: "Insert Success",
+            message: status ? "บันทึกการเปลี่ยนสถานะสำเร็จ" : "ส่งข้อความสำเร็จ",
             log_id: result.recordset[0]?.log_id || null
         });
     } catch (error) {
@@ -335,7 +337,7 @@ exports.getClaimImages = async (req, res) => {
       return {
         ...img,
         image_path: rawPath,
-        image_url: `${baseUrl}${rawPath}`, // ได้ URL ที่สมบูรณ์ เช่น http://127.0.0.1:5001/uploads/claims/xxx.jpg
+        image_url: `${baseUrl}${rawPath}`,
       };
     });
 
@@ -719,13 +721,13 @@ exports.creartClaim = async (req, res) => {
 
             
         // 3.2 Log สถานะ 5: "รอการพิจารณา" โดยระบบอัตโนมัติ (update_by = null)
-        const updateBy = req.user?.id || req.body.created_by || 0; // หากไม่มี User ให้ใช้ 0 หรือ User ID หลักของระบบ
+        const updateBy = req.user?.id || req.body.created_by || 0; 
 
         await transaction.request()
             .input("claim_id_auto", sql.Int, claim_id)
             .input("status_auto", sql.Int, 5) // ID สถานะ 5 = รอการพิจารณา
             .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
-            .input("update_by", sql.Int, parseInt(updateBy)) // 🟢 แนบค่า Integer เข้าไป
+            .input("update_by", sql.Int, parseInt(updateBy))
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
                 (
@@ -980,27 +982,13 @@ exports.delClaim = async (req, res) => {
 
 exports.updateclaim = async (req, res) => {
     try {
-        const {
-            claim_id,
-            status,
-            actionsname,
-            update_by,
-            remark,
-            is_revert // 👈 รับค่า Flag การถอยสถานะ
-        } = req.body;
+        const { claim_id, status, actionsname, items } = req.body;
 
         if (!claim_id) {
-            return res.status(400).json({
-                status: false,
-                message: "claim_id is required"
-            });
+            return res.status(400).json({ status: false, message: "claim_id is required" });
         }
-
         if (!actionsname) {
-            return res.status(400).json({
-                status: false,
-                message: "actionsname is required"
-            });
+            return res.status(400).json({ status: false, message: "actionsname is required" });
         }
 
         const pool = await connectDB();
@@ -1009,49 +997,74 @@ exports.updateclaim = async (req, res) => {
         try {
             await transaction.begin();
 
+            // 1. ตรวจสอบว่ามี Claim ID นี้หรือไม่
             const checkClaim = await transaction.request()
                 .input("claim_id", sql.Int, claim_id)
                 .query(`
                     SELECT claim_id
-                    FROM [EasyClaim_Dev].[dbo].[claims]
+                    FROM [EasyClaim_Dev].[dbo].[claim_items] -- หรือ [claims]
                     WHERE claim_id = @claim_id
                 `);
 
             if (checkClaim.recordset.length === 0) {
                 await transaction.rollback();
-                return res.status(404).json({
-                    status: false,
-                    message: "Claim not found"
-                });
+                return res.status(404).json({ status: false, message: "Claim not found" });
+            }
+            
+            // 2. อัปเดต items ภายใน Transaction
+            if (Array.isArray(items) && items.length > 0) {
+              for (const item of items) {
+                if (item.claim_item_id || item.item_id) {
+
+                  // 🟢 เพิ่ม: หากเป็นแอ็กชันรับเข้าคลัง/เปลี่ยนสินค้า ให้ใช้วันที่ที่ส่งมาหรือเวลาปัจจุบัน
+                  let finalWithdrawDate = item.withdraw_date || null;
+                  if (actionsname === "warehouse_receive_date" && !finalWithdrawDate) {
+                    finalWithdrawDate = new Date();
+                  }
+
+                  const itemDataObj = {
+                    qty: item.qty || 0,
+                    receivedQty: item.received_qty !== undefined ? item.received_qty : (item.qty || 0),
+                    returnedQty: item.returned_qty !== undefined ? item.returned_qty : (item.qty || 0),
+                    approvedQty: item.approved_qty !== undefined ? item.approved_qty : (item.qty || 0),
+                    withdrawDate: finalWithdrawDate, // 🟢 บันทึกวันที่เบิกลง JSON
+                    itemRemark: item.item_remark || item.remark || ""
+                  };
+
+                  const itemRemarkJson = JSON.stringify(itemDataObj);
+
+                  await transaction.request()
+                    .input("claim_id", sql.Int, claim_id)
+                    .input("item_id", sql.Int, item.item_id || null)
+                    .input("claim_item_id", sql.Int, item.claim_item_id || null)
+                    .input("remark_json", sql.NVarChar(sql.MAX), itemRemarkJson)
+                    .input("withdraw_date", sql.DateTime, finalWithdrawDate ? new Date(finalWithdrawDate) : null) // 🟢 กำหนดค่า Param
+                    .query(`
+                        UPDATE [EasyClaim_Dev].[dbo].[claim_items]
+                        SET remark = @remark_json,
+                            -- withdraw_date = ISNULL(@withdraw_date, withdraw_date), -- 🟢 ปลดคอมเมนต์บรรทัดนี้หากในตาราง claim_items มีคอลัมน์ withdraw_date
+                            updated_at = GETDATE()
+                        WHERE claim_id = @claim_id 
+                          AND (claim_item_id = @claim_item_id OR item_id = @item_id)
+                    `);
+                }
+              }
             }
 
-            // กำหนด Column ที่จะ Stamp เวลา
+            // 3. กำหนด Date Column ตาม actionsname
             let dateColumn = null;
             switch (actionsname) {
-                case "driver_receive_date":
-                    dateColumn = "driver_receive_date";
-                    break;
-                case "warehouse_receive_date":
-                    dateColumn = "warehouse_receive_date";
-                    break;
-                case "approve_date":
-                    dateColumn = "approve_date";
-                    break;
-                case "delivery_date":
-                    dateColumn = "delivery_date";
-                    break;
-                case "receive_finish_date":
-                    dateColumn = "receive_finish_date";
-                    break;
+                case "driver_receive_date": dateColumn = "driver_receive_date"; break;
+                case "warehouse_receive_date": dateColumn = "warehouse_receive_date"; break;
+                case "approve_date": dateColumn = "approve_date"; break;
+                case "delivery_date": dateColumn = "delivery_date"; break;
+                case "receive_finish_date": dateColumn = "receive_finish_date"; break;
                 default:
                     await transaction.rollback();
-                    return res.status(400).json({
-                        status: false,
-                        message: "Invalid actionsname"
-                    });
+                    return res.status(400).json({ status: false, message: "Invalid actionsname" });
             }
 
-            // 🟢 อัปเดตสถานะและStamp เวลาทับใหม่ (GETDATE()) เมื่อมีการถอยสถานะ หรือ อัปเดตใหม่
+            // 4. อัปเดตตาราง claims
             const result = await transaction.request()
                 .input("claim_id", sql.Int, claim_id)
                 .input("status", sql.NVarChar(50), status || null)
@@ -1059,12 +1072,21 @@ exports.updateclaim = async (req, res) => {
                     UPDATE [EasyClaim_Dev].[dbo].[claims]
                     SET
                         current_status = @status,
-                        ${dateColumn} = GETDATE(), -- เขียนทับเวลาเดิมทันที
+                        ${dateColumn} = GETDATE(),
                         updated_at = GETDATE()
                     WHERE claim_id = @claim_id
                 `);
 
             await transaction.commit();
+
+            // 5. ส่ง Socket
+            try {
+                const updatedData = { claim_id, status, actionsname, updated_at: new Date() };
+                getIO().to(`claim:${claim_id}`).emit("claim:status_updated", updatedData);
+                getIO().to("staff").emit("claim:status_updated", updatedData);
+            } catch (socketErr) {
+                console.error("Socket emit error:", socketErr.message);
+            }
 
             return res.json({
                 status: true,
@@ -1076,25 +1098,16 @@ exports.updateclaim = async (req, res) => {
             });
 
         } catch (error) {
-            try {
-                await transaction.rollback();
-            } catch (rollbackError) {
-                console.error("Rollback error:", rollbackError);
-            }
+            try { await transaction.rollback(); } catch (rbErr) {}
             throw error;
         }
 
     } catch (error) {
         console.error("updateclaim Error:", error);
-
-        return res.status(500).json({
-            status: false,
-            message: error.message
-        });
+        return res.status(500).json({ status: false, message: error.message });
     }
 };
 
-// ดึงรายการ claim_items ทั้งหมดตาม claim_id
 exports.getClaimItems = async (req, res) => {
   try {
     const { claim_id } = req.params;

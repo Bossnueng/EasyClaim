@@ -529,9 +529,18 @@ const CustomerClaimDetail = () => {
     </div>
   );
 
-  const getStepItems = () => {
-    const rejectReason = data?.remark || data?.reject_reason;
+  // 1. ดึงเหตุผลการไม่อนุมัติออกมาไว้ที่ Top level ของ Component
+  const latestRejectApprove = approveLogs.length > 0 
+    ? [...approveLogs].reverse().find((app) => 
+        app.approve_status === false || 
+        app.approve_status === "false" || 
+        app.approve_status === "0"
+      )
+    : null;
 
+  const rejectReason = latestRejectApprove?.approve_remark || data?.reject_reason || data?.remark || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม";
+
+  const getStepItems = () => {
     if (isRejectedInDB) {
       return [
         { title: "สร้างรายการ", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
@@ -700,8 +709,8 @@ const CustomerClaimDetail = () => {
 
       {isRejectedInDB && (
         <Alert
-          message="คำร้องขอเคลมสินค้าถูกปฏิเสธ"
-          description={`เหตุผล: ${data.reject_reason || data.remark || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม"}`}
+          title="คำร้องขอเคลมสินค้าถูกปฏิเสธ"
+          description={`เหตุผล: ${rejectReason}`}
           type="error"
           showIcon
           className="rounded-2xl border-red-200 break-words"

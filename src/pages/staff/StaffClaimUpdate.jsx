@@ -278,27 +278,21 @@ const StaffClaimUpdate = () => {
         });
 
         if (currentClaim) {
-          {/**
-            // -------------------------------------------------------------------
-            // 1. ดึงและกรอง Logs + ถอด extraLogData ออกมาก่อนเพื่อน
-            // -------------------------------------------------------------------
-            */}
-          
-        const logsData = resLogs?.data || resLogs || [];
-        const filteredLogs = Array.isArray(logsData)
-          ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
-          : [];
-        setStatusLogs(filteredLogs);
+          const logsData = resLogs?.data || resLogs || [];
+          const filteredLogs = Array.isArray(logsData)
+            ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
+            : [];
+          setStatusLogs(filteredLogs);
 
-        const extraLogData = parseExtraDataFromLogs(filteredLogs) || {};
-        const extraItemsMap = {};
-        if (Array.isArray(extraLogData.items)) {
-          extraLogData.items.forEach((eItem) => {
-            if (eItem.itemName) {
-              extraItemsMap[eItem.itemName] = eItem.receivedQty;
-            }
-          });
-        }
+          const extraLogData = parseExtraDataFromLogs(filteredLogs) || {};
+          const extraItemsMap = {};
+          if (Array.isArray(extraLogData.items)) {
+            extraLogData.items.forEach((eItem) => {
+              if (eItem.itemName) {
+                extraItemsMap[eItem.itemName] = eItem;
+              }
+            });
+          }
 
           let rawImages = [];
           const currentHost = window.location.hostname;
@@ -334,28 +328,26 @@ const StaffClaimUpdate = () => {
             const resClaimItems = await claimService.getClaimItems(currentClaim.claim_id);
             if (resClaimItems?.data && Array.isArray(resClaimItems.data)) {
               itemsList = resClaimItems.data.map((ci, idx) => {
-                const itemImgs = rawImages.filter((img) => {
-                  const matchClaimItem = img.claim_item_id && ci.claim_item_id && String(img.claim_item_id) === String(ci.claim_item_id);
-                  const matchItem = img.item_id && ci.item_id && String(img.item_id) === String(ci.item_id);
-                  return matchClaimItem || matchItem;
-                });
+                let parsedItemData = {};
+                if (ci.remark) {
+                  try {
+                    parsedItemData = JSON.parse(ci.remark);
+                  } catch (e) {
+                    parsedItemData = { itemRemark: ci.remark };
+                  }
+                }
 
-                const finalImages = itemImgs.length > 0 ? itemImgs : rawImages;
                 const itemName = masterItemsMap[ci.item_id] || `สินค้า ID: ${ci.item_id}`;
-
-                // 🟢 ดึงค่า receivedQty จาก extraItemsMap / extraLogData ได้อย่างถูกต้อง
-                const mappedReceivedQty = extraItemsMap[itemName] ?? extraLogData.items?.[idx]?.receivedQty ?? ci.received_qty ?? ci.qty;
-                const mappedReturnedQty = extraLogData.items?.[idx]?.returnedQty ?? ci.returned_qty ?? ci.qty; // 🟢 เพิ่ม
-                const mappedApprovedQty = extraLogData.items?.[idx]?.approvedQty ?? ci.approved_qty ?? ci.qty; // 🟢 เพิ่ม
 
                 return {
                   key: ci.claim_item_id || idx,
                   ...ci,
                   item_name: itemName,
-                  images: finalImages.map((i) => i.formattedUrl),
-                  received_qty: mappedReceivedQty,
-                  approved_qty: mappedApprovedQty, // 🟢 ใช้ค่าที่ดึงมา
-                  returned_qty: mappedReturnedQty, // 🟢 ใช้ค่าที่ดึงมา
+                  images: rawImages.map((i) => i.formattedUrl), // 🟢 เปลี่ยนจาก finalImages เป็น rawImages
+                  received_qty: parsedItemData.receivedQty ?? ci.qty,
+                  returned_qty: parsedItemData.returnedQty ?? ci.qty,
+                  approved_qty: parsedItemData.approvedQty ?? ci.qty,
+                  item_remark: parsedItemData.itemRemark || "",
                   withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
                   lot_no_change: ci.lot_no_change || "",
                   mfg_date_change: ci.mfg_date_change ? dayjs(ci.mfg_date_change) : null,
@@ -366,7 +358,10 @@ const StaffClaimUpdate = () => {
             console.warn("ไม่สามารถดึงรายการสินค้าเคลมได้:", itemsErr);
             if (currentClaim.item_id) {
               const fallbackItemName = masterItemsMap[currentClaim.item_id] || `สินค้า ID: ${currentClaim.item_id}`;
-              const fallbackReceivedQty = extraItemsMap[fallbackItemName] ?? extraLogData.items?.[0]?.receivedQty ?? currentClaim.qty;
+              const extraItem = extraItemsMap[fallbackItemName] || extraLogData.items?.[0] || {};
+              const fallbackReceivedQty = extraItem.receivedQty ?? currentClaim.qty;
+              const fallbackReturnedQty = extraItem.returnedQty ?? currentClaim.qty;
+              const fallbackApprovedQty = extraItem.approvedQty ?? currentClaim.qty;
 
               itemsList = [
                 {
@@ -377,9 +372,9 @@ const StaffClaimUpdate = () => {
                   mfg_date: currentClaim.mfg_date,
                   expire_date: currentClaim.exp_date || currentClaim.expire_date,
                   qty: currentClaim.qty,
-                  received_qty: fallbackReceivedQty, // 🟢 ใช้ค่าจาก extraData ในเคส fallback ด้วย
-                  approved_qty: currentClaim.qty,
-                  returned_qty: currentClaim.qty,
+                  received_qty: fallbackReceivedQty,
+                  approved_qty: fallbackApprovedQty,
+                  returned_qty: fallbackReturnedQty,
                   withdraw_date: currentClaim.withdraw_date ? dayjs(currentClaim.withdraw_date) : null,
                   lot_no_change: currentClaim.lot_no_change || "",
                   mfg_date_change: currentClaim.mfg_date_change ? dayjs(currentClaim.mfg_date_change) : null,
@@ -390,8 +385,6 @@ const StaffClaimUpdate = () => {
             }
           }
           setClaimItems(itemsList);
-
-      
 
           const msgs = filteredLogs
             .filter((log) => log.remark && log.remark.startsWith("[MSG]"))
@@ -734,8 +727,11 @@ const StaffClaimUpdate = () => {
     if (status === "กำลังดำเนินการเปลี่ยนสินค้า") {
       for (let i = 0; i < claimItems.length; i++) {
         const item = claimItems[i];
-        if (!item.withdraw_date || !item.returned_qty?.toString().trim() || !item.approved_qty?.toString().trim()) {
-          message.error(`กรุณาระบุวันที่เบิกสินค้า จำนวนที่ส่งคืน และจำนวนที่รองรับการเปลี่ยนให้ครบถ้วนในรายการที่ ${i + 1} (${item.item_name})`);
+        if (
+          item.returned_qty === undefined || item.returned_qty === null || item.returned_qty === "" ||
+          item.approved_qty === undefined || item.approved_qty === null || item.approved_qty === ""
+        ) {
+          message.error(`กรุณาระบุจำนวนที่ส่งคืน และจำนวนที่แลกเปลี่ยนจริงให้ครบถ้วนในรายการที่ ${i + 1} (${item.item_name})`);
           return false;
         }
       }
@@ -748,169 +744,169 @@ const StaffClaimUpdate = () => {
   };
 
   const handleSaveStatus = async () => {
-    if (!validateForm()) return;
+      if (!validateForm()) return;
 
-    if (!currentUserId) {
-      message.error("ไม่พบรหัสผู้ใช้งาน (User ID) กรุณาล็อกอินใหม่อีกครั้ง");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const { images, image, ...cleanData } = data;
-      const realClaimId = cleanData.claim_id || data.claim_id;
-      const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
-
-      const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
-    
-      const statusId = getStatusId(status);
-      const actionsName = getActionNameByStatus(status);
-
-      const extraData = {
-        driverName,
-        truckPlate,
-        claimNoInput,
-        fullReceive,
-        deliveryDriver,
-        deliveryPlate,
-        estimatedDeliveryDate: formatDatePayload(estimatedDeliveryDate),
-        items: claimItems.map((item) => ({
-          itemName: item.item_name,
-          qty: item.qty,
-          receivedQty: item.received_qty ?? item.qty,
-          returnedQty: item.returned_qty ?? item.qty,   // 🟢 เพิ่มจำนวนส่งคืน
-          approvedQty: item.approved_qty ?? item.qty,   // 🟢 เพิ่มจำนวนที่แลกเปลี่ยนจริง
-          itemRemark: item.item_remark || "",
-        })),
-      };
-
-      const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
-      const mainRemarkText = isSteppingBack
-        ? `ถอยสถานะย้อนกลับจาก (${currentStatusInDB}) เป็น ${status}`
-        : isFinalStatus
-        ? `แก้ไขย้อนกลับสถานะจาก (${currentStatusInDB}) เป็น ${status}`
-        : isModalStatusRejected
-        ? rejectReason
-        : `เปลี่ยนสถานะเป็น ${status}`;
-
-      const fullRemark = `${mainRemarkText} | DATA:${JSON.stringify(extraData)}`;
-
-      const nowFormattedStandard = dayjs().format("YYYY-MM-DD HH:mm:ss");
-      const timestampUpdates = {};
-
-      const isReceiveStatus = status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว";
-      const isDeliveryStatus = status === "กำลังจัดส่งสินค้าเคลม";
-
-      if (isReceiveStatus) {
-        timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-        if (!cleanData.driver_receive_date) {
-          timestampUpdates.driver_receive_date = nowFormattedStandard;
-        }
-      } else if ((status === "อนุมัติเคลมสินค้า") && !cleanData.approve_date) {
-        timestampUpdates.approve_date = nowFormattedStandard;
-      } else if (status === "กำลังดำเนินการเปลี่ยนสินค้า" && !cleanData.warehouse_receive_date) {
-        timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-      } else if (isDeliveryStatus && !cleanData.delivery_date) {
-        timestampUpdates.delivery_date = nowFormattedStandard;
-      } else if (status === "จัดส่งสินค้าเคลมสำเร็จ" && !cleanData.receive_finish_date) {
-        timestampUpdates.receive_finish_date = nowFormattedStandard;
+      if (!currentUserId) {
+        message.error("ไม่พบรหัสผู้ใช้งาน (User ID) กรุณาล็อกอินใหม่อีกครั้ง");
+        return;
       }
 
-      const formattedClaimItems = claimItems.map((item) => ({
-        ...item,
-        withdraw_date: item.withdraw_date ? formatDatePayload(item.withdraw_date) : null,
-        mfg_date_change: item.mfg_date_change ? formatDatePayload(item.mfg_date_change) : null,
-      }));
+      setIsSubmitting(true);
 
-      const updatePayload = {
-        ...cleanData,
-        claim_id: realClaimId,
-        actionsname: actionsName,
-        claim_date: cleanData.claim_date ? dayjs(cleanData.claim_date).format("YYYY-MM-DD") : null,
-        mfg_date: cleanData.mfg_date ? dayjs(cleanData.mfg_date).format("YYYY-MM-DD") : null,
-        exp_date: cleanData.exp_date || cleanData.expire_date ? dayjs(cleanData.exp_date || cleanData.expire_date).format("YYYY-MM-DD") : null,
+      try {
+        const { images, image, ...cleanData } = data;
+        const realClaimId = cleanData.claim_id || data.claim_id;
+        const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
 
-        current_status: statusId,
-        status: statusId,
-        status_name: status,
+        // 🟢 1. ย้าย Helper และแปลงวันที่ขึ้นมาไว้ด้านบนสุดก่อนใช้งาน
+        const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
+        const formattedEstDate = formatDatePayload(estimatedDeliveryDate);
 
-        reject_reason: isModalStatusRejected ? rejectReason : "",
-        driver_name: isReceiveStatus || cleanData.driver_name ? driverName : "",
-        truck_plate: isReceiveStatus || cleanData.truck_plate ? truckPlate : "",
-        claim_no: isReceiveStatus || cleanData.claim_no ? claimNoInput : cleanData.claim_no,
-        full_receive: isReceiveStatus || cleanData.full_receive ? fullReceive : "",
-        delivery_driver: isDeliveryStatus || cleanData.delivery_driver ? deliveryDriver : "",
-        delivery_plate: isDeliveryStatus || cleanData.delivery_plate ? deliveryPlate : "",
-        estimated_delivery_date: isDeliveryStatus || cleanData.estimated_delivery_date ? formatDatePayload(estimatedDeliveryDate) : "",
-        items: formattedClaimItems,
-        ...timestampUpdates,
-        update_by: currentUserId,
-      };
+        const statusId = getStatusId(status);
+        const actionsName = getActionNameByStatus(status);
 
-      const resUpdate = await claimService.updateClaim(updatePayload);
+        const isProcessChangeStatus = status === "กำลังดำเนินการเปลี่ยนสินค้า";
+        const isReceiveStatus = status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว";
+        const isDeliveryStatus = status === "กำลังจัดส่งสินค้าเคลม";
 
-      if (resUpdate?.status) {
-        if (isReceiveStatus || isDeliveryStatus) {
-          try {
-            const rawId = realClaimId;
-            const numericClaimId = typeof rawId === "number" ? rawId : parseInt(rawId, 10);
-            const numericDriverId = parseInt(currentUserId, 10);
-            const validDriverId = !isNaN(numericDriverId) && numericDriverId > 0 ? numericDriverId : null;
+        // 🟢 2. สร้าง extraData โดยใช้ formattedEstDate ที่แปลงค่าแล้ว
+        const extraData = {
+          driverName,
+          truckPlate,
+          deliveryDriver,
+          deliveryPlate,
+          estimatedDeliveryDate: formattedEstDate
+        };
 
-            if (!isNaN(numericClaimId) && numericClaimId > 0) {
-              const deliveryPayload = {
-                claim_id: numericClaimId,
-                driver_id: validDriverId,
-                delivery_status: isReceiveStatus ? "1" : "2",
-                driver_name: isReceiveStatus ? driverName : deliveryDriver,
-                truck_plate: isReceiveStatus ? truckPlate : deliveryPlate,
-                estimated_delivery_date: isDeliveryStatus ? formatDatePayload(estimatedDeliveryDate) : null,
-                claim_no: claimNoInput || cleanData.claim_no || "",
-                receive_date: new Date().toISOString(),
-              };
+        const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
+        const mainRemarkText = isSteppingBack
+          ? `ถอยสถานะย้อนกลับเป็น ${status}`
+          : isModalStatusRejected
+          ? rejectReason
+          : `เปลี่ยนสถานะเป็น ${status}`;
 
-              await deliveryService.createDelivery(deliveryPayload);
-            }
-          } catch (delErr) {
-            console.error("Error จาก Backend createDelivery:", delErr?.response?.data || delErr.message);
-          }
-        }
+        let fullRemark = `${mainRemarkText} | DATA:${JSON.stringify(extraData)}`;
 
-        await claimService.createClaimStatusLogs({
-          claim_id: String(realClaimId),
-          status: String(statusId),
-          remark: fullRemark,
-          update_by: currentUserId,
-          user_id: currentUserId,
+        const formattedClaimItems = claimItems.map((item) => {
+          return {
+            ...item,
+            claim_item_id: item.claim_item_id,
+            item_id: item.item_id,
+            qty: item.qty,
+            received_qty: item.received_qty !== undefined ? item.received_qty : item.qty,
+            returned_qty: item.returned_qty !== undefined ? item.returned_qty : item.qty,
+            approved_qty: item.approved_qty !== undefined ? item.approved_qty : item.qty,
+            item_remark: item.item_remark || item.remark || "", 
+          };
         });
 
-        let approveStatusValue = null;
-        if (status === "อนุมัติเคลมสินค้า") {
-          approveStatusValue = true;
-        } else if (status === "ไม่อนุมัติเคลมสินค้า" || status === "ไม่มีสิทธิ์เคลม") {
-          approveStatusValue = false;
+        const nowFormattedStandard = dayjs().format("YYYY-MM-DD HH:mm:ss");
+        const timestampUpdates = {};
+
+        if (isReceiveStatus) {
+          timestampUpdates.warehouse_receive_date = nowFormattedStandard;
+          if (!cleanData.driver_receive_date) {
+            timestampUpdates.driver_receive_date = nowFormattedStandard;
+          }
+        } else if ((status === "อนุมัติเคลมสินค้า") && !cleanData.approve_date) {
+          timestampUpdates.approve_date = nowFormattedStandard;
+        } else if (status === "กำลังดำเนินการเปลี่ยนสินค้า" && !cleanData.warehouse_receive_date) {
+          timestampUpdates.warehouse_receive_date = nowFormattedStandard;
+        } else if (isDeliveryStatus && !cleanData.delivery_date) {
+          timestampUpdates.delivery_date = nowFormattedStandard;
+        } else if (status === "จัดส่งสินค้าเคลมสำเร็จ" && !cleanData.receive_finish_date) {
+          timestampUpdates.receive_finish_date = nowFormattedStandard;
         }
 
-        if (approveStatusValue !== null) {
-          await claimService.createClaimapproves({
+        // 🟢 3. อัปเดต payload ให้ใช้ค่าที่ถูกต้อง
+        const updatePayload = {
+          ...cleanData,
+          claim_id: realClaimId,
+          actionsname: actionsName,
+          claim_date: cleanData.claim_date ? dayjs(cleanData.claim_date).format("YYYY-MM-DD") : null,
+          mfg_date: cleanData.mfg_date ? dayjs(cleanData.mfg_date).format("YYYY-MM-DD") : null,
+          exp_date: cleanData.exp_date || cleanData.expire_date ? dayjs(cleanData.exp_date || cleanData.expire_date).format("YYYY-MM-DD") : null,
+
+          current_status: statusId,
+          status: statusId,
+          status_name: status,
+
+          reject_reason: isModalStatusRejected ? rejectReason : "",
+          driver_name: isReceiveStatus || cleanData.driver_name ? driverName : "",
+          truck_plate: isReceiveStatus || cleanData.truck_plate ? truckPlate : "",
+          claim_no: isReceiveStatus || cleanData.claim_no ? claimNoInput : cleanData.claim_no,
+          full_receive: isReceiveStatus || cleanData.full_receive ? fullReceive : "",
+          delivery_driver: isDeliveryStatus || cleanData.delivery_driver ? deliveryDriver : "",
+          delivery_plate: isDeliveryStatus || cleanData.delivery_plate ? deliveryPlate : "",
+          estimated_delivery_date: isDeliveryStatus ? formattedEstDate : (cleanData.estimated_delivery_date || ""),
+          items: formattedClaimItems,
+          ...timestampUpdates,
+          update_by: currentUserId,
+        };
+
+        const resUpdate = await claimService.updateClaim(updatePayload);
+
+        if (resUpdate?.status) {
+          if (isReceiveStatus || isDeliveryStatus) {
+            try {
+              const rawId = realClaimId;
+              const numericClaimId = typeof rawId === "number" ? rawId : parseInt(rawId, 10);
+              const numericDriverId = parseInt(currentUserId, 10);
+              const validDriverId = !isNaN(numericDriverId) && numericDriverId > 0 ? numericDriverId : null;
+
+              if (!isNaN(numericClaimId) && numericClaimId > 0) {
+                const deliveryPayload = {
+                  claim_id: numericClaimId,
+                  driver_id: validDriverId,
+                  delivery_status: isReceiveStatus ? "1" : "2",
+                  driver_name: isReceiveStatus ? driverName : deliveryDriver,
+                  truck_plate: isReceiveStatus ? truckPlate : deliveryPlate,
+                  estimated_delivery_date: isDeliveryStatus ? formattedEstDate : null,
+                  claim_no: claimNoInput || cleanData.claim_no || "",
+                  receive_date: new Date().toISOString(),
+                };
+
+                await deliveryService.createDelivery(deliveryPayload);
+              }
+            } catch (delErr) {
+              console.error("Error จาก Backend createDelivery:", delErr?.response?.data || delErr.message);
+            }
+          }
+
+          await claimService.createClaimStatusLogs({
             claim_id: String(realClaimId),
-            approve_by: String(currentUserId),
-            approve_status: approveStatusValue,
-            approve_remark: isModalStatusRejected ? rejectReason : `ดำเนินการสถานะ: ${status}`,
-          }); 
-        }
+            status: String(statusId),
+            remark: fullRemark,
+            update_by: currentUserId,
+            user_id: currentUserId,
+          });
 
-        message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
-        
-        setIsModalOpen(false);
-        await fetchClaimDetail();
+          let approveStatusValue = null;
+          if (status === "อนุมัติเคลมสินค้า") {
+            approveStatusValue = true;
+          } else if (status === "ไม่อนุมัติเคลมสินค้า" || status === "ไม่มีสิทธิ์เคลม") {
+            approveStatusValue = false;
+          }
+
+          if (approveStatusValue !== null) {
+            await claimService.createClaimapproves({
+              claim_id: String(realClaimId),
+              approve_by: String(currentUserId),
+              approve_status: approveStatusValue,
+              approve_remark: isModalStatusRejected ? rejectReason : `ดำเนินการสถานะ: ${status}`,
+            }); 
+          }
+
+          message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
+          
+          setIsModalOpen(false);
+          await fetchClaimDetail();
+        }
+      } catch (error) {
+        message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (error) {
-      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const renderDotIcon = (IconComponent) => (
@@ -1020,7 +1016,6 @@ const StaffClaimUpdate = () => {
         return <span className="font-semibold text-emerald-600">{rQty ?? record.qty}</span>;
       },
     },
-    // 🟢 คอลัมน์ จำนวนส่งสินค้าคืน
     {
       title: "จำนวนส่งคืน",
       dataIndex: "returned_qty",
@@ -1028,12 +1023,11 @@ const StaffClaimUpdate = () => {
       width: 100,
       align: "right",
       render: (retQty, record) => {
-        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 8; // หรือปรับตาม priority ขั้นที่ต้องการแสดง
+        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 8;
         if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
         return <span className="font-semibold text-amber-600">{retQty ?? record.qty}</span>;
       },
     },
-    // 🟢 คอลัมน์ จำนวนแลกเปลี่ยนจริง
     {
       title: "จำนวนแลกเปลี่ยนจริง",
       dataIndex: "approved_qty",
@@ -1591,13 +1585,6 @@ const StaffClaimUpdate = () => {
             />
           </div>
 
-          {/**ข้อมูลในส่วนของ modal รับสินค้าจริงแล้ว*/}
-          {/**===============================*/}
-          {/**ชื่อ พขร. = formData.driverName 
-           *  ทะเบียนรถ = formData.truckPlate
-           * claimItems.map((item, index) => ชื่อสินค้า = {item.item_name}, จำนวนสินค้า ={item.qty}
-          */}
-          {/**===============================*/}
           {(formData.status === "รับสินค้าจริงแล้ว" || formData.status === "รับสินค้าแล้ว") && (
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
               <span className="text-sm font-medium text-slate-800 border-b pb-1">ข้อมูลที่เข้ารับสินค้า</span>
@@ -1611,17 +1598,6 @@ const StaffClaimUpdate = () => {
                   <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ:</label>
                   <Input placeholder="เช่น 70-1234 กทม." value={formData.truckPlate} onChange={(e) => handleInputChange("truckPlate", e.target.value)} />
                 </div>
-                {/**
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">เลขที่เอกสารเคลม (เล่ม-เลขที่):</label>
-                  <Input placeholder="เช่น 055-02742" value={formData.claimNoInput} onChange={(e) => handleInputChange("claimNoInput", e.target.value)} disabled={true} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">จำนวนที่รับคืนสินค้าแตกรวม(ขวด/กระป๋อง):</label>
-                  <Input placeholder="เช่น 48" value={formData.fullReceive} onChange={(e) => handleInputChange("fullReceive", e.target.value)} />
-                </div>
-                 */}
-                
               </div>
 
               <div className="mt-2">
@@ -1640,27 +1616,13 @@ const StaffClaimUpdate = () => {
                           min={0}
                           size="small"
                           className="w-full"
-                          selectOnFocus // ช่วยไฮไลต์ตัวเลขทั้งหมดเมื่อคลิก ลบ/พิมพ์ใหม่สะดวกขึ้น
-                          // 🟢 ใช้การเช็กว่ามีค่าระบุไว้หรือไม่ ถ้าเคยคีย์ว่างเปล่าไว้ให้ยอมรับค่า null ได้
+                          selectOnFocus
                           value={item.received_qty !== undefined ? item.received_qty : item.qty}
                           onChange={(val) => handleItemChange(index, "received_qty", val)}
                         />
                         <div className="w-28 shrink-0">
                           <label className="text-[10px] text-slate-500 block">ขวด/กระป๋อง</label>
-                          
                         </div>
-                        {/**
-                        <div className="w-36 shrink-0">
-                          <label className="text-[10px] text-slate-500 block">หมายเหตุเพิ่มเติม</label>
-                          <Input
-                            size="small"
-                            placeholder="หมายเหตุ"
-                            value={item.item_remark || ""}
-                            onChange={(e) => handleItemChange(index, "item_remark", e.target.value)}
-                          />
-                        </div>
-                         */}
-                        
                       </div>
                     </div>
                   ))}
@@ -1672,22 +1634,20 @@ const StaffClaimUpdate = () => {
           {formData.status === "กำลังดำเนินการเปลี่ยนสินค้า" && (
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
               <div className="flex justify-between items-center border-b pb-1">
-                <span className="text-sm font-medium text-slate-800">ข้อมูลการเบิกและรับรองเปลี่ยนสินค้า (แยกรายสินค้า)</span>
+                <span className="text-sm font-medium text-slate-800">ระบุจำนวนส่งคืนและจำนวนแลกเปลี่ยนจริง</span>
                 <span className="text-xs text-slate-500">{claimItems.length} รายการ</span>
               </div>
 
-              <div className="flex flex-col gap-4 max-h-[420px] overflow-y-auto pr-1">
+              <div className="flex flex-col gap-3 max-h-[380px] overflow-y-auto pr-1">
                 {claimItems.map((item, index) => (
-                  <div key={item.key || index} className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col gap-3 shadow-sm">
-                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                      <span className="text-xs font-bold text-slate-800 truncate">{index + 1}. {item.item_name}</span>
+                  <div key={item.key || index} className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col gap-2.5 shadow-sm">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                      <span className="text-xs font-semibold text-slate-800 truncate">{index + 1}. {item.item_name}</span>
                       <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">แจ้งเคลม: {item.qty} | รับจริง: {item.received_qty ?? item.qty}</span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              
-
-                      <div>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <div className="flex-1">
                         <label className="block text-[11px] font-medium text-slate-600 mb-1">
                           จำนวนส่งสินค้าคืน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:
                         </label>
@@ -1695,12 +1655,13 @@ const StaffClaimUpdate = () => {
                           min={0}
                           size="small"
                           className="w-full"
+                          selectOnFocus
                           value={item.returned_qty ?? item.qty}
                           onChange={(val) => handleItemChange(index, "returned_qty", val)}
                         />
                       </div>
 
-                      <div>
+                      <div className="flex-1">
                         <label className="block text-[11px] font-medium text-slate-600 mb-1">
                           จำนวนที่แลกเปลี่ยนจริง (ขวด/กระป๋อง) <span className="text-red-500">*</span>:
                         </label>
@@ -1708,6 +1669,7 @@ const StaffClaimUpdate = () => {
                           min={0}
                           size="small"
                           className="w-full"
+                          selectOnFocus
                           value={item.approved_qty ?? item.qty}
                           onChange={(val) => handleItemChange(index, "approved_qty", val)}
                         />

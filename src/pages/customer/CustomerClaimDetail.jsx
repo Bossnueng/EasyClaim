@@ -66,6 +66,8 @@ const formatDate = (date) => {
 
 const parseExtraDataFromLogs = (logs) => {
   if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
+  
+  // วนลูปจากหลังมาหน้า เพื่อให้ได้ Log ล่าสุดเสมอ
   for (let i = logs.length - 1; i >= 0; i--) {
     const log = logs[i];
     if (log && log.remark && log.remark.includes("| DATA:")) {
@@ -116,22 +118,40 @@ const CustomerClaimDetail = () => {
     claimId: claimId,
     isStaff: false,
     onStatusUpdated: () => {
+      // สถานะเปลี่ยน (เช่น เปลี่ยนเป็น "รับสินค้าแล้ว") ค่อยดึงข้อมูลใหม่ทั้งหน้า
       fetchClaimDetail();
     },
     onCommentCreated: (newLog) => {
-      if (newLog && newLog.remark && newLog.remark.startsWith("[MSG]")) {
-        const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
-        const senderRole = newLog.remark.includes("[STAFF]") ? "staff" : "customer";
-        
-        const formattedMsg = {
-          id: newLog.log_id || Math.random(),
-          senderRole,
-          senderName: usersMap[String(newLog.update_by)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
-          message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
-          time: newLog.update_date || new Date(),
-        };
+      if (!newLog || !newLog.remark) return;
 
-        setChatMessages((prevMsgs) => [...prevMsgs, formattedMsg]);
+      const remark = newLog.remark;
+
+      // เคสที่ 1: เป็นข้อความแชทสนทนา ([MSG])
+      if (remark.startsWith("[MSG]")) {
+        // ถ้าเป็นแชทที่ฝั่ง Staff ส่งมา ให้ดันเข้า State Chat โดยไม่สั่ง fetchClaimDetail ทั้งหน้า (หน้าไม่กระตุก)
+        if (remark.includes("[STAFF]")) {
+          const cleanRemark = remark.replace("[MSG]", "").trim();
+          const formattedMsg = {
+            id: newLog.log_id || newLog.id || Math.random(),
+            senderRole: "staff",
+            senderName: usersMap[String(newLog.update_by || newLog.user_id)] || "เจ้าหน้าที่ (Staff)",
+            message: cleanRemark.replace("[STAFF]", "").trim(),
+            time: newLog.update_date || newLog.created_at || new Date(),
+          };
+
+          // ตรวจสอบเพื่อไม่ให้เพิ่มข้อความซ้ำ
+          setChatMessages((prevMsgs) => {
+            const isExist = prevMsgs.some((m) => String(m.id) === String(formattedMsg.id));
+            return isExist ? prevMsgs : [...prevMsgs, formattedMsg];
+          });
+        }
+        return;
+      }
+
+      // เคสที่ 2: เป็นการอัปเดตข้อมูลระบบ / Extra Data (| DATA:)
+      if (remark.includes("| DATA:")) {
+        // ดึงข้อมูลใหม่เพื่ออัปเดตกล่องรับ/ส่งสินค้า
+        fetchClaimDetail();
       }
     },
   });
@@ -309,23 +329,20 @@ const CustomerClaimDetail = () => {
             });
           setChatMessages(msgs);
 
-          const extraLogData = parseExtraDataFromLogs(filteredLogs);
+          const extraLogData = parseExtraDataFromLogs(filteredLogs) || {};
 
           const mergedClaimData = {
             ...currentClaim,
             images: rawImages.map((i) => i.formattedUrl),
-            driver_name: currentClaim.driver_name || extraLogData.driverName || "",
-            truck_plate: currentClaim.truck_plate || extraLogData.truckPlate || "",
-            full_receive: currentClaim.full_receive || extraLogData.fullReceive || "",
-            withdraw_date: currentClaim.withdraw_date || extraLogData.withdrawDate || null,
-            returned_qty: currentClaim.returned_qty ?? extraLogData.returnedQty ?? "",
-            approved_qty: currentClaim.approved_qty ?? extraLogData.approvedQty ?? "",
-            delivery_driver: currentClaim.delivery_driver || extraLogData.deliveryDriver || "",
-            delivery_plate: currentClaim.delivery_plate || extraLogData.deliveryPlate || "",
+            driver_name: currentClaim.driver_name || extraLogData.driverName || extraLogData.driver_name || "",
+            truck_plate: currentClaim.truck_plate || extraLogData.truckPlate || extraLogData.truck_plate || "",
+            full_receive: currentClaim.full_receive || extraLogData.fullReceive || extraLogData.full_receive || "",
+            delivery_driver: currentClaim.delivery_driver || extraLogData.deliveryDriver || extraLogData.delivery_driver || "",
+            delivery_plate: currentClaim.delivery_plate || extraLogData.deliveryPlate || extraLogData.delivery_plate || "",
             estimated_delivery_date: currentClaim.estimated_delivery_date || extraLogData.estimatedDeliveryDate || null,
           };
-
           setData(mergedClaimData);
+         
 
           const approvesData = resApproves?.data || resApproves || [];
           if (Array.isArray(approvesData)) {
@@ -797,19 +814,21 @@ const CustomerClaimDetail = () => {
             />
           </Card>
 
-          {(STATUS_PRIORITY[currentStatusInDB] >= 4 || Boolean(data.driver_name && data.driver_name.trim())) && (
-            <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions 
-                column={1} 
-                bordered 
-                size="middle" 
-                labelStyle={{ fontWeight: "500", color: "#475569", width: "130px", backgroundColor: "#f8fafc", verticalAlign: "top" }}
-                contentStyle={{ color: "#1e293b", wordBreak: "break-word" }}
-              >
-                <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800 break-words">{data.driver_name || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.truck_plate || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="เลขที่เอกสารเคลม"><span className="font-mono">{data.claim_no || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="จำนวนที่รับคืน"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
+          {(STATUS_PRIORITY[currentStatusInDB] >= 4 || Boolean(data?.driver_name && data?.driver_name.trim())) && (
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>}>
+              <Descriptions column={1} bordered size="middle">
+                <Descriptions.Item label="พนักงานขับรถ (พขร.)">
+                  {data.driver_name || "-"}
+                </Descriptions.Item>
+                <Descriptions.Item label="ทะเบียนรถ">
+                  {data.truck_plate || "-"}
+                </Descriptions.Item>
+                <Descriptions.Item label="เลขที่เอกสารเคลม">
+                  {data.claim_no || "-"}
+                </Descriptions.Item>
+                <Descriptions.Item label="จำนวนที่รับคืนสินค้าแตก">
+                  {data.full_receive || "-"}
+                </Descriptions.Item>
               </Descriptions>
             </Card>
           )}
@@ -826,7 +845,11 @@ const CustomerClaimDetail = () => {
                 <Descriptions.Item label="พนักงานจัดส่ง"><span className="text-slate-800 break-words">{data.delivery_driver || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="วันคาดว่าจะถึง">
-                  <span className="text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
+                  <span className="text-blue-600">
+                    {data.estimated_delivery_date && dayjs(data.estimated_delivery_date).isValid()
+                      ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY")
+                      : "-"}
+                  </span>
                 </Descriptions.Item>
               </Descriptions>
             </Card>

@@ -981,26 +981,14 @@ exports.delClaim = async (req, res) => {
   };
 
 exports.updateclaim = async (req, res) => {
-
     try {
-        const {
-            claim_id,
-            status,
-            actionsname,
-        } = req.body;
+        const { claim_id, status, actionsname, items } = req.body;
 
         if (!claim_id) {
-            return res.status(400).json({
-                status: false,
-                message: "claim_id is required"
-            });
+            return res.status(400).json({ status: false, message: "claim_id is required" });
         }
-
         if (!actionsname) {
-            return res.status(400).json({
-                status: false,
-                message: "actionsname is required"
-            });
+            return res.status(400).json({ status: false, message: "actionsname is required" });
         }
 
         const pool = await connectDB();
@@ -1009,47 +997,64 @@ exports.updateclaim = async (req, res) => {
         try {
             await transaction.begin();
 
+            // 1. ตรวจสอบว่ามี Claim ID นี้หรือไม่
             const checkClaim = await transaction.request()
                 .input("claim_id", sql.Int, claim_id)
                 .query(`
                     SELECT claim_id
-                    FROM [EasyClaim_Dev].[dbo].[claims]
+                    FROM [EasyClaim_Dev].[dbo].[claim_items] -- หรือ [claims]
                     WHERE claim_id = @claim_id
                 `);
 
             if (checkClaim.recordset.length === 0) {
                 await transaction.rollback();
-                return res.status(404).json({
-                    status: false,
-                    message: "Claim not found"
-                });
+                return res.status(404).json({ status: false, message: "Claim not found" });
             }
 
+            // 2. อัปเดต items ภายใน Transaction
+            if (Array.isArray(items) && items.length > 0) {
+              for (const item of items) {
+                  if (item.claim_item_id || item.item_id) {
+                      const itemDataObj = {
+                          qty: item.qty || 0,
+                          receivedQty: item.received_qty !== undefined ? item.received_qty : (item.qty || 0),
+                          returnedQty: item.returned_qty !== undefined ? item.returned_qty : (item.qty || 0),
+                          approvedQty: item.approved_qty !== undefined ? item.approved_qty : (item.qty || 0),
+                          itemRemark: item.item_remark || item.remark || "" // เก็บ remark รายสินค้าลง JSON
+                      };
+
+                      const itemRemarkJson = JSON.stringify(itemDataObj);
+
+                      await transaction.request()
+                          .input("claim_id", sql.Int, claim_id)
+                          .input("item_id", sql.Int, item.item_id || null)
+                          .input("claim_item_id", sql.Int, item.claim_item_id || null)
+                          .input("remark_json", sql.NVarChar(sql.MAX), itemRemarkJson)
+                          .query(`
+                              UPDATE [EasyClaim_Dev].[dbo].[claim_items]
+                              SET remark = @remark_json,
+                                  updated_at = GETDATE()
+                              WHERE claim_id = @claim_id 
+                                AND (claim_item_id = @claim_item_id OR item_id = @item_id)
+                          `);
+                  }
+              }
+          }
+
+            // 3. กำหนด Date Column ตาม actionsname
             let dateColumn = null;
             switch (actionsname) {
-                case "driver_receive_date":
-                    dateColumn = "driver_receive_date";
-                    break;
-                case "warehouse_receive_date":
-                    dateColumn = "warehouse_receive_date";
-                    break;
-                case "approve_date":
-                    dateColumn = "approve_date";
-                    break;
-                case "delivery_date":
-                    dateColumn = "delivery_date";
-                    break;
-                case "receive_finish_date":
-                    dateColumn = "receive_finish_date";
-                    break;
+                case "driver_receive_date": dateColumn = "driver_receive_date"; break;
+                case "warehouse_receive_date": dateColumn = "warehouse_receive_date"; break;
+                case "approve_date": dateColumn = "approve_date"; break;
+                case "delivery_date": dateColumn = "delivery_date"; break;
+                case "receive_finish_date": dateColumn = "receive_finish_date"; break;
                 default:
                     await transaction.rollback();
-                    return res.status(400).json({
-                        status: false,
-                        message: "Invalid actionsname"
-                    });
+                    return res.status(400).json({ status: false, message: "Invalid actionsname" });
             }
 
+            // 4. อัปเดตตาราง claims
             const result = await transaction.request()
                 .input("claim_id", sql.Int, claim_id)
                 .input("status", sql.NVarChar(50), status || null)
@@ -1057,15 +1062,15 @@ exports.updateclaim = async (req, res) => {
                     UPDATE [EasyClaim_Dev].[dbo].[claims]
                     SET
                         current_status = @status,
-                        ${dateColumn} = GETDATE(), -- เขียนทับเวลาเดิมทันที
+                        ${dateColumn} = GETDATE(),
                         updated_at = GETDATE()
                     WHERE claim_id = @claim_id
                 `);
 
             await transaction.commit();
 
+            // 5. ส่ง Socket
             try {
-                // 🟢 ส่ง Socket Event กระจายหาทั้ง Room เคสเคลมนี้ และ Staff
                 const updatedData = { claim_id, status, actionsname, updated_at: new Date() };
                 getIO().to(`claim:${claim_id}`).emit("claim:status_updated", updatedData);
                 getIO().to("staff").emit("claim:status_updated", updatedData);
@@ -1083,21 +1088,13 @@ exports.updateclaim = async (req, res) => {
             });
 
         } catch (error) {
-            try {
-                await transaction.rollback();
-            } catch (rollbackError) {
-                console.error("Rollback error:", rollbackError);
-            }
+            try { await transaction.rollback(); } catch (rbErr) {}
             throw error;
         }
 
     } catch (error) {
         console.error("updateclaim Error:", error);
-
-        return res.status(500).json({
-            status: false,
-            message: error.message
-        });
+        return res.status(500).json({ status: false, message: error.message });
     }
 };
 

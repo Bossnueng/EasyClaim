@@ -345,6 +345,8 @@ const StaffClaimUpdate = () => {
 
                 // 🟢 ดึงค่า receivedQty จาก extraItemsMap / extraLogData ได้อย่างถูกต้อง
                 const mappedReceivedQty = extraItemsMap[itemName] ?? extraLogData.items?.[idx]?.receivedQty ?? ci.received_qty ?? ci.qty;
+                const mappedReturnedQty = extraLogData.items?.[idx]?.returnedQty ?? ci.returned_qty ?? ci.qty; // 🟢 เพิ่ม
+                const mappedApprovedQty = extraLogData.items?.[idx]?.approvedQty ?? ci.approved_qty ?? ci.qty; // 🟢 เพิ่ม
 
                 return {
                   key: ci.claim_item_id || idx,
@@ -352,8 +354,8 @@ const StaffClaimUpdate = () => {
                   item_name: itemName,
                   images: finalImages.map((i) => i.formattedUrl),
                   received_qty: mappedReceivedQty,
-                  approved_qty: ci.approved_qty ?? ci.qty,
-                  returned_qty: ci.returned_qty ?? ci.qty,
+                  approved_qty: mappedApprovedQty, // 🟢 ใช้ค่าที่ดึงมา
+                  returned_qty: mappedReturnedQty, // 🟢 ใช้ค่าที่ดึงมา
                   withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
                   lot_no_change: ci.lot_no_change || "",
                   mfg_date_change: ci.mfg_date_change ? dayjs(ci.mfg_date_change) : null,
@@ -773,11 +775,12 @@ const StaffClaimUpdate = () => {
         deliveryDriver,
         deliveryPlate,
         estimatedDeliveryDate: formatDatePayload(estimatedDeliveryDate),
-        // เพิ่มการเก็บ items รายการสินค้าและจำนวนรับจริง
         items: claimItems.map((item) => ({
           itemName: item.item_name,
           qty: item.qty,
           receivedQty: item.received_qty ?? item.qty,
+          returnedQty: item.returned_qty ?? item.qty,   // 🟢 เพิ่มจำนวนส่งคืน
+          approvedQty: item.approved_qty ?? item.qty,   // 🟢 เพิ่มจำนวนที่แลกเปลี่ยนจริง
           itemRemark: item.item_remark || "",
         })),
       };
@@ -1013,16 +1016,34 @@ const StaffClaimUpdate = () => {
       align: "right",
       render: (rQty, record) => {
         const isReceivedStep = STATUS_PRIORITY[currentStatusInDB] >= 4;
-        
-        if (!isReceivedStep) {
-          return <span className="text-slate-400 font-normal">-</span>;
-        }
-        
-        return (
-          <span className="font-semibold text-emerald-600">
-            {rQty ?? record.qty}
-          </span>
-        );
+        if (!isReceivedStep) return <span className="text-slate-400 font-normal">-</span>;
+        return <span className="font-semibold text-emerald-600">{rQty ?? record.qty}</span>;
+      },
+    },
+    // 🟢 คอลัมน์ จำนวนส่งสินค้าคืน
+    {
+      title: "จำนวนส่งคืน",
+      dataIndex: "returned_qty",
+      key: "returned_qty",
+      width: 100,
+      align: "right",
+      render: (retQty, record) => {
+        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 8; // หรือปรับตาม priority ขั้นที่ต้องการแสดง
+        if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
+        return <span className="font-semibold text-amber-600">{retQty ?? record.qty}</span>;
+      },
+    },
+    // 🟢 คอลัมน์ จำนวนแลกเปลี่ยนจริง
+    {
+      title: "จำนวนแลกเปลี่ยนจริง",
+      dataIndex: "approved_qty",
+      key: "approved_qty",
+      width: 110,
+      align: "right",
+      render: (appQty, record) => {
+        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 8;
+        if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
+        return <span className="font-semibold text-blue-600">{appQty ?? record.qty}</span>;
       },
     },
     {
@@ -1663,43 +1684,13 @@ const StaffClaimUpdate = () => {
                       <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">แจ้งเคลม: {item.qty} | รับจริง: {item.received_qty ?? item.qty}</span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">วันที่เบิกสินค้า <span className="text-red-500">*</span>:</label>
-                        <DatePicker
-                          className="w-full"
-                          size="small"
-                          format="DD/MM/YYYY"
-                          placeholder="เลือกวันที่เบิก"
-                          value={item.withdraw_date ? (dayjs.isDayjs(item.withdraw_date) ? item.withdraw_date : dayjs(item.withdraw_date)) : null}
-                          onChange={(date) => handleItemChange(index, "withdraw_date", date)}
-                        />
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              
 
                       <div>
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">Lot Number ล็อตใหม่:</label>
-                        <Input 
-                          size="small"
-                          placeholder="เช่น LOT123456" 
-                          value={item.lot_no_change || ""} 
-                          onChange={(e) => handleItemChange(index, "lot_no_change", e.target.value)} 
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">MFG Date วันผลิตใหม่:</label>
-                        <DatePicker
-                          className="w-full"
-                          size="small"
-                          format="DD/MM/YYYY"
-                          placeholder="เลือกวันผลิต"
-                          value={item.mfg_date_change ? (dayjs.isDayjs(item.mfg_date_change) ? item.mfg_date_change : dayjs(item.mfg_date_change)) : null}
-                          onChange={(date) => handleItemChange(index, "mfg_date_change", date)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">จำนวนส่งสินค้าคืน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:</label>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                          จำนวนส่งสินค้าคืน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:
+                        </label>
                         <InputNumber
                           min={0}
                           size="small"
@@ -1710,7 +1701,9 @@ const StaffClaimUpdate = () => {
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">จำนวนที่เปลี่ยนเปลี่ยน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:</label>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                          จำนวนที่แลกเปลี่ยนจริง (ขวด/กระป๋อง) <span className="text-red-500">*</span>:
+                        </label>
                         <InputNumber
                           min={0}
                           size="small"

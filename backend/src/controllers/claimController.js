@@ -1010,36 +1010,46 @@ exports.updateclaim = async (req, res) => {
                 await transaction.rollback();
                 return res.status(404).json({ status: false, message: "Claim not found" });
             }
-
+            
             // 2. อัปเดต items ภายใน Transaction
             if (Array.isArray(items) && items.length > 0) {
               for (const item of items) {
-                  if (item.claim_item_id || item.item_id) {
-                      const itemDataObj = {
-                          qty: item.qty || 0,
-                          receivedQty: item.received_qty !== undefined ? item.received_qty : (item.qty || 0),
-                          returnedQty: item.returned_qty !== undefined ? item.returned_qty : (item.qty || 0),
-                          approvedQty: item.approved_qty !== undefined ? item.approved_qty : (item.qty || 0),
-                          itemRemark: item.item_remark || item.remark || "" // เก็บ remark รายสินค้าลง JSON
-                      };
+                if (item.claim_item_id || item.item_id) {
 
-                      const itemRemarkJson = JSON.stringify(itemDataObj);
-
-                      await transaction.request()
-                          .input("claim_id", sql.Int, claim_id)
-                          .input("item_id", sql.Int, item.item_id || null)
-                          .input("claim_item_id", sql.Int, item.claim_item_id || null)
-                          .input("remark_json", sql.NVarChar(sql.MAX), itemRemarkJson)
-                          .query(`
-                              UPDATE [EasyClaim_Dev].[dbo].[claim_items]
-                              SET remark = @remark_json,
-                                  updated_at = GETDATE()
-                              WHERE claim_id = @claim_id 
-                                AND (claim_item_id = @claim_item_id OR item_id = @item_id)
-                          `);
+                  // 🟢 เพิ่ม: หากเป็นแอ็กชันรับเข้าคลัง/เปลี่ยนสินค้า ให้ใช้วันที่ที่ส่งมาหรือเวลาปัจจุบัน
+                  let finalWithdrawDate = item.withdraw_date || null;
+                  if (actionsname === "warehouse_receive_date" && !finalWithdrawDate) {
+                    finalWithdrawDate = new Date();
                   }
+
+                  const itemDataObj = {
+                    qty: item.qty || 0,
+                    receivedQty: item.received_qty !== undefined ? item.received_qty : (item.qty || 0),
+                    returnedQty: item.returned_qty !== undefined ? item.returned_qty : (item.qty || 0),
+                    approvedQty: item.approved_qty !== undefined ? item.approved_qty : (item.qty || 0),
+                    withdrawDate: finalWithdrawDate, // 🟢 บันทึกวันที่เบิกลง JSON
+                    itemRemark: item.item_remark || item.remark || ""
+                  };
+
+                  const itemRemarkJson = JSON.stringify(itemDataObj);
+
+                  await transaction.request()
+                    .input("claim_id", sql.Int, claim_id)
+                    .input("item_id", sql.Int, item.item_id || null)
+                    .input("claim_item_id", sql.Int, item.claim_item_id || null)
+                    .input("remark_json", sql.NVarChar(sql.MAX), itemRemarkJson)
+                    .input("withdraw_date", sql.DateTime, finalWithdrawDate ? new Date(finalWithdrawDate) : null) // 🟢 กำหนดค่า Param
+                    .query(`
+                        UPDATE [EasyClaim_Dev].[dbo].[claim_items]
+                        SET remark = @remark_json,
+                            -- withdraw_date = ISNULL(@withdraw_date, withdraw_date), -- 🟢 ปลดคอมเมนต์บรรทัดนี้หากในตาราง claim_items มีคอลัมน์ withdraw_date
+                            updated_at = GETDATE()
+                        WHERE claim_id = @claim_id 
+                          AND (claim_item_id = @claim_item_id OR item_id = @item_id)
+                    `);
+                }
               }
-          }
+            }
 
             // 3. กำหนด Date Column ตาม actionsname
             let dateColumn = null;

@@ -10,6 +10,8 @@ const MenuList = () => {
   const user = savedUser ? JSON.parse(savedUser) : null;
   const role = user?.role_id; // 'staff' หรือ 'customer'
 
+  const isStaffRole = [1, 4, 5].includes(role);
+
   const getSelectedKey = () => {
     // Customer
     if (location.pathname.includes("/customer/setting")) {
@@ -64,7 +66,7 @@ const MenuList = () => {
     <Menu theme="dark" mode="inline" selectedKeys={[getSelectedKey()]} className="menu-bar">
 
       {/* ==================== STAFF MENUS ==================== */}
-      {role == 1 && (
+      {isStaffRole && (
         <>
           <Menu.Item key="staff-home" icon={<HomeOutlined />}>
             <NavLink to="/staff">หน้าแรก</NavLink>

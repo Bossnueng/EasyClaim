@@ -777,6 +777,9 @@ const CustomerClaimDetail = () => {
                     deliverySuccessName: (data?.current_status === "10" || data?.receive_finish_date)
                       ? (deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay)
                       : "-",
+                    estimated_delivery_date: data?.estimated_delivery_date 
+                      ? dayjs(data.estimated_delivery_date).format("DD/MM/YY") 
+                      : "-",
                     items: claimItems,
                     agentName: agentNameDisplay,
                     agent_name: agentNameDisplay,

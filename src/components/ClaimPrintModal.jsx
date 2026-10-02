@@ -217,13 +217,12 @@ const ClaimPrintModal = ({ open, onClose, data, isStaff }) => {
                       {item.full_receive ?? item.fullReceive ?? item.received_qty ?? item.receivedQty ?? "-"}
                     </td>
                     
-                    {/* วันที่คืนสินค้าแตก */}
                     <td className="p-0.5 font-mono font-bold text-red-600" style={{ border: "1px solid #000" }}>
                       {(() => {
-                        const rawDate = item.deliveryLogDate || item.delivery_date || data?.deliveryLogDate || data?.delivery_date;
+                        const rawDate = data?.estimated_delivery_date || data?.estimatedDeliveryDate;
                         if (!rawDate || rawDate === "-") return "-";
-                        const dateOnly = String(rawDate).trim().split(" ")[0];
-                        return dateOnly ? dayjs(dateOnly, ["DD/MM/YYYY", "YYYY-MM-DD"]).format("DD/MM/YYYY") : "-";
+                        const parsed = dayjs(rawDate, ["DD/MM/YYYY", "YYYY-MM-DD", "DD/MM/YY"]);
+                        return parsed.isValid() ? parsed.format("DD/MM/YYYY") : String(rawDate);
                       })()}
                     </td>
                     

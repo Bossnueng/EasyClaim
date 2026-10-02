@@ -25,13 +25,16 @@ const getValidUser = () => {
   return user;
 };
 
-// 🟢 เช็กว่าเป็น Staff/Admin จาก role_id เดิม ( role_id 1 = Admin, 3 = Staff/Driver )
+// 🟢 เช็กว่าเป็น Staff/Admin (รองรับ role_id 1, 3, 4, 5)
 const isStaff = (user) => {
   if (!user) return false;
   const roleId = Number(user.role_id);
   const roleStr = String(user.role || user.user_type || "").toLowerCase();
   
-  return roleId === 1 || roleId === 3 || roleStr === "staff" || roleStr === "admin";
+  // เพิ่ม role_id 4 และ 5 เข้าไปด้วย
+  const staffRoleIds = [1, 3, 4, 5]; 
+  
+  return staffRoleIds.includes(roleId) || roleStr === "staff" || roleStr === "admin";
 };
 
 // 1. ตรวจสอบ Login

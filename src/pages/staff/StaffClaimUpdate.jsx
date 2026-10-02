@@ -168,6 +168,13 @@ const StaffClaimUpdate = () => {
 
   const currentUser = loginService.getCurrentUser();
   const currentUserId = currentUser?.user_id || currentUser?.id;
+  const userRoleId = Number(currentUser?.role_id);
+
+  // 1. ตรวจสอบสิทธิ์ว่ามีสิทธิ์ใช้งานหน้านี้หรือไม่ (1, 4, 5)
+  const isStaffUser = [1, 4, 5].includes(userRoleId);
+
+  // 2. ตรวจสอบสิทธิ์เฉพาะ "ถอยสถานะ" และ "ขอแก้ไขรายการเคลม" (อนุญาตเฉพาะ 1 และ 4 เท่านั้น)
+  const canRevertOrEdit = [1, 4].includes(userRoleId);
 
   const [formData, setFormData] = useState({
     status: "สร้างรายการเคลม",
@@ -218,8 +225,15 @@ const StaffClaimUpdate = () => {
   });
 
   useEffect(() => {
+    // บล็อก Role อื่นๆ ที่ไม่ใช่ 1, 4, 5 ไม่ให้เข้าหน้านี้
+    if (!isStaffUser) {
+      message.error("คุณไม่มีสิทธิ์เข้าถึงหน้านี้");
+      navigate("/staff/list-claim");
+      return;
+    }
+
     fetchClaimDetail();
-  }, [claimId]);
+  }, [claimId, userRoleId]);
 
   const fetchClaimDetail = async () => {
     setLoading(true);
@@ -504,7 +518,8 @@ const StaffClaimUpdate = () => {
 
   const isModalStatusRejected = formData.status === "ไม่อนุมัติเคลมสินค้า" || formData.status === "ไม่มีสิทธิ์เคลม";
   const isFinalStatus = ["ไม่มีสิทธิ์เคลม", "ไม่อนุมัติเคลมสินค้า", "จัดส่งสินค้าเคลมสำเร็จ"].includes(currentStatusInDB);
-
+   // 🟢 เพิ่มตัวแปรเช็คสถานะเกี่ยวกับการจัดส่ง
+  const isDeliveryOrSuccessStatus = ["กำลังจัดส่งสินค้าเคลม", "จัดส่งสินค้าเคลมสำเร็จ"].includes(currentStatusInDB);
   const previousStatusName = getPreviousStatusName(currentStatusInDB);
 
   const getLogRawDateString = (statusTarget) => {
@@ -1142,7 +1157,7 @@ const StaffClaimUpdate = () => {
                     receiverName: receiverNameDisplay,
                     approverName: approveLogs.length > 0 
                       ? usersMap[String(approveLogs[approveLogs.length - 1]?.approve_by)] || "พรนภา แก่นเมือง"
-                      : "อารียา, สุรศักดิ์, ยุทธพงษ์",
+                      : "-",
                     receiveDate: (() => {
                       const targetDate = driverReceiveLogDateStr !== "-" && driverReceiveLogDateStr 
                         ? driverReceiveLogDateStr 
@@ -1164,70 +1179,75 @@ const StaffClaimUpdate = () => {
                     deliverySuccessName: (data?.current_status === "10" || data?.receive_finish_date)
                       ? (deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay)
                       : "-",
+                    estimated_delivery_date: data?.estimated_delivery_date 
+                      ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") 
+                      : "-",
                     agentName: agentNameDisplay,
                     agent_name: agentNameDisplay,
                     reporter: reporterNameDisplay,
                     driverName: data.driver_name || "-",
                     claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
-                    withdrawDate: data.withdraw_date,
+                    withdrawDate: data.warehouse_receive_date,
                     items: claimItems
                   }}
                 />
               </div>
             )}
 
-            {!isFinalStatus && previousStatusName && (
+            {/* ปุ่มถอยสถานะ: แสดงเมื่อมีสิทธิ์ (1 หรือ 4) และสถานะยังไม่สิ้นสุด */}
+            {canRevertOrEdit && !isFinalStatus && previousStatusName && (
               <Button
                 type="default"
                 icon={<UndoOutlined />}
-                className="border-amber-500 text-amber-600 hover:text-amber-700 hover:bg-amber-50 hover:border-amber-600 rounded-xl font-normal shrink-0 h-10 shadow-sm"
-                style={{ paddingLeft: "16px", paddingRight: "16px" }}
                 onClick={handleStepBack}
               >
                 ถอยสถานะ
               </Button>
             )}
 
+            {/* เมื่อสถานะสิ้นสุดแล้ว (isFinalStatus) */}
             {isFinalStatus ? (
-              <Button
-                type="primary"
-                danger
-                icon={<EditOutlined />}
-                className="rounded-xl font-normal shrink-0 h-10 shadow-sm"
-                style={{ paddingLeft: "20px", paddingRight: "20px" }}
-                onClick={handleOpenRevertModal}
-              >
-                ขอแก้ไขรายการเคลม
-              </Button>
+              canRevertOrEdit && (
+                <Button
+                  type="primary"
+                  danger
+                  icon={<EditOutlined />}
+                  className="rounded-xl font-normal shrink-0 h-10 shadow-sm"
+                  style={{ paddingLeft: "20px", paddingRight: "20px" }}
+                  onClick={handleOpenRevertModal}
+                >
+                  ขอแก้ไขรายการเคลม
+                </Button>
+              )
             ) : (
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl font-medium shrink-0 h-10 shadow-md"
-                style={{ paddingLeft: "24px", paddingRight: "24px" }}
-                onClick={() => {
-                  const options = getSelectOptions();
-                  
-                  const forwardOptions = options.filter(
-                    (opt) => !opt.label.includes("(คงเดิม)") && !opt.label.includes("ถอยกลับ")
-                  );
+              /* 2. ถ้าอยู่ระหว่างจัดส่งหรือสำเร็จแล้ว ปุ่มอัปเดตสถานะจะไม่แสดง (ถูกซ่อน) */
+              !isDeliveryOrSuccessStatus && (
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl font-medium shrink-0 h-10 shadow-md"
+                  style={{ paddingLeft: "24px", paddingRight: "24px" }}
+                  onClick={() => {
+                    const options = getSelectOptions();
+                    const forwardOptions = options.filter(
+                      (opt) => !opt.label.includes("(คงเดิม)") && !opt.label.includes("ถอยกลับ")
+                    );
 
-                  let defaultStatus = currentStatusInDB;
+                    let defaultStatus = currentStatusInDB;
+                    if (forwardOptions.length === 1) {
+                      defaultStatus = forwardOptions[0].value;
+                    } else if (forwardOptions.length > 1) {
+                      defaultStatus = null;
+                    }
 
-                  if (forwardOptions.length === 1) {
-                    defaultStatus = forwardOptions[0].value;
-                  } 
-                  else if (forwardOptions.length > 1) {
-                    defaultStatus = null; 
-                  }
-
-                  handleInputChange("status", defaultStatus);
-                  handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
-                  setIsModalOpen(true);
-                }}
-              >
-                อัปเดตสถานะ
-              </Button>
+                    handleInputChange("status", defaultStatus);
+                    handleInputChange("estimatedDeliveryDate", data.estimated_delivery_date ? dayjs(data.estimated_delivery_date) : null);
+                    setIsModalOpen(true);
+                  }}
+                >
+                  อัปเดตสถานะ
+                </Button>
+              )
             )}
           </div>
         </div>

@@ -12,9 +12,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "antd": "^6.5.3",
+    "axios": "^1.19.0",
+    "browser-image-compression": "^2.0.2",
     "multer": "^2.4.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.2",
+    "react-to-print": "^3.3.0",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
@@ -22,6 +31,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
     "oxlint": "^1.71.0",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vite-plugin-svgr": "^5.2.0"
   }
 }

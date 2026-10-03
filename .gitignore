@@ -1,3 +1,9 @@
+#uploads
+backend/src/uploads/claim*
+
+#.gitkeep 
+!backend/src/uploads/claim/.gitkeep
+
 # Logs
 logs
 *.log

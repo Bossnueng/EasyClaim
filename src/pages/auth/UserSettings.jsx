@@ -60,17 +60,39 @@ const UserSettings = () => {
     return defaultRoles[roleId] || `Role ID: ${roleId}`;
   };
 
-  const getAgentName = (agentId) => {
-    if (!agentId) return "-";
+  // 🟢 1. ปรับฟังก์ชันดึงชื่อตัวแทนจำหน่ายทั้งหมด (รองรับทั้ง Array และ ID เดี่ยว)
+  const getAgentNames = (userObj) => {
+    if (!userObj) return "-";
 
-    // ค้นหาเปรียบเทียบกับ agent_code หรือ agent_id (แปลงเป็น String ทั้งคู่)
-    const foundAgent = agents.find(
-      (a) =>
-        String(a.agent_code).trim() === String(agentId).trim() ||
-        String(a.agent_id).trim() === String(agentId).trim()
-    );
+    // ดึงค่า agent_ids หรือ agent_id จาก user
+    let rawAgentIds = userObj.agent_ids || userObj.agent_id;
 
-    return foundAgent ? foundAgent.agent_name : `ไม่พบชื่อตัวแทน: ${agentId}`;
+    if (!rawAgentIds) return "-";
+
+    // แปลงให้เป็น Array เสมอ
+    let agentIdList = [];
+    if (Array.isArray(rawAgentIds)) {
+      agentIdList = rawAgentIds;
+    } else if (typeof rawAgentIds === "string" && rawAgentIds.includes(",")) {
+      agentIdList = rawAgentIds.split(",");
+    } else {
+      agentIdList = [rawAgentIds];
+    }
+
+    // ค้นหาชื่อของแต่ละ Agent ID
+    const names = agentIdList
+      .map((id) => {
+        const targetStr = String(id).trim();
+        const found = agents.find(
+          (a) =>
+            String(a.agent_code).trim() === targetStr ||
+            String(a.agent_id).trim() === targetStr
+        );
+        return found ? found.agent_name : null;
+      })
+      .filter(Boolean); // กรองเอาเฉพาะชื่อที่พบ
+
+    return names.length > 0 ? names.join(", ") : "-";
   };
 
   const handleLogout = () => {
@@ -126,10 +148,10 @@ const UserSettings = () => {
                 {getRoleName(user?.role_id)}
               </Descriptions.Item>
               
-              {/* 5. ปรับส่วนแสดงผลชื่อตัวแทน */}
-              {user?.agent_id && (
+              {/* 🟢 2. แสดงเฉพาะกรณีที่ user มี role_id เท่ากับ 2 */}
+              {Number(user?.role_id) === 2 && (
                 <Descriptions.Item label="ตัวแทนจำหน่าย">
-                  {getAgentName(user.agent_id)}
+                  {getAgentNames(user)}
                 </Descriptions.Item>
               )}
             </Descriptions>
@@ -150,7 +172,6 @@ const UserSettings = () => {
       </div>
     </div>
   );
-
 };
 
 export default UserSettings;

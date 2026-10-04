@@ -1,7 +1,9 @@
 const jwt = require("jsonwebtoken");
 require('dotenv').config();
 
-const verifyToken = (req, res, next) => {
+const pool = require("../config/db");
+
+const verifyToken = async (req, res, next) => {
 
     const authHeader = req.headers.authorization;
 
@@ -16,8 +18,25 @@ const verifyToken = (req, res, next) => {
     try {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        //เพิ่ม
+        const userResult = await pool.query(
+            "SELECT id, username, agent_ids, role FROM users WHERE id = $1", 
+            [decoded.id]
+        );
 
-        req.user = decoded;
+        const currentUser = userResult.rows[0];
+
+        if (!currentUser) {
+            return res.status(401).json({
+                message: "User no longer exists"
+            });
+        }
+
+
+        //req.user = decoded;
+        req.user = currentUser;
+
 
         next();
 

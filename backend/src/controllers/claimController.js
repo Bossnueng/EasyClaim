@@ -466,35 +466,33 @@ exports.getClaimByAgent = async (req, res) => {
 };
 
 exports.getClaim = async (req, res) => {
-  try {
-    const pool = await connectDB();
-    const result = await pool.request().query(`
-                SELECT [claim_id]
-                ,[claim_no]
-                ,[agent_id]
-                ,[claim_date]
-                ,[current_status]
-                ,[driver_receive_date]
-                ,[warehouse_receive_date]
-                ,[approve_date]
-                ,[delivery_date]
-                ,[receive_finish_date]
-                ,[created_by]
-                ,[created_at]
-                ,[updated_at]
-            FROM [EasyClaim_Dev].[dbo].[claims] with(NOLOCK)
-                      `);
+    try {
+        const pool = await connectDB();
+        
+        // 🟢 ป้องกัน Error โดยใส่ Default Value ให้ req.user
+        const user = req.user || {};
+        const role_id = user.role_id;
+        const agent_ids = user.agent_ids || [];
 
-    res.json({
-      status: true,
-      data: result.recordset,
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: false,
-      message: error.message,
-    });
-  }
+        let query = `SELECT * FROM [EasyClaim_Dev].[dbo].[claims]`;
+        const request = pool.request();
+
+        // หากมีการระบุ role_id และไม่ใช่ Admin (role_id != 1)
+        if (role_id && Number(role_id) !== 1) {
+            if (agent_ids.length === 0) {
+                return res.json({ status: true, data: [] });
+            }
+            query += ` WHERE agent_id IN (${agent_ids.join(',')})`;
+        }
+
+        query += ` ORDER BY created_at DESC`;
+
+        const result = await request.query(query);
+        res.json({ status: true, data: result.recordset });
+
+    } catch (error) {
+        res.status(500).json({ status: false, message: error.message });
+    }
 };
 
 exports.creartClaim = async (req, res) => {

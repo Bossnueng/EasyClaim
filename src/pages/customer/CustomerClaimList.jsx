@@ -39,7 +39,8 @@ const CustomerClaimList = () => {
       return;
     }
 
-    const agentId = user?.agent_id;
+    const agentId = user?.agent_id || (Array.isArray(user?.agent_ids) && user.agent_ids.length > 0 ? user.agent_ids[0] : null);
+
     if (!agentId) {
       loginService.logout();
       navigate("/login", { replace: true });

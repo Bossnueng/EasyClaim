@@ -33,13 +33,11 @@ exports.checklogin = async (req, res) => {
                     full_name,
                     email,
                     role_id,
-                    agent_id,
                     status
                 FROM [EasyClaim_Dev].[dbo].[users]
                 WHERE username = @username
             `);
 
-        // ไม่พบผู้ใช้
         if (result.recordset.length === 0) {
             return res.status(401).json({
                 status: false,
@@ -48,7 +46,7 @@ exports.checklogin = async (req, res) => {
         }
 
         const user = result.recordset[0];
-        // ตรวจสอบสถานะผู้ใช้
+
         if (user.status === 0) {
             return res.status(403).json({
                 status: false,
@@ -66,6 +64,18 @@ exports.checklogin = async (req, res) => {
             });
         }
 
+        // 2. ดึง agent_id ทั้งหมดจากตาราง user_agents แบบแยก Query (อ่านและเข้าใจง่าย)
+        const agentResult = await pool.request()
+            .input("user_id", sql.Int, user.user_id)
+            .query(`
+                SELECT agent_id 
+                FROM [EasyClaim_Dev].[dbo].[user_agents] 
+                WHERE user_id = @user_id
+            `);
+
+        // แปลงผลลัพธ์ให้อยู่ในรูป Array เช่น [1, 2, 3]
+        const agent_ids = agentResult.recordset.map(row => row.agent_id);
+
         // อัปเดตเวลา Login ล่าสุด
         await pool.request()
             .input("user_id", sql.Int, user.user_id)
@@ -81,7 +91,7 @@ exports.checklogin = async (req, res) => {
                 user_id: user.user_id,
                 username: user.username,
                 role_id: user.role_id,
-                agent_id: user.agent_id
+                agent_ids: agent_ids
             },
             process.env.JWT_SECRET,
             {
@@ -99,7 +109,7 @@ exports.checklogin = async (req, res) => {
                 full_name: user.full_name,
                 email: user.email,
                 role_id: user.role_id,
-                agent_id: user.agent_id
+                agent_ids: agent_ids
             }
         });
 

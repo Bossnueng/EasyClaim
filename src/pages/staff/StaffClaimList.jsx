@@ -9,6 +9,7 @@ import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
+import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
 
 const parseDataFromLogs = (logs) => {
@@ -95,31 +96,40 @@ const StaffClaimList = () => {
 
       const rawClaims = resClaim && resClaim.status ? resClaim.data : [];
 
+      // 2. ดึงข้อมูล User ปัจจุบัน
+      const currentUser = loginService.getCurrentUser();
+      const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
+      const userRoleId = Number(currentUser?.role_id);
+
+      // 3. กรองเฉพาะเคลมที่ agent_id ตรงกับ agent_ids ของ user (ยกเว้น Admin role_id === 1)
+      const allowedClaims = (userRoleId === 1 || userAgentIds.length === 0 && userRoleId === 1)
+        ? rawClaims
+        : rawClaims.filter((claim) => userAgentIds.includes(String(claim.agent_id || "")));
+
       // ดึงรายละเอียด Item แต่ละรายการเพิ่ม เพื่อให้ Card แสดงผลได้ครบ
       const claimsWithItems = await Promise.all(
-  rawClaims.map(async (claim) => {
-    try {
-      const itemRes = await claimService.getClaimItems(claim.claim_id);
-      const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
-      const itemDetails = rawItems[0] || {};
-      
-      // รวมจำนวน qty ทั้งหมดจากทุก items
-      const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+        allowedClaims.map(async (claim) => {
+          try {
+            const itemRes = await claimService.getClaimItems(claim.claim_id);
+            const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
+            const itemDetails = rawItems[0] || {};
+            
+            const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
 
-      return {
-        ...claim,
-        items: rawItems, // 👈 เก็บรายการสินค้าทั้งหมดลงใน array items
-        item_id: itemDetails.item_id || claim.item_id,
-        qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
-        qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
-        lot_no: itemDetails.lot_no || claim.lot_no || "-",
-        remark: itemDetails.remark || claim.remark || "",
-      };
-    } catch {
-      return claim;
-    }
-  })
-);
+            return {
+              ...claim,
+              items: rawItems,
+              item_id: itemDetails.item_id || claim.item_id,
+              qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
+              qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
+              lot_no: itemDetails.lot_no || claim.lot_no || "-",
+              remark: itemDetails.remark || claim.remark || "",
+            };
+          } catch {
+            return claim;
+          }
+        })
+      );
 
       setClaims(claimsWithItems);
     } catch (error) {

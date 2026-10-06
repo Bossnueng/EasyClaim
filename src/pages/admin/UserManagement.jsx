@@ -17,7 +17,7 @@ import {
   Row,
   Col,
 } from "antd";
-import {
+import {CheckCircleOutlined,
   UserAddOutlined,
   EditOutlined,
   SearchOutlined,
@@ -328,7 +328,7 @@ export default function UserManagement() {
                   key={id}
                   style={{ fontSize: 11 }}
                 >
-                  {matched.agent_name} ({matched.agent_code})
+                  {matched.agent_name}{/*({matched.agent_code})*/}
                 </Tag>
               ) : null;
             })}
@@ -344,14 +344,11 @@ export default function UserManagement() {
       align: "center",
       render: (status) =>
         !isUserInactive(status) ? (
-          <Tag color="success" style={{ fontSize: 11 }}>
-            เปิดใช้งาน
-          </Tag>
+          <Tag color="success" icon={<CheckCircleOutlined />}>เปิดใช้งาน</Tag>
         ) : (
-          <Tag color="default" style={{ fontSize: 11 }}>
-            ปิดใช้งาน
-          </Tag>
+         <Tag color="default" icon={<StopOutlined />}>ปิดใช้งาน</Tag>
         ),
+        
     },
     {
       title: "จัดการ",
@@ -367,8 +364,18 @@ export default function UserManagement() {
               <Button type="text" size="small" disabled icon={<EditOutlined />}>
                 <span style={{ fontSize: 12 }}>แก้ไข</span>
               </Button>
-              <Button type="primary" danger ghost size="small" disabled style={{ fontSize: 11 }}>
-                ปิดใช้งานแล้ว
+              <Button
+                type="primary"
+                danger
+                ghost
+                size="small"
+                /* 🟢 เพิ่ม padding ข้างในปุ่มตรงนี้ */
+                style={{ fontSize: 11, paddingLeft: 12, paddingRight: 12 }} 
+                icon={<StopOutlined />}
+                disabled
+              >
+                {/* 🟢 หรือจะเพิ่ม padding/margin ที่ตัว span ข้อความโดยเฉพาะก็ได้ครับ */}
+                <span style={{ paddingLeft: 4 }}>ปิดใช้งาน</span>
               </Button>
             </Space>
           );
@@ -471,7 +478,8 @@ export default function UserManagement() {
                 รีเฟรช
               </Button>
 
-              <Button
+              {/**
+               <Button
                 icon={<PlusOutlined />}
                 onClick={() => {
                   agentForm.resetFields();
@@ -481,6 +489,8 @@ export default function UserManagement() {
               >
                 ลงทะเบียน Agent ใหม่
               </Button>
+               */}
+              
 
               <Button
                 type="primary"
@@ -702,6 +712,15 @@ export default function UserManagement() {
               rules={[{ required: true, message: "กรุณากรอก Agent Name" }]}
             >
               <Input prefix={<ShopOutlined style={{ color: "#bfbfbf" }} />} placeholder="เช่น บริษัท เอเจ้นท์ จำกัด" />
+            </Form.Item>
+
+            {/* 🟢 เพิ่มช่องกรอก Webhook URL ตรงนี้ */}
+            <Form.Item
+              name="teams_webhook_url"
+              label="Microsoft Teams Webhook URL (ถ้ามี)"
+              rules={[{ type: "url", message: "รูปแบบ Webhook URL ไม่ถูกต้อง" }]}
+            >
+              <Input placeholder="https://outlook.office.com/webhook/..." />
             </Form.Item>
 
             <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>

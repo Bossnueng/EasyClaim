@@ -1,5 +1,7 @@
 import { Menu } from "antd";
 import {
+  ShopOutlined,
+  SafetyCertificateOutlined,
   HomeOutlined,
   FileAddOutlined,
   HistoryOutlined,
@@ -51,6 +53,8 @@ const MenuList = () => {
     if (location.pathname.includes("/staff/users")) {
       return "staff-users";
     }
+    if (location.pathname.includes("/staff/agents")) return "staff-agents";
+    if (location.pathname.includes("/staff/roles")) return "staff-roles";
 
     if (location.pathname.includes("/staff/setting")) {
       return "staff-setting";
@@ -91,9 +95,18 @@ const MenuList = () => {
 
           {/* 🟢 4. แสดงเมนูนี้เฉพาะผู้ที่มี role_id === 1 เท่านั้น */}
           {isAdminRole && (
-            <Menu.Item key="staff-users" icon={<UserOutlined />}>
-              <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
-            </Menu.Item>
+            <>
+              <Menu.Item key="staff-users" icon={<UserOutlined />}>
+                <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
+              </Menu.Item>
+              <Menu.Item key="staff-agents" icon={<ShopOutlined />}>
+                <NavLink to="/staff/agents">จัดการ Agent</NavLink>
+              </Menu.Item>
+
+              <Menu.Item key="staff-roles" icon={<SafetyCertificateOutlined />}>
+                <NavLink to="/staff/roles">จัดการสิทธิ์ (Role)</NavLink>
+              </Menu.Item>
+            </>
           )}
 
           <Menu.Item key="staff-setting" icon={<SettingFilled />}>

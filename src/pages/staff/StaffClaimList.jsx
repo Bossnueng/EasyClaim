@@ -1,7 +1,7 @@
 // src/pages/staff/StaffClaimList.jsx
 import React, { useState, useEffect } from "react";
 import { Input, Empty, message, Spin, DatePicker, Button, Select } from "antd";
-import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined } from "@ant-design/icons";
+import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined, FileTextOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import { STATUS_PRIORITY, FILTER_OPTIONS, CUSTOMER_FILTER_TABS, CUSTOMER_STATUS_GROUPS, getStatusName } from "../../constants/claimStatus";
@@ -11,6 +11,7 @@ import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+
 
 const parseDataFromLogs = (logs) => {
   if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
@@ -41,6 +42,7 @@ const StaffClaimList = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
   const [claimLogsMap, setClaimLogsMap] = useState({});
+  const [agentsRawList, setAgentsRawList] = useState([]);
 
   useEffect(() => {
     fetchClaimsAndItems();
@@ -60,10 +62,14 @@ const StaffClaimList = () => {
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       if (Array.isArray(agentsData)) {
+        setAgentsRawList(agentsData); // เก็บข้อมูล Array ดั้งเดิมเอาไว้ใช้ Map รหัส
+        
         agentsData.forEach((agent) => {
           const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || "");
+          const aCode = String(agent.agent_code || agent.code || "");
           const name = agent.agent_name || agent.name;
+          
+          // เก็บชื่อ และ Object ข้อมูล Agent
           if (aId) aMap[aId] = name;
           if (aCode) aMap[aCode] = name;
         });
@@ -172,27 +178,250 @@ const StaffClaimList = () => {
     }
   };
 
-  const handleExportReport = () => {
-    if (filteredClaims.length === 0) {
-      message.warning("ไม่พบข้อมูลรายการเคลมสำหรับออกรายงาน");
+ const handleExportReport = () => {
+    try {
+      if (!filteredClaims || filteredClaims.length === 0) {
+        message.warning("ไม่พบข้อมูลรายการเคลมสำหรับออกรายงาน");
+        return;
+      }
+
+      let dateStr = "All_Time";
+      if (startDate && endDate) {
+        dateStr = `${dayjs(startDate).format("YYYYMMDD")}_to_${dayjs(endDate).format("YYYYMMDD")}`;
+      }
+
+      // 1. Map ผู้ใช้งานสำหรับหาชื่อผู้แจ้งเคลม (created_by)
+      const userMap = {};
+      const safeUsersList = Array.isArray(usersList) ? usersList : (usersList?.data || []);
+      safeUsersList.forEach((u) => {
+        const uId = String(u.user_id || u.id || "");
+        const uName = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
+        if (uId) userMap[uId] = uName;
+      });
+
+      // 2. สร้าง Map สำหรับค้นหา agent_code จาก agentsRawList
+      const agentCodeMap = {};
+      if (Array.isArray(agentsRawList)) {
+        agentsRawList.forEach((ag) => {
+          if (!ag) return;
+          const aId = String(ag.agent_id || ag.id || "");
+          const aCode = ag.agent_code || ag.code || ag.agentCode;
+          if (aId && aCode) {
+            agentCodeMap[aId] = aCode;
+          }
+        });
+      }
+
+      // กำหนด Headers
+      const headers = [
+        "ลำดับ",
+        "เลขที่เอกสารเคลม",
+        "วันที่แจ้งเคลม",
+        "ผู้แจ้งเคลม",
+        "รหัสร้านค้า/Agent Code",
+        "ชื่อร้านค้า/Customer Name",
+        "ชื่อสินค้า",
+        "รับจริง (ขวด/กระป๋อง)",
+        "แตกจริง (ขวด/กระป๋อง)",
+        "สาเหตุการแตก",
+        "ชื่อ พขร. ที่รับสินค้า",
+        "ทะเบียนรถรับสินค้า",
+        "วันที่ พขร. รับสินค้า",
+        "วันที่ คลังสินค้า รับสินค้า",
+        "วันที่ อนุมัติเคลม",
+        "วันที่ จัดส่งสินค้าเคลม",
+        "วันที่ จัดส่งสำเร็จ",
+        "ชื่อ พขร. ที่ส่งสินค้า",
+        "ทะเบียนรถส่งสินค้า",
+        "สถานะสินค้า",
+      ];
+
+      const csvRows = [headers.join(",")];
+
+      const cleanStr = (val) => {
+        if (val === null || val === undefined) return '""';
+        return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
+      };
+
+      const formatDate = (dateVal) => {
+        if (!dateVal) return "-";
+        const d = dayjs(dateVal);
+        return d.isValid() ? d.format("DD/MM/YYYY HH:mm") : "-";
+      };
+
+      const safeParseJson = (data) => {
+        if (!data) return {};
+        if (typeof data === "object") return data;
+        if (typeof data === "string" && data.trim().startsWith("{")) {
+          try {
+            return JSON.parse(data);
+          } catch (e) {
+            return {};
+          }
+        }
+        return {};
+      };
+
+      let rowNum = 1;
+
+      filteredClaims.forEach((claim) => {
+        const claimIdStr = String(claim.claim_id || claim.id || "");
+        const logs = claimLogsMap ? (claimLogsMap[claimIdStr] || []) : [];
+        
+        let logData = {};
+        if (typeof parseDataFromLogs === "function") {
+          try { logData = parseDataFromLogs(logs) || {}; } catch (e) { logData = {}; }
+        }
+
+        // ข้อมูลทั่วไปของเคลม
+        const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
+        const createdByName = userMap[String(claim.created_by || claim.user_id || "")] || "-";
+
+        // ดึง Agent ID และค้นหา Agent Code
+        const claimAgentId = String(claim.agent_id || logData.agent_id || "");
+        
+        const agentCode = 
+          claim.agent_code || 
+          claim.agentCode ||
+          logData.agent_code || 
+          logData.agentCode || 
+          agentCodeMap[claimAgentId] || 
+          "-";
+
+        const agentName = 
+          (typeof getAgentNameForClaim === "function" ? getAgentNameForClaim(claim) : null) || 
+          claim.agent_name || 
+          "-";
+
+        // ข้อมูล พขร. รับ-ส่ง
+        const driverName = claim.driver_name || logData.driverName || "-";
+        const truckPlate = claim.truck_plate || logData.truckPlate || "-";
+        const deliveryDriver = claim.delivery_driver || logData.deliveryDriver || "-";
+        const deliveryPlate = claim.delivery_plate || logData.deliveryPlate || "-";
+
+        // ข้อมูลวันที่สถานะ Timeline
+        const claimDate = formatDate(claim.claim_date || claim.created_at);
+        const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate);
+        const warehouseReceiveDate = formatDate(claim.warehouse_receive_date || logData.warehouseReceiveDate);
+        const approveDate = formatDate(claim.approve_date || logData.approveDate);
+        const deliveryDate = formatDate(claim.delivery_date || logData.deliveryDate);
+        const receiveFinishDate = formatDate(claim.receive_finish_date || logData.receiveFinishDate);
+
+        const displayStatusName = typeof getStatusName === "function" 
+          ? getStatusName(claim.current_status || claim.status, "staff")
+          : (claim.current_status || claim.status || "-");
+
+        // ตรวจสอบรายการสินค้า
+        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 
+          ? claim.items 
+          : [claim];
+
+        claimItemsList.forEach((item) => {
+          const itemIdStr = String(item.item_id || "");
+          const itemName = (itemsMap && itemsMap[itemIdStr]) || item.item_name || item.name || (itemIdStr ? `สินค้า ID: ${itemIdStr}` : "-");
+
+          const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
+          const parsedLogData = safeParseJson(logData);
+
+          const receivedQty = 
+            parsedRemark.receivedQty ?? 
+            item.receivedQty ?? 
+            parsedLogData.receivedQty ?? 
+            logData.receivedQty ?? 
+            claim.receivedQty ?? 
+            item.qty ?? 
+            0;
+
+          const approvedQty = 
+            parsedRemark.approvedQty ?? 
+            item.approvedQty ?? 
+            parsedLogData.approvedQty ?? 
+            logData.approvedQty ?? 
+            claim.approvedQty ?? 
+            item.qtychang ?? 
+            0;
+
+          let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
+          
+          if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {
+            const innerJson = safeParseJson(rawReason);
+            rawReason = innerJson.itemRemark || innerJson.remark || "-";
+          }
+
+          const row = [
+            cleanStr(rowNum++),
+            cleanStr(claimNo),
+            cleanStr(claimDate),
+            cleanStr(createdByName),
+            cleanStr(agentCode),
+            cleanStr(agentName),
+            cleanStr(itemName),
+            cleanStr(receivedQty),
+            cleanStr(approvedQty),
+            cleanStr(rawReason),
+            cleanStr(driverName),
+            cleanStr(truckPlate),
+            cleanStr(driverReceiveDate),
+            cleanStr(warehouseReceiveDate),
+            cleanStr(approveDate),
+            cleanStr(deliveryDate),
+            cleanStr(receiveFinishDate),
+            cleanStr(deliveryDriver),
+            cleanStr(deliveryPlate),
+            cleanStr(displayStatusName),
+          ];
+
+          csvRows.push(row.join(","));
+        });
+      });
+
+      const csvContent = "\uFEFF" + csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Claim_Report_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      message.success("ดาวน์โหลดรายงานเรียบร้อยแล้ว");
+    } catch (err) {
+      console.error("Export Report Error:", err);
+      message.error(`เกิดข้อผิดพลาดขณะส่งออกรายงาน: ${err.message || "โปรดตรวจสอบข้อมูลในระบบ"}`);
+    }
+  };
+
+  const handleExportLog = () => {
+    let allLogs = [];
+    Object.keys(claimLogsMap).forEach((cId) => {
+      if (Array.isArray(claimLogsMap[cId])) {
+        allLogs = allLogs.concat(claimLogsMap[cId]);
+      }
+    });
+
+    if (allLogs.length === 0) {
+      message.warning("ไม่พบข้อมูล Log สำหรับ Export");
       return;
     }
 
-    let dateStr = "All_Time";
-    if (startDate && endDate) {
-      dateStr = `${dayjs(startDate).format("YYYYMMDD")}_to_${dayjs(endDate).format("YYYYMMDD")}`;
-    }
+    // 1. สร้าง Map สำหรับแปลง user_id -> Name
+    const userMap = {};
+    usersList.forEach((u) => {
+      const uId = String(u.user_id || u.id || "");
+      const uName = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
+      if (uId) userMap[uId] = uName;
+    });
 
-    const headers = [
-      "No", "คลังสินค้า", "Date", "เล่มที่", "เลขที่", "ชื่อ พขร. ที่รับสินค้า", 
-      "ทะเบียนรถ", "Customer_Category", "Customer_Name", "Item_Category", 
-      "Item_Describtion", "รับคืน (ขวด/กระป๋อง)", "แตก (ขวด/กระป๋อง)", 
-      "Category_Damage", "สาเหตุการแตก", "ส่วนงาน Case Pick กรอกวันที่เปลี่ยนสินค้า", 
-      "ส่วนงาน Case Pick กรอกเวลาเปลี่ยนสินค้า", "เลขที่ใบส่งของ", 
-      "วันที่ส่งคืนร้านค้า", "ชื่อ พขร. ที่นำสินค้าแตกส่งคืน", "ทะเบียนรถ2", 
-      "วันที่ส่งถึงลูกค้า", "สถานะสินค้า", "มูลค่า (บาท)"
-    ];
+    // 2. สร้าง Map สำหรับค้นหา claim_no จาก claim_id (ในกรณีที่ log ไม่มี claim_no ติดมา)
+    const claimMap = {};
+    claims.forEach((c) => {
+      const cId = String(c.claim_id || c.id || "");
+      if (cId) claimMap[cId] = c;
+    });
 
+    // Header Column
+    const headers = ["Log ID", "Claim No", "Status", "Remark", "Update By ID", "Update By Name", "Update Date"];
     const csvRows = [headers.join(",")];
 
     const cleanStr = (val) => {
@@ -200,69 +429,46 @@ const StaffClaimList = () => {
       return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
     };
 
-    filteredClaims.forEach((claim, index) => {
-      const claimIdStr = String(claim.claim_id || claim.id || "");
-      const logs = claimLogsMap[claimIdStr] || [];
-      const logData = parseDataFromLogs(logs);
+    allLogs.forEach((log) => {
+      const updateById = String(log.update_by || log.user_id || "");
+      const updateByName = userMap[updateById] || "-";
 
-      const itemName = itemsMap[claim.item_id] || claim.item_name || "-";
-      const agentName = getAgentNameForClaim(claim);
+      // ดึงค่า rawStatus แล้วแปลงเป็นชื่อสถานะภาษาไทย
+      const rawStatus = log.status || log.status_id;
+      const statusName = getStatusName(rawStatus, "staff");
 
-      const driverName = claim.driver_name || logData.driverName || "-";
-      const truckPlate = claim.truck_plate || logData.truckPlate || "-";
-
-      const deliveryDriver = claim.delivery_driver || logData.deliveryDriver || "-";
-      const deliveryPlate = claim.delivery_plate || logData.deliveryPlate || "-";
-
-      const withdrawVal = claim.withdraw_date || logData.withdrawDate;
-      const withdrawDateTime = withdrawVal ? dayjs(withdrawVal) : null;
-      const changeDate = withdrawDateTime && withdrawDateTime.isValid() ? withdrawDateTime.format("DD/MM/YYYY") : "-";
-      const changeTime = withdrawDateTime && withdrawDateTime.isValid() ? withdrawDateTime.format("HH:mm") : "-";
-
-      const displayStatusName = getStatusName(claim.current_status || claim.status, "staff");
+      // ค้นหา claim_no โดยเช็คจาก log -> จากรายการ claims -> fallback ไปใช้ claim_id
+      const claimIdStr = String(log.claim_id || "");
+      const claimNo = log.claim_no || claimMap[claimIdStr]?.claim_no || claimIdStr || "-";
 
       const row = [
-        cleanStr(index + 1),
-        cleanStr(claim.warehouse_name || claim.warehouse || "ศูนย์กระจายสินค้าภูมิภาค ขอนแก่น"),
-        cleanStr(claim.claim_date ? dayjs(claim.claim_date).format("M/D/YYYY") : "-"),
-        cleanStr(claim.book_no || "-"),
-        cleanStr(claim.claim_no || logData.claimNoInput || claim.claim_id || "-"),
-        cleanStr(driverName),
-        cleanStr(truckPlate),
-        cleanStr(claim.customer_category || "CV เมือง 1 จ.ขอนแก่น"),
-        cleanStr(agentName),
-        cleanStr(claim.item_category || "GBeer"),
-        cleanStr(itemName),
-        cleanStr(claim.returned_qty ?? logData.returnedQty ?? claim.qty ?? 0),
-        cleanStr(claim.approved_qty ?? logData.approvedQty ?? claim.qtychang ?? claim.qty ?? 0),
-        cleanStr(claim.category_damage || "AGENT"),
-        cleanStr(claim.remark || claim.claim_reason || "-"),
-        cleanStr(changeDate),
-        cleanStr(changeTime),
-        cleanStr(claim.delivery_no || "-"),
-        cleanStr(claim.delivery_date ? dayjs(claim.delivery_date).format("DD/MM/YYYY") : "-"),
-        cleanStr(deliveryDriver),
-        cleanStr(deliveryPlate),
-        cleanStr(claim.estimated_delivery_date || logData.estimatedDeliveryDate ? dayjs(claim.estimated_delivery_date || logData.estimatedDeliveryDate).format("DD/MM/YYYY") : "-"),
-        cleanStr(displayStatusName),
-        cleanStr(claim.amount || claim.price || 0)
+        cleanStr(log.log_id || "-"),
+        cleanStr(claimNo), // แสดง เลขที่ใบเคลม (เช่น CLM-20261006200912)
+        cleanStr(statusName),
+        cleanStr(log.remark || "-"),
+        cleanStr(updateById || "-"),
+        cleanStr(updateByName),
+        cleanStr(log.update_date ? dayjs(log.update_date).format("YYYY-MM-DD HH:mm:ss") : "-"),
       ];
-
       csvRows.push(row.join(","));
     });
 
+    const dateStr = dayjs().format("YYYYMMDD_HHmmss");
     const csvContent = "\uFEFF" + csvRows.join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Claim_Report_${dateStr}.csv`);
+    link.setAttribute("download", `Claim_Logs_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    message.success("ดาวน์โหลดรายงานเรียบร้อยแล้ว");
+    message.success("ดาวน์โหลด Export Log เรียบร้อยแล้ว");
   };
+
+  const currentUser = loginService.getCurrentUser();
+  const userRoleId = Number(currentUser?.role_id);
 
   const tabCounts = claims.reduce((acc, claim) => {
     const rawStatus = claim.current_status || claim.status;
@@ -359,16 +565,30 @@ const StaffClaimList = () => {
               ตรวจสอบและติดตามสถานะรายการเคลมทั้งหมดในระบบ
             </p>
           </div>
-          <Button
-            type="primary"
-            size="small"
-            style={{ paddingLeft: "16px", paddingRight: "16px" }}
-            className="bg-emerald-600 hover:bg-emerald-700 border-none rounded-xl shrink-0 h-9 sm:h-10 shadow-sm flex items-center justify-center px-0 sm:px-5"
-            onClick={handleExportReport}
-          >
-            <DownloadOutlined className="text-sm" />
-            <span className="hidden sm:inline text-xs sm:text-sm font-medium ml-0 sm:ml-2">Report</span>
-          </Button>
+          <div className="flex gap-2 shrink-0">
+            {userRoleId === 1 && (
+              <Button
+                type="default"
+                size="small"
+                style={{ paddingLeft: "16px", paddingRight: "16px" }}
+                className="border-blue-500 text-blue-600 hover:text-blue-700 hover:border-blue-600 rounded-xl h-9 sm:h-10 shadow-sm flex items-center justify-center px-0 sm:px-5"
+                onClick={handleExportLog}
+              >
+                <FileTextOutlined className="text-sm" />
+                <span className="hidden sm:inline text-xs sm:text-sm font-medium ml-0 sm:ml-2">Export Log</span>
+              </Button>
+            )}
+            <Button
+              type="primary"
+              size="small"
+              style={{ paddingLeft: "16px", paddingRight: "16px" }}
+              className="bg-emerald-600 hover:bg-emerald-700 border-none rounded-xl h-9 sm:h-10 shadow-sm flex items-center justify-center px-0 sm:px-5"
+              onClick={handleExportReport}
+            >
+              <DownloadOutlined className="text-sm" />
+              <span className="hidden sm:inline text-xs sm:text-sm font-medium ml-0 sm:ml-2">Report</span>
+            </Button>
+          </div>
         </header>
 
         {/* Filter Section */}

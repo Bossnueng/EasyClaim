@@ -15,6 +15,7 @@ import {
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
+import userService from "../../services/userService";
 
 const CustomerClaimList = () => {
   const navigate = useNavigate();
@@ -25,6 +26,8 @@ const CustomerClaimList = () => {
   const [itemsMap, setItemsMap] = useState({});
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
+  const [usersList, setUsersList] = useState([]);
+  const [claimLogsMap, setClaimLogsMap] = useState({});
 
   useEffect(() => {
     fetchClaimsAndItems();
@@ -49,12 +52,35 @@ const CustomerClaimList = () => {
 
     setLoading(true);
     try {
-      // 1. ดึงข้อมูล Master Items และ รายการ Claims เฉพาะ Agent ตัวเอง
-      const [resClaim, resItems] = await Promise.all([
+      // ดึงข้อมูล Master และ Logs
+      const [resClaim, resItems, resUsers, resLogs] = await Promise.all([
         claimService.getClaimByAgent(agentId),
         itemService.getItems(),
+        userService.getUsers().catch(() => []), // ดึงข้อมูล Users
+        claimService.getClaimStatusLogs().catch(() => []), // ดึง Status Logs
       ]);
 
+      // 1. เก็บ Users List
+      const usersData = resUsers?.data || resUsers || [];
+      if (Array.isArray(usersData)) {
+        setUsersList(usersData);
+      }
+
+      // 2. เก็บ Logs Map
+      const logsData = resLogs?.data || resLogs || [];
+      if (Array.isArray(logsData)) {
+        const lMap = {};
+        logsData.forEach((log) => {
+          const cId = String(log.claim_id || log.claimId || "");
+          if (cId) {
+            if (!lMap[cId]) lMap[cId] = [];
+            lMap[cId].push(log);
+          }
+        });
+        setClaimLogsMap(lMap);
+      }
+
+      // 3. Map รายการสินค้า
       if (resItems && resItems.data) {
         const map = {};
         resItems.data.forEach((item) => {
@@ -63,21 +89,22 @@ const CustomerClaimList = () => {
         setItemsMap(map);
       }
 
+      // 4. Map ข้อมูล Claim Items
       if (resClaim.status && Array.isArray(resClaim.data)) {
-        // 2. ดึง claim_items เพื่อนำมาแมปรายละเอียดสินค้า (item_id, qty, remark) ใส่แต่ละ claim
         const claimsWithItems = await Promise.all(
           resClaim.data.map(async (claim) => {
             try {
               const resItems = await claimService.getClaimItems(claim.claim_id);
-              if (resItems && resItems.status && resItems.data?.length > 0) {
-                const firstItem = resItems.data[0];
+              const rawItems = Array.isArray(resItems) ? resItems : (resItems?.data || []);
+              if (rawItems.length > 0) {
+                const firstItem = rawItems[0];
                 return {
                   ...claim,
                   item_id: firstItem.item_id,
                   qty: firstItem.qty,
                   remark: firstItem.remark,
                   lot_no: firstItem.lot_no,
-                  items: resItems.data
+                  items: rawItems
                 };
               }
             } catch (err) {
@@ -113,59 +140,248 @@ const CustomerClaimList = () => {
   };
 
   const handleExportReport = () => {
-    if (filteredClaims.length === 0) {
-      message.warning("ไม่พบข้อมูลรายการเคลมสำหรับออกรายงาน");
-      return;
-    }
+    try {
+      if (!filteredClaims || filteredClaims.length === 0) {
+        message.warning("ไม่พบข้อมูลรายการเคลมสำหรับออกรายงาน");
+        return;
+      }
 
-    let dateStr = "All_Time";
-    if (startDate && endDate) {
-      dateStr = `${dayjs(startDate).format("YYYYMMDD")}_to_${dayjs(endDate).format("YYYYMMDD")}`;
-    }
+      let dateStr = "All_Time";
+      if (startDate && endDate) {
+        dateStr = `${dayjs(startDate).format("YYYYMMDD")}_to_${dayjs(endDate).format("YYYYMMDD")}`;
+      }
 
-    const headers = [
-      "เลขที่ใบเคลม",
-      "วันที่แจ้งเคลม",
-      "รหัสสินค้า (Item ID)",
-      "ชื่อสินค้า",
-      "หมายเลข Lot",
-      "จำนวน",
-      "เหตุผล/รายละเอียด",
-      "สถานะปัจจุบัน",
-    ];
+      // 1. Map ผู้ใช้งานสำหรับหาชื่อผู้แจ้งเคลม (สร้าง Key ค้นหาจากทั้ง ID, Username, Email)
+      const userMap = {};
+      const safeUsersList = Array.isArray(usersList) ? usersList : (usersList?.data || []);
+      safeUsersList.forEach((u) => {
+        if (!u) return;
+        const uName = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.username || u.email;
+        
+        const idKeys = [u.user_id, u.id, u.userId, u.user_code].filter(Boolean);
+        idKeys.forEach((key) => {
+          userMap[String(key)] = uName;
+        });
+      });
 
-    const csvRows = [headers.join(",")];
+      // ดึง User ปัจจุบันมารองรับเผื่อกรณีเป็นผู้แจ้งเคลมเอง
+      const currentUser = loginService.getCurrentUser() || {};
+      const currentUserName = currentUser.full_name || currentUser.fullname || currentUser.name || currentUser.username || "-";
 
-    filteredClaims.forEach((claim) => {
-      const itemName = itemsMap[claim.item_id] || claim.item_name || "-";
-      const cleanRemark = (claim.remark || "").replace(/"/g, '""').replace(/\n/g, " ");
-
-      const displayStatus = getStatusName(claim.current_status || claim.status, "customer");
-
-      const row = [
-        `"${claim.claim_no || claim.claim_id || ""}"`,
-        `"${dayjs(claim.claim_date || claim.created_at).format("DD/MM/YYYY HH:mm")}"`,
-        `"${claim.item_id || ""}"`,
-        `"${itemName.replace(/"/g, '""')}"`,
-        `"${claim.lot_no || ""}"`,
-        `"${claim.qty || 0}"`,
-        `"${cleanRemark}"`,
-        `"${displayStatus}"`,
+      // กำหนด Headers
+      const headers = [
+        "ลำดับ",
+        "เลขที่เอกสารเคลม",
+        "วันที่แจ้งเคลม",
+        "ผู้แจ้งเคลม",
+        "ชื่อสินค้า",
+        "รับจริง (ขวด/กระป๋อง)",
+        "แตกจริง (ขวด/กระป๋อง)",
+        "สาเหตุการแตก",
+        "ชื่อ พขร. ที่รับสินค้า",
+        "ทะเบียนรถรับสินค้า",
+        "วันที่ พขร. รับสินค้า",
+        "วันที่ คลังสินค้า รับสินค้า",
+        "วันที่ อนุมัติเคลม",
+        "วันที่ จัดส่งสินค้าเคลม",
+        "วันที่ จัดส่งสำเร็จ",
+        "ชื่อ พขร. ที่ส่งสินค้า",
+        "ทะเบียนรถส่งสินค้า",
+        "สถานะสินค้า",
       ];
-      csvRows.push(row.join(","));
-    });
 
-    const csvContent = "\uFEFF" + csvRows.join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `My_Claim_Report_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const csvRows = [headers.join(",")];
 
-    message.success("ดาวน์โหลดรายงานเรียบร้อยแล้ว");
+      const cleanStr = (val) => {
+        if (val === null || val === undefined || val === "") return '"-"';
+        return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
+      };
+
+      const formatDate = (dateVal) => {
+        if (!dateVal) return "-";
+        const d = dayjs(dateVal);
+        return d.isValid() ? d.format("DD/MM/YYYY HH:mm") : "-";
+      };
+
+      const safeParseJson = (data) => {
+        if (!data) return {};
+        if (typeof data === "object") return data;
+        if (typeof data === "string" && data.trim().startsWith("{")) {
+          try {
+            return JSON.parse(data);
+          } catch (e) {
+            return {};
+          }
+        }
+        return {};
+      };
+
+      // ฟังก์ชันช่วยแกะข้อมูล Log DATA
+      const parseDataFromLogs = (logs) => {
+        if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
+        let result = {};
+        logs.forEach((log) => {
+          if (log && log.remark && typeof log.remark === "string") {
+            if (log.remark.includes("| DATA:")) {
+              try {
+                const jsonStr = log.remark.split("| DATA:")[1];
+                const parsed = JSON.parse(jsonStr);
+                result = { ...result, ...parsed };
+              } catch (e) {}
+            }
+          }
+        });
+        return result;
+      };
+
+      let rowNum = 1;
+
+      filteredClaims.forEach((claim) => {
+        const claimIdStr = String(claim.claim_id || claim.id || "");
+        const logs = claimLogsMap ? (claimLogsMap[claimIdStr] || []) : [];
+        
+        let logData = {};
+        try { logData = parseDataFromLogs(logs) || {}; } catch (e) { logData = {}; }
+
+        // ข้อมูลทั่วไปของเคลม
+        const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
+        
+        // ค้นหาชื่อผู้แจ้งเคลม
+        const createdById = String(claim.created_by || claim.user_id || claim.createdBy || claim.userId || "");
+        const createdByName = 
+          userMap[createdById] || 
+          claim.created_by_name || 
+          claim.createdByName || 
+          claim.user_name || 
+          claim.userName || 
+          (createdById && createdById !== "undefined" ? currentUserName : "-");
+
+        // ข้อมูล พขร. รับสินค้า และ ทะเบียนรถรับ
+        const driverName = 
+          claim.driver_name || 
+          claim.driverName || 
+          claim.pickup_driver_name || 
+          logData.driver_name || 
+          logData.driverName || 
+          logData.pickupDriverName || 
+          "-";
+
+        const truckPlate = 
+          claim.truck_plate || 
+          claim.truckPlate || 
+          claim.license_plate || 
+          claim.licensePlate || 
+          logData.truck_plate || 
+          logData.truckPlate || 
+          logData.licensePlate || 
+          "-";
+
+        // ข้อมูล พขร. จัดส่งสินค้า และ ทะเบียนรถส่ง
+        const deliveryDriver = 
+          claim.delivery_driver || 
+          claim.deliveryDriver || 
+          claim.shipping_driver_name || 
+          logData.delivery_driver || 
+          logData.deliveryDriver || 
+          "-";
+
+        const deliveryPlate = 
+          claim.delivery_plate || 
+          claim.deliveryPlate || 
+          claim.shipping_license_plate || 
+          logData.delivery_plate || 
+          logData.deliveryPlate || 
+          "-";
+
+        // ข้อมูลวันที่สถานะ Timeline
+        const claimDate = formatDate(claim.claim_date || claim.created_at);
+        const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate || logData.driver_receive_date);
+        const warehouseReceiveDate = formatDate(claim.warehouse_receive_date || logData.warehouseReceiveDate || logData.warehouse_receive_date);
+        const approveDate = formatDate(claim.approve_date || logData.approveDate || logData.approve_date);
+        const deliveryDate = formatDate(claim.delivery_date || logData.deliveryDate || logData.delivery_date);
+        const receiveFinishDate = formatDate(claim.receive_finish_date || logData.receiveFinishDate || logData.receive_finish_date);
+
+        const displayStatusName = typeof getStatusName === "function" 
+          ? getStatusName(claim.current_status || claim.status, "customer")
+          : (claim.current_status || claim.status || "-");
+
+        // ตรวจสอบรายการสินค้า
+        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 
+          ? claim.items 
+          : [claim];
+
+        claimItemsList.forEach((item) => {
+          const itemIdStr = String(item.item_id || "");
+          const itemName = (itemsMap && itemsMap[itemIdStr]) || item.item_name || item.name || (itemIdStr ? `สินค้า ID: ${itemIdStr}` : "-");
+
+          const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
+          const parsedLogData = safeParseJson(logData);
+
+          const receivedQty = 
+            parsedRemark.receivedQty ?? 
+            item.receivedQty ?? 
+            parsedLogData.receivedQty ?? 
+            logData.receivedQty ?? 
+            claim.receivedQty ?? 
+            item.qty ?? 
+            0;
+
+          const approvedQty = 
+            parsedRemark.approvedQty ?? 
+            item.approvedQty ?? 
+            parsedLogData.approvedQty ?? 
+            logData.approvedQty ?? 
+            claim.approvedQty ?? 
+            item.qtychang ?? 
+            0;
+
+          let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
+          
+          if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {
+            const innerJson = safeParseJson(rawReason);
+            rawReason = innerJson.itemRemark || innerJson.remark || "-";
+          }
+
+          const row = [
+            cleanStr(rowNum++),
+            cleanStr(claimNo),
+            cleanStr(claimDate),
+            cleanStr(createdByName),
+            cleanStr(itemName),
+            cleanStr(receivedQty),
+            cleanStr(approvedQty),
+            cleanStr(rawReason),
+            cleanStr(driverName),
+            cleanStr(truckPlate),
+            cleanStr(driverReceiveDate),
+            cleanStr(warehouseReceiveDate),
+            cleanStr(approveDate),
+            cleanStr(deliveryDate),
+            cleanStr(receiveFinishDate),
+            cleanStr(deliveryDriver),
+            cleanStr(deliveryPlate),
+            cleanStr(displayStatusName),
+          ];
+
+          csvRows.push(row.join(","));
+        });
+      });
+
+      const csvContent = "\uFEFF" + csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `My_Claim_Report_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      message.success("ดาวน์โหลดรายงานเรียบร้อยแล้ว");
+    } catch (err) {
+      console.error("Export Report Error:", err);
+      message.error(`เกิดข้อผิดพลาดขณะส่งออกรายงาน: ${err.message || "โปรดตรวจสอบข้อมูลในระบบ"}`);
+    }
   };
 
   const tabCounts = claims.reduce((acc, claim) => {

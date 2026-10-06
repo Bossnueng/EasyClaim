@@ -9,6 +9,8 @@ import CustomerClaimList from "../pages/customer/CustomerClaimList";
 import CustomerHome from "../pages/customer/CustomerHome";
 import CustomerNewClaim from "../pages/customer/CustomerNewClaim";
 import CustomerClaimDatail from "../pages/customer/CustomerClaimDetail";
+import AgentManagement from "../pages/admin/AgentManagement";
+import RoleManagement from "../pages/admin/RoleManagement";
 import Login from "../pages/auth/Login";
 import UserSettings from "../pages/auth/UserSettings";
 import CustomerClaimProcessing from "../pages/customer/CustomerClaimProcessing";
@@ -107,6 +109,9 @@ function AppRouter() {
           <Route path="/staff/update-claim/:claimId" element={<StaffClaimUpdate />} />
           <Route path="/staff/chat" element={<StaffChat />} />
           <Route path="/staff/setting" element={<UserSettings />} />
+          <Route path="/staff/users" element={<UserManagement />} />
+          <Route path="/staff/agents" element={<AgentManagement />} />
+          <Route path="/staff/roles" element={<RoleManagement />} />
         </Route>
 
         <Route element={<CustomerRoute />}>

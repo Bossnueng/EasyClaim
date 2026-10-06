@@ -26,10 +26,30 @@ const storage = multer.diskStorage({
   },
 });
 
-const sendTeamsNotification = async (claimData) => {
-  const webhookUrl =
-    process.env.TEAMS_WEBHOOK_URL ||
-    "https://default1d8f5d8591094cdaabcf3fa469cbf8.f9.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/05/workflows/b8f5ff483d22437da59977d9cc7987de/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=4h8h9gq_LpLr1lG9DdVsm6iYOen3GGf6LqT5_1ddniQ";
+// 1. ปรับฟังก์ชัน sendTeamsNotification ให้ดึง URL ตาม agentId
+const sendTeamsNotification = async (claimData, agentId) => {
+  const DEFAULT_WEBHOOK = process.env.TEAMS_WEBHOOK_URL;
+  let webhookUrl = DEFAULT_WEBHOOK;
+
+  // ค้นหา Webhook URL ของ Agent
+  if (agentId) {
+    try {
+      const pool = await connectDB();
+      const agentResult = await pool.request()
+        .input("agent_id", sql.Int, agentId)
+        .query(`
+          SELECT teams_webhook_url 
+          FROM [EasyClaim_Dev].[dbo].[agents] 
+          WHERE agent_id = @agent_id
+        `);
+
+      if (agentResult.recordset.length > 0 && agentResult.recordset[0].teams_webhook_url) {
+        webhookUrl = agentResult.recordset[0].teams_webhook_url;
+      }
+    } catch (dbErr) {
+      console.error("Fetch Agent Webhook Error:", dbErr.message);
+    }
+  }
 
   const messagePayload = {
     "@type": "MessageCard",
@@ -750,15 +770,15 @@ exports.creartClaim = async (req, res) => {
         // =====================================
         await transaction.commit();
 
-        //ส่งการแจ้งเตือนเข้า MS Teams หลังบันทึกข้อมูลสำเร็จ
+        // ส่งการแจ้งเตือนเข้า MS Teams หลังบันทึกข้อมูลสำเร็จ
         try {
             sendTeamsNotification({
                 claim_no: claim_no,
                 created_by: created_by,
-                lot_no: items[0]?.lot_no || "-", // ดึง Lot ของรายการแรก
-                qty: items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0), // รวมจำนวนสินค้าทั้งหมด
+                lot_no: items[0]?.lot_no || "-",
+                qty: items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0),
                 remark: items[0]?.remark || "สร้างรายการเคลมใหม่"
-            });
+            }, agent_id ? parseInt(agent_id) : null); // 👈 ส่ง agent_id เพิ่มตรงนี้
         } catch (teamsErr) {
             console.error("Teams Notification Call Error:", teamsErr);
         }

@@ -6,7 +6,7 @@ const { verifyToken } = require("../middleware/authMiddleware");
 router.get("/getagent",AgentController.getagent);
 
 router.post("/agent",AgentController.createAgent);
-router.post("/updateAgent",AgentController.updateAgent);
+router.put("/updateAgent",AgentController.updateAgent);
 
 
 module.exports = router;

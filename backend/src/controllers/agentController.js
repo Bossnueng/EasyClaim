@@ -4,7 +4,7 @@ exports.getagent = async (req, res) => {
     try {
         const pool = await connectDB();
         const result = await pool.request().query(`
-            SELECT [agent_id], [agent_code], [agent_name], [status], [created_at]
+            SELECT [agent_id], [agent_code], [agent_name], [teams_webhook_url], [status], [created_at]
             FROM [EasyClaim_Dev].[dbo].[agents]
         `);
 
@@ -16,15 +16,16 @@ exports.getagent = async (req, res) => {
 
 exports.createAgent = async (req, res) => {
     try {
-        const { agent_code, agent_name } = req.body;
+        const { agent_code, agent_name, teams_webhook_url } = req.body;
         const pool = await connectDB();
         const result = await pool.request()
             .input("agent_code", sql.NVarChar, agent_code)
             .input("agent_name", sql.NVarChar, agent_name)
+            .input("teams_webhook_url", sql.NVarChar, teams_webhook_url || null)
             .input("status", sql.Int, 1)
             .query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[agents] (agent_code, agent_name, status, created_at)
-                VALUES (@agent_code, @agent_name, @status, GETDATE());
+                INSERT INTO [EasyClaim_Dev].[dbo].[agents] (agent_code, agent_name, teams_webhook_url, status, created_at)
+                VALUES (@agent_code, @agent_name, @teams_webhook_url, @status, GETDATE());
 
                 SELECT SCOPE_IDENTITY() AS agent_id;
             `);
@@ -37,17 +38,18 @@ exports.createAgent = async (req, res) => {
 
 exports.updateAgent = async (req, res) => {
     try {
-        const { agent_id, agent_code, agent_name, status } = req.body;
+        const { agent_id, agent_code, agent_name, teams_webhook_url, status } = req.body;
         const pool = await connectDB();
 
         await pool.request()
             .input("agent_id", sql.Int, agent_id)
             .input("agent_code", sql.NVarChar, agent_code)
             .input("agent_name", sql.NVarChar, agent_name)
+            .input("teams_webhook_url", sql.NVarChar, teams_webhook_url || null)
             .input("status", sql.Int, status)
             .query(`
                 UPDATE [EasyClaim_Dev].[dbo].[agents]
-                SET agent_code=@agent_code, agent_name=@agent_name, status=@status, updated_at=GETDATE()
+                SET agent_code=@agent_code, agent_name=@agent_name, teams_webhook_url=@teams_webhook_url, status=@status
                 WHERE agent_id=@agent_id
             `);
 

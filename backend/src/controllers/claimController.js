@@ -10,6 +10,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
+const { getIO } = require("../../socket/claimSocket");
 
 //ตั้งค่าการจัดเก็บไฟล์ภาพลงเครื่อง Server
 const storage = multer.diskStorage({
@@ -62,7 +63,6 @@ const sendTeamsNotification = async (claimData, agentId) => {
         facts: [
           { name: "เลขที่ใบเคลม:", value: claimData.claim_no || "-" },
           { name: "ผู้แจ้งรายการ (ID):", value: String(claimData.created_by || "-") },
-          { name: "หมายเลข Lot:", value: claimData.lot_no || "-" },
           { name: "จำนวนรวม:", value: `${claimData.qty} ชิ้น` },
           { name: "รายละเอียด:", value: claimData.remark || "-" },
         ],
@@ -78,7 +78,7 @@ const sendTeamsNotification = async (claimData, agentId) => {
   }
 };
 
-const { getIO } = require("../../socket/claimSocket");
+
 
 exports.upload = multer({ storage: storage });
 
@@ -209,7 +209,6 @@ exports.createClaimimage = async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS image_id;
             `);
 
-    // 🟢 ดึง Host และ Protocol ของเครื่อง Server (เครื่อง A) อัตโนมัติ
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const full_image_url = `${baseUrl}${relative_path}`;
 
@@ -217,8 +216,8 @@ exports.createClaimimage = async (req, res) => {
       status: true,
       message: "Insert Success",
       image_id: result.recordset[0].image_id,
-      image_path: relative_path, // สำหรับใช้ภายในระบบเดิม
-      image_url: full_image_url, // 🟢 สำหรับให้ Frontend เครื่อง B เอาไป <img src="..."> ได้เลย
+      image_path: relative_path,
+      image_url: full_image_url,
     });
   } catch (error) {
     res.status(500).json({
@@ -337,19 +336,15 @@ exports.getClaimImages = async (req, res) => {
         ORDER BY image_id ASC
       `);
 
-    // 🟢 สร้าง Base URL จาก ENV หรือ Dynamic Request
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
 
-    // 🟢 จัดการ Path รูปภาพให้ถูกต้อง
     const formattedData = result.recordset.map((img) => {
       let rawPath = img.image_path || "";
 
-      // 1. ตรวจสอบว่ามี / นำหน้าหรือไม่
       if (!rawPath.startsWith("/")) {
         rawPath = `/${rawPath}`;
       }
 
-      // 2. ตรวจสอบว่ามีโฟลเดอร์ uploads นำหน้าหรือไม่ (ถ้าใน DB เก็บแค่ชื่อไฟล์)
       if (!rawPath.startsWith("/uploads")) {
         rawPath = `/uploads/claims${rawPath}`;
       }
@@ -489,7 +484,6 @@ exports.getClaim = async (req, res) => {
     try {
         const pool = await connectDB();
         
-        // 🟢 ป้องกัน Error โดยใส่ Default Value ให้ req.user
         const user = req.user || {};
         const role_id = user.role_id;
         const agent_ids = user.agent_ids || [];
@@ -497,7 +491,6 @@ exports.getClaim = async (req, res) => {
         let query = `SELECT * FROM [EasyClaim_Dev].[dbo].[claims]`;
         const request = pool.request();
 
-        // หากมีการระบุ role_id และไม่ใช่ Admin (role_id != 1)
         if (role_id && Number(role_id) !== 1) {
             if (agent_ids.length === 0) {
                 return res.json({ status: true, data: [] });
@@ -738,12 +731,11 @@ exports.creartClaim = async (req, res) => {
             `);
 
             
-        // 3.2 Log สถานะ 5: "รอการพิจารณา" โดยระบบอัตโนมัติ (update_by = null)
         const updateBy = req.user?.id || req.body.created_by || 0; 
 
         await transaction.request()
             .input("claim_id_auto", sql.Int, claim_id)
-            .input("status_auto", sql.Int, 5) // ID สถานะ 5 = รอการพิจารณา
+            .input("status_auto", sql.Int, 5) 
             .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
             .input("update_by", sql.Int, parseInt(updateBy))
             .query(`

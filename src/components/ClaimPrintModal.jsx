@@ -189,7 +189,6 @@ const ClaimPrintModal = ({ open, onClose, data, isStaff }) => {
             </thead>
             <tbody>
               {data?.items && data.items.length > 0 ? (
-                // 🟢 กรณีมีรายการสินค้าหลายรายการใน data.items
                 data.items.map((item, index) => (
                   <tr key={item.key || index} className="h-6">
                     {/* เลขที่ใบส่งของ */}

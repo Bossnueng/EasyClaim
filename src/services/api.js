@@ -11,7 +11,7 @@ const api = axios.create({
   timeout: 10000,
 });
 
-// 🟢 เพิ่ม Request Interceptor เพื่อส่ง Token ไปกับ Header ทุก Request
+// 🟢 Request Interceptor: แนบ Bearer Token ทุก Request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -23,13 +23,18 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// 🟢 Response Interceptor: ดักจับ 401 และ 403 เมื่อ Token หมดอายุ หรือสิทธิ์/สังกัดเปลี่ยน
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const status = error.response?.status;
+
+    // ดักจับทั้ง 401 (Unauthorized) และ 403 (Forbidden)
+    if (status === 401 || status === 403) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      
+
+      // Redirect เฉพาะเมื่อไม่ได้อยู่ที่หน้า /login เพื่อป้องกัน Loop Reload
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";
       }

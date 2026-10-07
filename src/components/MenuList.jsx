@@ -1,16 +1,26 @@
 import { Menu } from "antd";
-import {HomeOutlined,FileAddOutlined,HistoryOutlined,WechatOutlined,SettingFilled,} from "@ant-design/icons";
+import {
+  ShopOutlined,
+  SafetyCertificateOutlined,
+  HomeOutlined,
+  FileAddOutlined,
+  HistoryOutlined,
+  WechatOutlined,
+  SettingFilled,
+  UserOutlined, // 🟢 1. Import Icon สำหรับจัดการผู้ใช้
+} from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
 
 const MenuList = () => {
   const location = useLocation();
 
-  // 1. ดึงข้อมูล User จาก localStorage
+  // ดึงข้อมูล User จาก localStorage
   const savedUser = localStorage.getItem("user");
   const user = savedUser ? JSON.parse(savedUser) : null;
-  const role = user?.role_id; // 'staff' หรือ 'customer'
+  const role = user?.role_id; // role_id ของผู้ใช้
 
   const isStaffRole = [1, 4, 5].includes(role);
+  const isAdminRole = Number(role) === 1; // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
 
   const getSelectedKey = () => {
     // Customer
@@ -39,6 +49,13 @@ const MenuList = () => {
     }
 
     // Staff
+    // 🟢 3. เพิ่มการตรวจสอบ Key สำหรับหน้า จัดการผู้ใช้
+    if (location.pathname.includes("/staff/users")) {
+      return "staff-users";
+    }
+    if (location.pathname.includes("/staff/agents")) return "staff-agents";
+    if (location.pathname.includes("/staff/roles")) return "staff-roles";
+
     if (location.pathname.includes("/staff/setting")) {
       return "staff-setting";
     }
@@ -76,15 +93,21 @@ const MenuList = () => {
             <NavLink to="/staff/list-claim">รายการเคลม</NavLink>
           </Menu.Item>
 
-          {/**
-           * 
-           * <Menu.Item key="staff-chat" icon={<WechatOutlined />}>
-            <NavLink to="/staff/chat">สนทนาเคส</NavLink>
-          </Menu.Item>
-           * 
-           * 
-           */}
-          
+          {/* 🟢 4. แสดงเมนูนี้เฉพาะผู้ที่มี role_id === 1 เท่านั้น */}
+          {isAdminRole && (
+            <>
+              <Menu.Item key="staff-users" icon={<UserOutlined />}>
+                <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
+              </Menu.Item>
+              <Menu.Item key="staff-agents" icon={<ShopOutlined />}>
+                <NavLink to="/staff/agents">จัดการ Agent</NavLink>
+              </Menu.Item>
+
+              <Menu.Item key="staff-roles" icon={<SafetyCertificateOutlined />}>
+                <NavLink to="/staff/roles">จัดการสิทธิ์ (Role)</NavLink>
+              </Menu.Item>
+            </>
+          )}
 
           <Menu.Item key="staff-setting" icon={<SettingFilled />}>
             <NavLink to="/staff/setting">ตั้งค่า</NavLink>
@@ -107,15 +130,6 @@ const MenuList = () => {
             <NavLink to="/customer/list-claim">รายการเคลม</NavLink>
           </Menu.Item>
 
-          {/**
-           * 
-           * <Menu.Item key="customer-chat" icon={<WechatOutlined />}>
-            <NavLink to="/customer/chat">สนทนาเคส</NavLink>
-          </Menu.Item>
-
-           * 
-           */}
-          
           <Menu.Item key="customer-setting" icon={<SettingFilled />}>
             <NavLink to="/customer/setting">ตั้งค่า</NavLink>
           </Menu.Item>

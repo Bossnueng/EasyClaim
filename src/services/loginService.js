@@ -12,7 +12,14 @@ export const loginService = {
 
       if (status) {
         if (token) localStorage.setItem("token", token);
-        if (data) localStorage.setItem("user", JSON.stringify(data));
+        if (data) {
+        // หากมี agent_ids แต่ไม่มี agent_id ให้กำหนด agent_id ตัวแรกเข้าไป
+        const userData = {
+          ...data,
+          agent_id: data.agent_id || (Array.isArray(data.agent_ids) ? data.agent_ids[0] : null)
+        };
+        localStorage.setItem("user", JSON.stringify(userData));
+        }
       }
 
       return response.data;

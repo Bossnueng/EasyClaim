@@ -10,6 +10,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
+const { getIO } = require("../../socket/claimSocket");
 
 //ตั้งค่าการจัดเก็บไฟล์ภาพลงเครื่อง Server
 const storage = multer.diskStorage({
@@ -26,10 +27,30 @@ const storage = multer.diskStorage({
   },
 });
 
-const sendTeamsNotification = async (claimData) => {
-  const webhookUrl =
-    process.env.TEAMS_WEBHOOK_URL ||
-    "https://default1d8f5d8591094cdaabcf3fa469cbf8.f9.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/05/workflows/b8f5ff483d22437da59977d9cc7987de/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=4h8h9gq_LpLr1lG9DdVsm6iYOen3GGf6LqT5_1ddniQ";
+// 1. ปรับฟังก์ชัน sendTeamsNotification ให้ดึง URL ตาม agentId
+const sendTeamsNotification = async (claimData, agentId) => {
+  const DEFAULT_WEBHOOK = process.env.TEAMS_WEBHOOK_URL;
+  let webhookUrl = DEFAULT_WEBHOOK;
+
+  // ค้นหา Webhook URL ของ Agent
+  if (agentId) {
+    try {
+      const pool = await connectDB();
+      const agentResult = await pool.request()
+        .input("agent_id", sql.Int, agentId)
+        .query(`
+          SELECT teams_webhook_url 
+          FROM [EasyClaim_Dev].[dbo].[agents] 
+          WHERE agent_id = @agent_id
+        `);
+
+      if (agentResult.recordset.length > 0 && agentResult.recordset[0].teams_webhook_url) {
+        webhookUrl = agentResult.recordset[0].teams_webhook_url;
+      }
+    } catch (dbErr) {
+      console.error("Fetch Agent Webhook Error:", dbErr.message);
+    }
+  }
 
   const messagePayload = {
     "@type": "MessageCard",
@@ -42,7 +63,6 @@ const sendTeamsNotification = async (claimData) => {
         facts: [
           { name: "เลขที่ใบเคลม:", value: claimData.claim_no || "-" },
           { name: "ผู้แจ้งรายการ (ID):", value: String(claimData.created_by || "-") },
-          { name: "หมายเลข Lot:", value: claimData.lot_no || "-" },
           { name: "จำนวนรวม:", value: `${claimData.qty} ชิ้น` },
           { name: "รายละเอียด:", value: claimData.remark || "-" },
         ],
@@ -58,7 +78,7 @@ const sendTeamsNotification = async (claimData) => {
   }
 };
 
-const { getIO } = require("../../socket/claimSocket");
+
 
 exports.upload = multer({ storage: storage });
 
@@ -189,7 +209,6 @@ exports.createClaimimage = async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS image_id;
             `);
 
-    // 🟢 ดึง Host และ Protocol ของเครื่อง Server (เครื่อง A) อัตโนมัติ
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const full_image_url = `${baseUrl}${relative_path}`;
 
@@ -197,8 +216,8 @@ exports.createClaimimage = async (req, res) => {
       status: true,
       message: "Insert Success",
       image_id: result.recordset[0].image_id,
-      image_path: relative_path, // สำหรับใช้ภายในระบบเดิม
-      image_url: full_image_url, // 🟢 สำหรับให้ Frontend เครื่อง B เอาไป <img src="..."> ได้เลย
+      image_path: relative_path,
+      image_url: full_image_url,
     });
   } catch (error) {
     res.status(500).json({
@@ -317,19 +336,15 @@ exports.getClaimImages = async (req, res) => {
         ORDER BY image_id ASC
       `);
 
-    // 🟢 สร้าง Base URL จาก ENV หรือ Dynamic Request
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
 
-    // 🟢 จัดการ Path รูปภาพให้ถูกต้อง
     const formattedData = result.recordset.map((img) => {
       let rawPath = img.image_path || "";
 
-      // 1. ตรวจสอบว่ามี / นำหน้าหรือไม่
       if (!rawPath.startsWith("/")) {
         rawPath = `/${rawPath}`;
       }
 
-      // 2. ตรวจสอบว่ามีโฟลเดอร์ uploads นำหน้าหรือไม่ (ถ้าใน DB เก็บแค่ชื่อไฟล์)
       if (!rawPath.startsWith("/uploads")) {
         rawPath = `/uploads/claims${rawPath}`;
       }
@@ -466,35 +481,31 @@ exports.getClaimByAgent = async (req, res) => {
 };
 
 exports.getClaim = async (req, res) => {
-  try {
-    const pool = await connectDB();
-    const result = await pool.request().query(`
-                SELECT [claim_id]
-                ,[claim_no]
-                ,[agent_id]
-                ,[claim_date]
-                ,[current_status]
-                ,[driver_receive_date]
-                ,[warehouse_receive_date]
-                ,[approve_date]
-                ,[delivery_date]
-                ,[receive_finish_date]
-                ,[created_by]
-                ,[created_at]
-                ,[updated_at]
-            FROM [EasyClaim_Dev].[dbo].[claims] with(NOLOCK)
-                      `);
+    try {
+        const pool = await connectDB();
+        
+        const user = req.user || {};
+        const role_id = user.role_id;
+        const agent_ids = user.agent_ids || [];
 
-    res.json({
-      status: true,
-      data: result.recordset,
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: false,
-      message: error.message,
-    });
-  }
+        let query = `SELECT * FROM [EasyClaim_Dev].[dbo].[claims]`;
+        const request = pool.request();
+
+        if (role_id && Number(role_id) !== 1) {
+            if (agent_ids.length === 0) {
+                return res.json({ status: true, data: [] });
+            }
+            query += ` WHERE agent_id IN (${agent_ids.join(',')})`;
+        }
+
+        query += ` ORDER BY created_at DESC`;
+
+        const result = await request.query(query);
+        res.json({ status: true, data: result.recordset });
+
+    } catch (error) {
+        res.status(500).json({ status: false, message: error.message });
+    }
 };
 
 exports.creartClaim = async (req, res) => {
@@ -720,12 +731,11 @@ exports.creartClaim = async (req, res) => {
             `);
 
             
-        // 3.2 Log สถานะ 5: "รอการพิจารณา" โดยระบบอัตโนมัติ (update_by = null)
         const updateBy = req.user?.id || req.body.created_by || 0; 
 
         await transaction.request()
             .input("claim_id_auto", sql.Int, claim_id)
-            .input("status_auto", sql.Int, 5) // ID สถานะ 5 = รอการพิจารณา
+            .input("status_auto", sql.Int, 5) 
             .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
             .input("update_by", sql.Int, parseInt(updateBy))
             .query(`
@@ -752,15 +762,15 @@ exports.creartClaim = async (req, res) => {
         // =====================================
         await transaction.commit();
 
-        //ส่งการแจ้งเตือนเข้า MS Teams หลังบันทึกข้อมูลสำเร็จ
+        // ส่งการแจ้งเตือนเข้า MS Teams หลังบันทึกข้อมูลสำเร็จ
         try {
             sendTeamsNotification({
                 claim_no: claim_no,
                 created_by: created_by,
-                lot_no: items[0]?.lot_no || "-", // ดึง Lot ของรายการแรก
-                qty: items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0), // รวมจำนวนสินค้าทั้งหมด
+                lot_no: items[0]?.lot_no || "-",
+                qty: items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0),
                 remark: items[0]?.remark || "สร้างรายการเคลมใหม่"
-            });
+            }, agent_id ? parseInt(agent_id) : null); // 👈 ส่ง agent_id เพิ่มตรงนี้
         } catch (teamsErr) {
             console.error("Teams Notification Call Error:", teamsErr);
         }

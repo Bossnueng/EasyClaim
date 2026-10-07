@@ -94,8 +94,17 @@ const StaffHome = () => {
         ? resClaim
         : resClaim?.data || [];
 
+        // 1. ดึงข้อมูล user และก๊อปปี้กรอง agent_id
+        const currentUser = loginService.getCurrentUser();
+        const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
+        const userRoleId = Number(currentUser?.role_id);
+
+        const allowedClaims = (userRoleId === 1)
+          ? claimData
+          : claimData.filter((claim) => userAgentIds.includes(String(claim.agent_id || "")));
+
       const claimWithDetails = await Promise.all(
-        claimData.map(async (claim) => {
+        allowedClaims.map(async (claim) => {
           try {
             const itemRes = await claimService.getClaimItems(claim.claim_id);
             const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);

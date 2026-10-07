@@ -42,7 +42,7 @@ import { STATUS_PRIORITY, getStatusName, getStatusId, CLAIM_STATUS_MAP } from ".
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
 import loginService from "../../services/loginService";
-import userService from "../../services/userService";
+import { userService } from "../../services/userService";
 import deliveryService from "../../services/deliveryService";
 import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
@@ -292,6 +292,17 @@ const StaffClaimUpdate = () => {
         });
 
         if (currentClaim) {
+          // เช็คสิทธิ์ agent_id
+          const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
+          const claimAgentId = String(currentClaim.agent_id || "");
+
+          // ถ้าไม่ใช่ Admin และ agent_id ของรายการนี้ ไม่อยู่ใน agent_ids ของ user
+          if (userRoleId !== 1 && !userAgentIds.includes(claimAgentId)) {
+            message.error("คุณไม่มีสิทธิ์เข้าถึงรายการเคลมนี้");
+            navigate("/staff/list-claim");
+            return;
+          }
+          
           const logsData = resLogs?.data || resLogs || [];
           const filteredLogs = Array.isArray(logsData)
             ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
@@ -1200,8 +1211,11 @@ const StaffClaimUpdate = () => {
                 type="default"
                 icon={<UndoOutlined />}
                 onClick={handleStepBack}
+                // 🟢 กำหนด padding ซ้าย-ขวา และความสูงของปุ่มให้รับกับปุ่มอื่น
+                style={{ paddingLeft: "18px", paddingRight: "18px" }}
+                className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
               >
-                ถอยสถานะ
+                <span style={{ marginLeft: "4px" }}>ถอยสถานะ</span>
               </Button>
             )}
 

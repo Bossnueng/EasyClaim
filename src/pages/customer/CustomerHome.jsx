@@ -34,7 +34,8 @@ const CustomerHome = () => {
     }
 
     // 🟢 2. ถ้าเป็น Customer แต่ไม่มี agent_id ให้ล้าง Session และไปหน้า /login
-    const agentId = user?.agent_id;
+    const agentId = user?.agent_id || (Array.isArray(user?.agent_ids) && user.agent_ids.length > 0 ? user.agent_ids[0] : null);
+
     if (!agentId) {
       loginService.logout();
       navigate("/login", { replace: true });

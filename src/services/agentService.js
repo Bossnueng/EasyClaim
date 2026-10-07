@@ -13,7 +13,7 @@ export const agentService = {
 
   createAgent: async (agentData) => {
     try {
-      const response = await api.post("/createagent", agentData);
+      const response = await api.post("/agent", agentData);
       return response.data;
     } catch (error) {
       throw error.response?.data || new Error(error.message);

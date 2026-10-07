@@ -9,16 +9,23 @@ import CustomerClaimList from "../pages/customer/CustomerClaimList";
 import CustomerHome from "../pages/customer/CustomerHome";
 import CustomerNewClaim from "../pages/customer/CustomerNewClaim";
 import CustomerClaimDatail from "../pages/customer/CustomerClaimDetail";
+import AgentManagement from "../pages/admin/AgentManagement";
+import RoleManagement from "../pages/admin/RoleManagement";
 import Login from "../pages/auth/Login";
 import UserSettings from "../pages/auth/UserSettings";
 import CustomerClaimProcessing from "../pages/customer/CustomerClaimProcessing";
+import UserManagement from "../pages/admin/UserManagement";
 import loginService from "../services/loginService";
 
-
-// 🟢 ดึงข้อมูลผู้ใช้
+// 🟢 ดึงข้อมูลผู้ใช้ และตรวจสอบสถานะ Authentication ที่ถูกต้อง
 const getValidUser = () => {
   const user = loginService.getCurrentUser();
-  if (!user || (!user.agent_id && !user.user_id && !user.id && !user.token)) {
+  const token = loginService.getToken(); // ดึง token จาก localStorage ตรงๆ
+
+  // ตรวจสอบว่ามี Token และมี User (ที่มี user_id หรือ id)
+  const userId = user?.user_id || user?.id;
+
+  if (!token || !user || !userId) {
     loginService.logout?.(); 
     return null;
   }
@@ -31,9 +38,7 @@ const isStaff = (user) => {
   const roleId = Number(user.role_id);
   const roleStr = String(user.role || user.user_type || "").toLowerCase();
   
-  // เพิ่ม role_id 4 และ 5 เข้าไปด้วย
   const staffRoleIds = [1, 3, 4, 5]; 
-  
   return staffRoleIds.includes(roleId) || roleStr === "staff" || roleStr === "admin";
 };
 
@@ -98,11 +103,15 @@ function AppRouter() {
       <Route element={<ProtectedRoute />}>
         <Route element={<StaffRoute />}>
           <Route path="/admin/:claimId" element={<StaffClaimUpdate />} />
+          <Route path="/staff/users" element={<UserManagement />} />
           <Route path="/staff" element={<StaffHome />} />
           <Route path="/staff/list-claim" element={<StaffClaimList />} />
           <Route path="/staff/update-claim/:claimId" element={<StaffClaimUpdate />} />
           <Route path="/staff/chat" element={<StaffChat />} />
           <Route path="/staff/setting" element={<UserSettings />} />
+          <Route path="/staff/users" element={<UserManagement />} />
+          <Route path="/staff/agents" element={<AgentManagement />} />
+          <Route path="/staff/roles" element={<RoleManagement />} />
         </Route>
 
         <Route element={<CustomerRoute />}>

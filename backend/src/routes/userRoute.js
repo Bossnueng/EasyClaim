@@ -14,7 +14,16 @@ router.post("/users", userController.createUser);
 router.post("/user_agents",userController.user_agents);
 
 //Delete
-router.delete("/delusers",userController.deluser);
+router.delete("/delusers/:id", userController.deluser);
+router.delete("/delusers", userController.deluser);
+
+// Delete (Soft Delete) - รองรับทั้งแบบส่ง ID ผ่าน URL และส่งผ่าน Body
+router.delete("/deleteusers/:id", userController.deleteuser);
+router.delete("/deleteusers", userController.deleteuser);
+
+// บรรทัดสำคัญ: เพิ่มหรือแก้ไขให้รองรับ PUT /users/:id และ PUT /users
+router.put('/users/:id', userController.updateUser);
+router.put('/users', userController.updateUser);
 
 
 module.exports = router;

@@ -170,6 +170,7 @@ exports.deleteuser = async (req, res) => {
         // อัปเดต status เป็น 0 เพื่อปิดใช้งาน โดยไม่ต้องลบข้อมูลออกจาก Database
         await pool.request()
             .input("user_id", sql.Int, user_id)
+            .input("agent_id", sql.Int, agent_id)
             .query(`
                 UPDATE [EasyClaim_Dev].[dbo].[users] 
                 SET status = 0, updated_at = GETDATE() 

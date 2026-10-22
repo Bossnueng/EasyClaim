@@ -8,6 +8,7 @@ router.get("/getDelivery",deliveryController.Delivery);
 
 router.post("/createDelivery",deliveryController.createDelivery);
 router.post("/UpdataDelivery",deliveryController.UpdataDelivery);
+router.post("/DeliveryDriver",deliveryController.DeliveryDriver);
 
 
 router.delete("/DelDelivery",deliveryController.DelDelivery);

@@ -463,6 +463,7 @@ exports.getClaimByAgent = async (req, res) => {
                       ,[created_by]
                       ,[created_at]
                       ,[updated_at]
+                      ,[warehouse]
                 FROM [EasyClaim_Dev].[dbo].[claims] WITH(NOLOCK)
                 WHERE agent_id = @agent_id
                 ORDER BY [claim_id] DESC
@@ -516,12 +517,15 @@ exports.creartClaim = async (req, res) => {
         const {
             claim_no,
             agent_id,
+            shipment,
             current_status,
             driver_receive_date,
             warehouse_receive_date,
             approve_date,
             delivery_date,
             receive_finish_date,
+            warehouse,
+            truckname,
             created_by
         } = req.body;
 
@@ -578,6 +582,9 @@ exports.creartClaim = async (req, res) => {
             .input("delivery_date", sql.DateTime, safeDate(delivery_date))
             .input("receive_finish_date", sql.DateTime, safeDate(receive_finish_date))
             .input("created_by", sql.Int, created_by ? parseInt(created_by) : null)
+            .input("warehouse", sql.NVarChar(100), warehouse)
+            .input("truckname", sql.NVarChar(10), truckname)
+            .input("shipment", sql.NVarChar(50), shipment)
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claims]
                 (
@@ -592,7 +599,10 @@ exports.creartClaim = async (req, res) => {
                     receive_finish_date,
                     created_by,
                     created_at,
-                    updated_at
+                    updated_at,
+                    warehouse,
+                    truckname,
+                    shipment
                 )
                 VALUES
                 (
@@ -607,7 +617,10 @@ exports.creartClaim = async (req, res) => {
                     @receive_finish_date,
                     @created_by,
                     GETDATE(),
-                    GETDATE()
+                    GETDATE(),
+                    @warehouse,
+                    @truckname,
+                    @shipment
                 );
 
                 SELECT SCOPE_IDENTITY() AS claim_id;
@@ -625,6 +638,8 @@ exports.creartClaim = async (req, res) => {
                 mfg_date,
                 expire_date,
                 qty,
+                qtychang,
+                qtyreceived,
                 remark
             } = item;
 
@@ -635,7 +650,8 @@ exports.creartClaim = async (req, res) => {
                 .input("mfg_date", sql.Date, safeDate(mfg_date))
                 .input("expire_date", sql.Date, safeDate(expire_date))
                 .input("qty", sql.Decimal(18, 2), parseFloat(qty) || 0)
-                .input("qtychang", sql.Decimal(18, 2), 0)
+                .input("qtychang", sql.Decimal(18, 2),parseFloat(qtychang)|| 0)
+                .input("qtyreceived", sql.Decimal(18, 2),parseFloat(qtyreceived)|| 0)
                 .input("remark", sql.NVarChar(500), remark || null)
                 .query(`
                     INSERT INTO [EasyClaim_Dev].[dbo].[claim_items]
@@ -647,6 +663,7 @@ exports.creartClaim = async (req, res) => {
                         expire_date,
                         qty,
                         qtychang,
+                        qtyreceived,
                         remark,
                         created_at,
                         updated_at
@@ -660,6 +677,7 @@ exports.creartClaim = async (req, res) => {
                         @expire_date,
                         @qty,
                         @qtychang,
+                        @qtyreceived,
                         @remark,
                         GETDATE(),
                         GETDATE()
@@ -1134,6 +1152,7 @@ exports.getClaimItems = async (req, res) => {
               ,[expire_date]
               ,[qty]
               ,[qtychang]
+              ,[qtyreceived]
               ,[remark]
               ,[created_at]
               ,[updated_at]

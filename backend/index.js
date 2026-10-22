@@ -42,7 +42,7 @@ app.use("/api", agentRoute);
 app.use("/api", loginRoute);
 app.use("/api", deliveryRoute);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 /*
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server Running on port ${PORT} (Binding to 0.0.0.0) is connected to DB: ${process.env.DB_DATABASE}`);

@@ -27,16 +27,50 @@ exports.Delivery = async (req, res) => {
     }
 };
 
+exports.DeliveryDriver = async (req, res) => {
+    try {
+        const {
+            driver_id,
+            receive_date,
+        } = req.body;
+        const pool = await connectDB();
+        const result = await pool.request()
+            .input("driver_id", sql.NVarChar(20), driver_id)
+            .input("receive_date", sql.Date, receive_date)
+            .query(`
+                           SELECT D.delivery_id,
+				D.claim_id,
+				D.delivery_status,
+				D.driver_id,
+				D.receive_date,
+				D.truck_plate,
+				c.claim_no,
+				c.shipment
+                FROM [EasyClaim_Dev].[dbo].[Delivery] D
+				left join claims c on c.claim_id=D.claim_id
+                Where driver_id=@driver_id and convert(date,receive_date)=@receive_date
+                ORDER BY D.created_at DESC
+            `);
+
+        res.json({
+            status: true,
+            data: result.recordset
+        });
+    } catch (error) {
+        res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};
+
 exports.createDelivery = async (req, res) => {
     try {
-        const { 
-            claim_id, 
-            driver_id, 
-            delivery_status, 
-            driver_name, 
-            truck_plate, 
-            estimated_delivery_date, 
-            claim_no 
+        const {
+            claim_id,
+            driver_id,
+            delivery_status,
+            truck_plate
         } = req.body;
 
         const pool = await connectDB();
@@ -46,56 +80,26 @@ exports.createDelivery = async (req, res) => {
             .input("claim_id", sql.Int, claim_id)
             .input("driver_id", sql.VarChar, driver_id ? String(driver_id) : null)
             .input("delivery_status", sql.VarChar, delivery_status)
+            .input("truck_plate", sql.NVarChar(10), truck_plate)
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[Delivery]
                 (
                     claim_id,
                     driver_id,
                     delivery_status,
-                    receive_date
+                    receive_date,
+                    truck_plate
                 )
                 VALUES
                 (
                     @claim_id,
                     @driver_id,
                     @delivery_status,
-                    GETDATE()
+                    GETDATE(),
+                    @truck_plate
                 );
                 SELECT SCOPE_IDENTITY() AS delivery_id;
             `);
-
-        // 2. อัปเดตข้อมูลรายละเอียด พขร./รถ/วันจัดส่ง กลับไปยังตาราง Claims ตามประเภทสถานะ
-        if (delivery_status === "4") {
-            // กรณี "รับสินค้าจริงแล้ว"
-            await pool.request()
-                .input("claim_id", sql.Int, claim_id)
-                .input("driver_name", sql.NVarChar, driver_name || null)
-                .input("truck_plate", sql.NVarChar, truck_plate || null)
-                .input("claim_no", sql.NVarChar, claim_no || null)
-                .query(`
-                    UPDATE [EasyClaim_Dev].[dbo].[Claims]
-                    SET 
-                        driver_name = ISNULL(@driver_name, driver_name),
-                        truck_plate = ISNULL(@truck_plate, truck_plate),
-                        claim_no = ISNULL(@claim_no, claim_no)
-                    WHERE claim_id = @claim_id
-                `);
-        } else if (delivery_status === "9") {
-            // กรณี "กำลังจัดส่งสินค้าเคลม"
-            await pool.request()
-                .input("claim_id", sql.Int, claim_id)
-                .input("delivery_driver", sql.NVarChar, driver_name || null)
-                .input("delivery_plate", sql.NVarChar, truck_plate || null)
-                .input("estimated_delivery_date", sql.Date, estimated_delivery_date || null)
-                .query(`
-                    UPDATE [EasyClaim_Dev].[dbo].[Claims]
-                    SET 
-                        delivery_driver = ISNULL(@delivery_driver, delivery_driver),
-                        delivery_plate = ISNULL(@delivery_plate, delivery_plate),
-                        estimated_delivery_date = ISNULL(@estimated_delivery_date, estimated_delivery_date)
-                    WHERE claim_id = @claim_id
-                `);
-        }
 
         res.json({
             status: true,
@@ -129,7 +133,7 @@ exports.UpdataDelivery = async (req, res) => {
                 WHERE
                     delivery_id=@delivery_id
             `);
-                
+
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({
                 status: false,

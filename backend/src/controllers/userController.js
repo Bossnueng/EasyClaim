@@ -42,7 +42,9 @@ exports.getUsers = async (req, res) => {
 exports.createUser = async (req, res) => {
     try {
         const { username, password, full_name, email, phone, role_id, agent_ids } = req.body;
-        const password_hash = await bcrypt.hash(password, 10);
+        const saltRounds = 10;
+        const password_hash = await bcrypt.hash(password, saltRounds);
+        
         const pool = await connectDB();
 
         const result = await pool.request()

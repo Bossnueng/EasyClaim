@@ -27,10 +27,11 @@ const MenuList = () => {
     if (location.pathname.includes("/customer/setting")) {
       return "customer-setting";
     }
-
+    
     if (location.pathname.includes("/customer/new-claim")) {
       return "customer-create-claim";
     }
+    
 
     if (location.pathname.includes("/customer/list-claim")) {
       return "customer-list-claim";
@@ -121,11 +122,15 @@ const MenuList = () => {
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
             <NavLink to="/customer">หน้าแรก</NavLink>
           </Menu.Item>
-
-          <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
+          {/**
+           * 
+           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
             <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
           </Menu.Item>
-
+           * 
+           * 
+           */}
+          
           <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>
             <NavLink to="/customer/list-claim">รายการเคลม</NavLink>
           </Menu.Item>

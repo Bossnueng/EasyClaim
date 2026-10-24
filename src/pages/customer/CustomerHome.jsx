@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
-import { PlusCircleOutlined, RightOutlined } from "@ant-design/icons";
+import { RightOutlined, CheckCircleOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
@@ -16,6 +16,7 @@ const CustomerHome = () => {
   const [latestClaims, setLatestClaims] = useState([]);
   const [loading, setLoading] = useState(false);
   const [itemsMap, setItemsMap] = useState({});
+  const [allClaims, setAllClaims] = useState([]);
 
   // ดึงข้อมูล User ผ่าน loginService
   const user = loginService.getCurrentUser();
@@ -108,6 +109,19 @@ const CustomerHome = () => {
     }
   };
 
+  const getPriority = (item) => {
+    if (!item) return 99;
+    const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
+    
+    if (statusVal !== undefined && statusVal !== null && CLAIM_STATUS_MAP[String(statusVal)]) {
+      return CLAIM_STATUS_MAP[String(statusVal)].priority;
+    }
+    if (statusVal !== undefined && statusVal !== null && STATUS_PRIORITY[statusVal] !== undefined) {
+      return STATUS_PRIORITY[statusVal];
+    }
+    return 99;
+  };
+
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
 
@@ -145,7 +159,184 @@ const CustomerHome = () => {
         </header>
 
         {/* ==================== Banner แจ้งเคลม ==================== */}
-        <div
+        <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          
+          {/**
+          <div
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+            style={{
+              boxSizing: "border-box",
+              padding: "24px 28px",
+              overflow: "hidden",
+            }}
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">
+                รายการเคลมใหม่
+              </span>
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
+                {allClaims.filter((item) => {
+                  const p = getPriority(item);
+                  return p <= 2;
+                }).length}
+              </span>
+              <span className="text-xs text-blue-500 font-medium">
+                รอการพิจารณา
+              </span>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+              <FileSearchOutlined />
+            </div>
+          </div>
+           */}
+          
+          
+          
+
+
+          <div
+            style={{
+              boxSizing: "border-box",
+              padding: "24px 28px",
+              overflow: "hidden",
+            }}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">
+                รายการกำลังดำเนินการ
+              </span>
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
+                {allClaims.filter((item) => {
+                  const p = getPriority(item);
+                  return p >= 3 && p <= 7;
+                }).length}
+              </span>
+              <span className="text-xs text-amber-500 font-medium">
+                อยู่ระหว่างการจัดการ
+              </span>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+              <ClockCircleOutlined />
+            </div>
+          </div>
+
+          <div
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+            style={{
+              boxSizing: "border-box",
+              padding: "24px 28px",
+              overflow: "hidden",
+            }}
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">
+                รายการที่สำเร็จ
+              </span>
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
+                {allClaims.filter((item) => getPriority(item) === 8).length}
+              </span>
+              <span className="text-xs text-emerald-500 font-medium">
+                จัดส่ง/เสร็จสิ้นแล้ว
+              </span>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+              <CheckCircleOutlined />
+            </div>
+          </div>
+
+          <div
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+            style={{
+              boxSizing: "border-box",
+              padding: "24px 28px",
+              overflow: "hidden",
+            }}
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">
+                รายการค้างเกิน 7 วัน
+              </span>
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
+                {allClaims.filter((item) => {
+                  const priority = getPriority(item);
+                  const isFinished = priority === 8 || priority === 9 || priority === 10;
+                  if (isFinished) return false;
+
+                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
+                  if (!rawDate) return false;
+
+                  const parsedDate = dayjs(rawDate);
+                  if (!parsedDate.isValid()) return false;
+
+                  const diffDays = dayjs().diff(parsedDate, "day");
+                  return diffDays >= 7;
+                }).length}
+              </span>
+              <span className="text-xs text-rose-500 font-medium">
+                ต้องเร่งดำเนินการ
+              </span>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+              <WarningOutlined />
+            </div>
+          </div>
+
+          <div
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+            style={{
+              boxSizing: "border-box",
+              padding: "24px 28px",
+              overflow: "hidden",
+            }}
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">
+                รายการค้างเกิน 30 วัน
+              </span>
+              <span 
+                className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
+                style={{ fontVariantNumeric: "normal" }}
+              >
+                {allClaims.filter((item) => {
+                  const priority = getPriority(item);
+                  const isFinished = priority === 8 || priority === 9 || priority === 10;
+                  if (isFinished) return false;
+
+                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
+                  if (!rawDate) return false;
+
+                  const parsedDate = dayjs(rawDate);
+                  if (!parsedDate.isValid()) return false;
+
+                  const diffDays = dayjs().diff(parsedDate, "day");
+                  return diffDays >= 30;
+                }).length}
+              </span>
+              <span className="text-xs text-rose-500 font-medium">
+                ต้องเร่งดำเนินการ
+              </span>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+              <WarningOutlined />
+            </div>
+          </div>
+        </div>
+        {
+          /**
+            <div
           style={{
             boxSizing: "border-box",
             padding: "24px 28px",
@@ -161,7 +352,7 @@ const CustomerHome = () => {
               ใช้เวลาเพียงไม่กี่นาที เพื่อเริ่มต้นกระบวนการเคลมสินค้าของคุณ
             </p>
           </div>
-          {/* ปุ่มแจ้งเคลมใหม่ */}
+          
           <Button
             type="default"
             size="large"
@@ -172,6 +363,9 @@ const CustomerHome = () => {
             แจ้งเคลมสินค้าใหม่
           </Button>
         </div>
+           */
+        }
+        
 
         {/* ==================== รายการเคลมล่าสุด (8) ==================== */}
         <section className="flex flex-col gap-4">

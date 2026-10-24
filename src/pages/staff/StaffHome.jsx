@@ -353,25 +353,25 @@ const StaffHome = () => {
 
                 // 🟢 แก้ไข: ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
                 // ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
-const getDisplayProductName = () => {
-  if (Array.isArray(claim.items) && claim.items.length > 0) {
-    const names = claim.items
-      .map((i) => {
-        const idStr = String(i.item_id || "");
-        return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
-      })
-      .filter(Boolean);
+                  const getDisplayProductName = () => {
+                    if (Array.isArray(claim.items) && claim.items.length > 0) {
+                      const names = claim.items
+                        .map((i) => {
+                          const idStr = String(i.item_id || "");
+                          return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
+                        })
+                        .filter(Boolean);
 
-    if (names.length > 0) return names.join(" + ");
-  }
+                      if (names.length > 0) return names.join(" + ");
+                    }
 
-  const singleIdStr = String(claim.item_id || "");
-  return (
-    itemsMap[singleIdStr] ||
-    claim.item_name ||
-    (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
-  );
-};
+                    const singleIdStr = String(claim.item_id || "");
+                    return (
+                      itemsMap[singleIdStr] ||
+                      claim.item_name ||
+                      (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
+                    );
+                  };
 
                 return (
                   <StaffClaimCard

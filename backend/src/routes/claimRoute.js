@@ -19,6 +19,8 @@ router.post("/ClaimStatusLogs", ClaimController.createClaimStatusLogs);
 router.post("/Claimapproves", ClaimController.createClaimapproves);
 router.post("/Claimimage", upload.single("file"), ClaimController.createClaimimage);
 router.post("/updateClaim", ClaimController.updateclaim);
+router.post("/getClaimreturn",ClaimController.getClaimreturn);
+router.post("/updateClaimDate",ClaimController.updateClaimDate);
 
 // DELETE
 router.delete("/delClaim", ClaimController.delClaim);

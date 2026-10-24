@@ -33,10 +33,12 @@ exports.DeliveryDriver = async (req, res) => {
             driver_id,
             receive_date,
         } = req.body;
+        const deliverv_status = "8";
         const pool = await connectDB();
         const result = await pool.request()
             .input("driver_id", sql.NVarChar(20), driver_id)
             .input("receive_date", sql.Date, receive_date)
+            .input("delivery_status", sql.NVarChar(1), deliverv_status)
             .query(`
                            SELECT D.delivery_id,
 				D.claim_id,
@@ -48,7 +50,7 @@ exports.DeliveryDriver = async (req, res) => {
 				c.shipment
                 FROM [EasyClaim_Dev].[dbo].[Delivery] D
 				left join claims c on c.claim_id=D.claim_id
-                Where driver_id=@driver_id and convert(date,receive_date)=@receive_date
+                Where D.driver_id=@driver_id and convert(date,D.receive_date)=@receive_date and D.delivery_status=@delivery_status
                 ORDER BY D.created_at DESC
             `);
 
@@ -64,7 +66,10 @@ exports.DeliveryDriver = async (req, res) => {
     }
 };
 
+
 exports.createDelivery = async (req, res) => {
+    let uploadedFile = null;
+
     try {
         const {
             claim_id,
@@ -72,15 +77,22 @@ exports.createDelivery = async (req, res) => {
             delivery_status,
             truck_plate
         } = req.body;
+        console.log('createDelivery req body', req.body);
+        // รับชื่อไฟล์จาก multer
+        uploadedFile = req.file ? req.file.filename : null;
 
         const pool = await connectDB();
 
-        // 1. บันทึกข้อมูลลงตาราง Delivery
         const deliveryResult = await pool.request()
             .input("claim_id", sql.Int, claim_id)
-            .input("driver_id", sql.VarChar, driver_id ? String(driver_id) : null)
+            .input(
+                "driver_id",
+                sql.VarChar,
+                driver_id ? String(driver_id) : null
+            )
             .input("delivery_status", sql.VarChar, delivery_status)
             .input("truck_plate", sql.NVarChar(10), truck_plate)
+            .input("img_parth", sql.NVarChar(255), uploadedFile)
             .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[Delivery]
                 (
@@ -88,7 +100,8 @@ exports.createDelivery = async (req, res) => {
                     driver_id,
                     delivery_status,
                     receive_date,
-                    truck_plate
+                    truck_plate,
+                    img_parth
                 )
                 VALUES
                 (
@@ -96,16 +109,20 @@ exports.createDelivery = async (req, res) => {
                     @driver_id,
                     @delivery_status,
                     GETDATE(),
-                    @truck_plate
+                    @truck_plate,
+                    @img_parth
                 );
+
                 SELECT SCOPE_IDENTITY() AS delivery_id;
             `);
 
         res.json({
             status: true,
-            message: "Insert & Update Claims Success",
-            delivery_id: deliveryResult.recordset[0].delivery_id
+            message: "Insert Delivery Success",
+            delivery_id: deliveryResult.recordset[0].delivery_id,
+            img_parth: uploadedFile
         });
+
     } catch (error) {
         res.status(500).json({
             status: false,
@@ -113,6 +130,7 @@ exports.createDelivery = async (req, res) => {
         });
     }
 };
+
 
 exports.UpdataDelivery = async (req, res) => {
     try {

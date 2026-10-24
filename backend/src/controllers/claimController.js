@@ -109,20 +109,20 @@ exports.getclaimstatuslog = async (req, res) => {
 };
 
 exports.createClaimStatusLogs = async (req, res) => {
-    try {
-        const { claim_id, status, remark, update_by } = req.body;
-      
-        if (!remark) {
-            return res.status(400).json({ status: false, message: "กรุณาระบุข้อความ หรือ remark" });
-        }
+  try {
+    const { claim_id, status, remark, update_by } = req.body;
 
-        const pool = await connectDB();
-        const result = await pool.request()
-            .input("claim_id", sql.Int, claim_id)
-            .input("status", sql.Int, status)
-            .input("remark", sql.NVarChar, remark)
-            .input("update_by", sql.Int, update_by)
-            .query(`
+    if (!remark) {
+      return res.status(400).json({ status: false, message: "กรุณาระบุข้อความ หรือ remark" });
+    }
+
+    const pool = await connectDB();
+    const result = await pool.request()
+      .input("claim_id", sql.Int, claim_id)
+      .input("status", sql.Int, status)
+      .input("remark", sql.NVarChar, remark)
+      .input("update_by", sql.Int, update_by)
+      .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
                 (
                     claim_id,
@@ -142,35 +142,35 @@ exports.createClaimStatusLogs = async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS log_id;
             `);
 
-        const newLogId = result.recordset[0]?.log_id || null;
+    const newLogId = result.recordset[0]?.log_id || null;
 
-        // 🟢 ส่ง Socket Event เมื่อมีการส่งข้อความ หรืออัปเดต Log
-        try {
-            const newComment = {
-                log_id: newLogId,
-                claim_id,
-                status,
-                remark,
-                update_by,
-                update_date: new Date()
-            };
-            getIO().to(`claim:${claim_id}`).emit("claim:comment_created", newComment);
-        } catch (socketErr) {
-            console.error("Socket emit error:", socketErr.message);
-        }
-
-
-        res.json({
-            status: true,
-            message: status ? "บันทึกการเปลี่ยนสถานะสำเร็จ" : "ส่งข้อความสำเร็จ",
-            log_id: result.recordset[0]?.log_id || null
-        });
-    } catch (error) {
-        res.status(500).json({
-            status: false,
-            message: error.message
-        });
+    // 🟢 ส่ง Socket Event เมื่อมีการส่งข้อความ หรืออัปเดต Log
+    try {
+      const newComment = {
+        log_id: newLogId,
+        claim_id,
+        status,
+        remark,
+        update_by,
+        update_date: new Date()
+      };
+      getIO().to(`claim:${claim_id}`).emit("claim:comment_created", newComment);
+    } catch (socketErr) {
+      console.error("Socket emit error:", socketErr.message);
     }
+
+
+    res.json({
+      status: true,
+      message: status ? "บันทึกการเปลี่ยนสถานะสำเร็จ" : "ส่งข้อความสำเร็จ",
+      log_id: result.recordset[0]?.log_id || null
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: false,
+      message: error.message
+    });
+  }
 };
 
 exports.createClaimimage = async (req, res) => {
@@ -371,8 +371,8 @@ exports.getClaimImages = async (req, res) => {
 exports.createClaimapproves = async (req, res) => {
   try {
     const { claim_id, approve_by, approve_status, approve_remark } = req.body;
-    const parsedApproveStatus = (approve_status === false || approve_status === "0" || approve_status === "false") 
-      ? "false" 
+    const parsedApproveStatus = (approve_status === false || approve_status === "0" || approve_status === "false")
+      ? "false"
       : "true";
 
     const pool = await connectDB();
@@ -482,110 +482,151 @@ exports.getClaimByAgent = async (req, res) => {
 };
 
 exports.getClaim = async (req, res) => {
-    try {
-        const pool = await connectDB();
-        
-        const user = req.user || {};
-        const role_id = user.role_id;
-        const agent_ids = user.agent_ids || [];
+  try {
+    const pool = await connectDB();
 
-        let query = `SELECT * FROM [EasyClaim_Dev].[dbo].[claims]`;
-        const request = pool.request();
+    const user = req.user || {};
+    const role_id = user.role_id;
+    const agent_ids = user.agent_ids || [];
 
-        if (role_id && Number(role_id) !== 1) {
-            if (agent_ids.length === 0) {
-                return res.json({ status: true, data: [] });
-            }
-            query += ` WHERE agent_id IN (${agent_ids.join(',')})`;
-        }
+    let query = `SELECT * FROM [EasyClaim_Dev].[dbo].[claims]`;
+    const request = pool.request();
 
-        query += ` ORDER BY created_at DESC`;
-
-        const result = await request.query(query);
-        res.json({ status: true, data: result.recordset });
-
-    } catch (error) {
-        res.status(500).json({ status: false, message: error.message });
+    if (role_id && Number(role_id) !== 1) {
+      if (agent_ids.length === 0) {
+        return res.json({ status: true, data: [] });
+      }
+      query += ` WHERE agent_id IN (${agent_ids.join(',')})`;
     }
+
+    query += ` ORDER BY created_at DESC`;
+
+    const result = await request.query(query);
+    res.json({ status: true, data: result.recordset });
+
+  } catch (error) {
+    res.status(500).json({ status: false, message: error.message });
+  }
 };
 
-exports.creartClaim = async (req, res) => {
+exports.getClaimreturn = async (req, res) => {
+  try {
+    const {
+      claim_id,
+    } = req.body;
     const pool = await connectDB();
-    const transaction = new sql.Transaction(pool);
+    const result = await pool.request()
+      .input("claim_id", sql.Int, claim_id)
+      .query(`
+                  SELECT [claim_id]
+      ,[claim_no]
+      ,[agent_id]
+      ,[claim_date]
+      ,[current_status]
+      ,[driver_receive_date]
+      ,[warehouse_receive_date]
+      ,[approve_date]
+      ,[delivery_date]
+      ,[receive_finish_date]
+      ,[created_by]
+      ,[created_at]
+      ,[updated_at]
+      ,[warehouse]
+      ,[truckname]
+      ,[shipment]
+  FROM [EasyClaim_Dev].[dbo].[claims]
+  where claim_id=@claim_id
+            `);
 
-    try {
-        const {
-            claim_no,
-            agent_id,
-            shipment,
-            current_status,
-            driver_receive_date,
-            warehouse_receive_date,
-            approve_date,
-            delivery_date,
-            receive_finish_date,
-            warehouse,
-            truckname,
-            created_by
-        } = req.body;
+    res.json({
+      status: true,
+      data: result.recordset
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: false,
+      message: error.message
+    });
+  }
+}
 
-        console.log("BODY =================");
-        console.log(req.body);
+exports.creartClaim = async (req, res) => {
+  const pool = await connectDB();
+  const transaction = new sql.Transaction(pool);
 
-        if (!req.body || !req.body.items) {
-            return res.status(400).json({
-                status: false,
-                message: "กรุณาระบุ items"
-            });
-        }
+  try {
+    const {
+      claim_no,
+      agent_id,
+      shipment,
+      current_status,
+      driver_receive_date,
+      warehouse_receive_date,
+      approve_date,
+      delivery_date,
+      receive_finish_date,
+      warehouse,
+      truckname,
+      created_by
+    } = req.body;
 
-        // items ส่งมาเป็น JSON string
-        const items = typeof req.body.items === "string" 
-            ? JSON.parse(req.body.items) 
-            : req.body.items;
+    console.log("BODY =================");
+    console.log(req.body);
 
-        if (!claim_no) {
-            return res.status(400).json({
-                status: false,
-                message: "กรุณาระบุ claim_no"
-            });
-        }
+    if (!req.body || !req.body.items) {
+      return res.status(400).json({
+        status: false,
+        message: "กรุณาระบุ items"
+      });
+    }
 
-        if (!Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({
-                status: false,
-                message: "กรุณาระบุ items อย่างน้อย 1 รายการ"
-            });
-        }
+    // items ส่งมาเป็น JSON string
+    const items = typeof req.body.items === "string"
+      ? JSON.parse(req.body.items)
+      : req.body.items;
 
-        await transaction.begin();
+    if (!claim_no) {
+      return res.status(400).json({
+        status: false,
+        message: "กรุณาระบุ claim_no"
+      });
+    }
 
-        // Helper Function สำหรับจัดการแปลงวันที่
-        const safeDate = (dateVal) => {
-            if (!dateVal || dateVal === "null" || dateVal === "undefined") return null;
-            const parsed = new Date(dateVal);
-            return isNaN(parsed.getTime()) ? null : parsed;
-        };
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        status: false,
+        message: "กรุณาระบุ items อย่างน้อย 1 รายการ"
+      });
+    }
 
-        const initialStatus = current_status || "รอการพิจารณา";
+    await transaction.begin();
 
-        // =====================================
-        // 1. Insert claims
-        // =====================================
-        const claimResult = await transaction.request()
-            .input("claim_no", sql.NVarChar(50), claim_no)
-            .input("agent_id", sql.Int, agent_id ? parseInt(agent_id) : null)
-            .input("current_status", sql.NVarChar(50), initialStatus)
-            .input("driver_receive_date", sql.DateTime, safeDate(driver_receive_date))
-            .input("warehouse_receive_date", sql.DateTime, safeDate(warehouse_receive_date))
-            .input("approve_date", sql.DateTime, safeDate(approve_date))
-            .input("delivery_date", sql.DateTime, safeDate(delivery_date))
-            .input("receive_finish_date", sql.DateTime, safeDate(receive_finish_date))
-            .input("created_by", sql.Int, created_by ? parseInt(created_by) : null)
-            .input("warehouse", sql.NVarChar(100), warehouse)
-            .input("truckname", sql.NVarChar(10), truckname)
-            .input("shipment", sql.NVarChar(50), shipment)
-            .query(`
+    // Helper Function สำหรับจัดการแปลงวันที่
+    const safeDate = (dateVal) => {
+      if (!dateVal || dateVal === "null" || dateVal === "undefined") return null;
+      const parsed = new Date(dateVal);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const initialStatus = current_status || "รอการพิจารณา";
+
+    // =====================================
+    // 1. Insert claims
+    // =====================================
+    const claimResult = await transaction.request()
+      .input("claim_no", sql.NVarChar(50), claim_no)
+      .input("agent_id", sql.Int, agent_id ? parseInt(agent_id) : null)
+      .input("current_status", sql.NVarChar(50), initialStatus)
+      .input("driver_receive_date", sql.DateTime, safeDate(driver_receive_date))
+      .input("warehouse_receive_date", sql.DateTime, safeDate(warehouse_receive_date))
+      .input("approve_date", sql.DateTime, safeDate(approve_date))
+      .input("delivery_date", sql.DateTime, safeDate(delivery_date))
+      .input("receive_finish_date", sql.DateTime, safeDate(receive_finish_date))
+      .input("created_by", sql.Int, created_by ? parseInt(created_by) : null)
+      .input("warehouse", sql.NVarChar(100), warehouse)
+      .input("truckname", sql.NVarChar(10), truckname)
+      .input("shipment", sql.NVarChar(50), shipment)
+      .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claims]
                 (
                     claim_no,
@@ -626,34 +667,34 @@ exports.creartClaim = async (req, res) => {
                 SELECT SCOPE_IDENTITY() AS claim_id;
             `);
 
-        const claim_id = claimResult.recordset[0].claim_id;
+    const claim_id = claimResult.recordset[0].claim_id;
 
-        // =====================================
-        // 2. Insert Items & Images
-        // =====================================
-        for (const item of items) {
-            const {
-                item_id,
-                lot_no,
-                mfg_date,
-                expire_date,
-                qty,
-                qtychang,
-                qtyreceived,
-                remark
-            } = item;
+    // =====================================
+    // 2. Insert Items & Images
+    // =====================================
+    for (const item of items) {
+      const {
+        item_id,
+        lot_no,
+        mfg_date,
+        expire_date,
+        qty,
+        qtychang,
+        qtyreceived,
+        remark
+      } = item;
 
-            const itemResult = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .input("item_id", sql.Int, parseInt(item_id))
-                .input("lot_no", sql.NVarChar(100), lot_no || null)
-                .input("mfg_date", sql.Date, safeDate(mfg_date))
-                .input("expire_date", sql.Date, safeDate(expire_date))
-                .input("qty", sql.Decimal(18, 2), parseFloat(qty) || 0)
-                .input("qtychang", sql.Decimal(18, 2),parseFloat(qtychang)|| 0)
-                .input("qtyreceived", sql.Decimal(18, 2),parseFloat(qtyreceived)|| 0)
-                .input("remark", sql.NVarChar(500), remark || null)
-                .query(`
+      const itemResult = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .input("item_id", sql.Int, parseInt(item_id))
+        .input("lot_no", sql.NVarChar(100), lot_no || null)
+        .input("mfg_date", sql.Date, safeDate(mfg_date))
+        .input("expire_date", sql.Date, safeDate(expire_date))
+        .input("qty", sql.Decimal(18, 2), parseFloat(qty) || 0)
+        .input("qtychang", sql.Decimal(18, 2), parseFloat(qtychang) || 0)
+        .input("qtyreceived", sql.Decimal(18, 2), parseFloat(qtyreceived) || 0)
+        .input("remark", sql.NVarChar(500), remark || null)
+        .query(`
                     INSERT INTO [EasyClaim_Dev].[dbo].[claim_items]
                     (
                         claim_id,
@@ -686,20 +727,20 @@ exports.creartClaim = async (req, res) => {
                     SELECT SCOPE_IDENTITY() AS claim_item_id;
                 `);
 
-            const claim_item_id = itemResult.recordset[0].claim_item_id;
+      const claim_item_id = itemResult.recordset[0].claim_item_id;
 
-            // บันทึกรูปภาพประกอบ Item
-            const files = (req.files || []).filter(
-                file => file.fieldname === `images[${item_id}]`
-            );
+      // บันทึกรูปภาพประกอบ Item
+      const files = (req.files || []).filter(
+        file => file.fieldname === `images[${item_id}]`
+      );
 
-            for (const file of files) {
-                await transaction.request()
-                    .input("claim_id", sql.Int, claim_id)
-                    .input("claim_item_id", sql.Int, claim_item_id)
-                    .input("image_path", sql.NVarChar(500), file.filename)
-                    .input("image_type", sql.NVarChar(50), "claim_item")
-                    .query(`
+      for (const file of files) {
+        await transaction.request()
+          .input("claim_id", sql.Int, claim_id)
+          .input("claim_item_id", sql.Int, claim_item_id)
+          .input("image_path", sql.NVarChar(500), file.filename)
+          .input("image_type", sql.NVarChar(50), "claim_item")
+          .query(`
                         INSERT INTO [EasyClaim_Dev].[dbo].[claim_images]
                         (
                             claim_id,
@@ -717,19 +758,19 @@ exports.creartClaim = async (req, res) => {
                             GETDATE()
                         );
                     `);
-            }
-        }
+      }
+    }
 
-        // =====================================
-        // 3. Insert Claim Status Log (สร้างประวัติ Log เริ่มต้น)
-        // =====================================
-        // 3.1 Log สถานะ 1: "สร้างรายการเคลม" โดย User ลูกค้า
-        await transaction.request()
-            .input("claim_id", sql.Int, claim_id)
-            .input("status", sql.Int, 1) // ID สถานะ 1 = สร้างรายการเคลม
-            .input("remark", sql.NVarChar(500), "สร้างรายการเคลมสินค้าใหม่ในระบบ")
-            .input("update_by", sql.Int, created_by ? parseInt(created_by) : null)
-            .query(`
+    // =====================================
+    // 3. Insert Claim Status Log (สร้างประวัติ Log เริ่มต้น)
+    // =====================================
+    // 3.1 Log สถานะ 1: "สร้างรายการเคลม" โดย User ลูกค้า
+    await transaction.request()
+      .input("claim_id", sql.Int, claim_id)
+      .input("status", sql.Int, 1) // ID สถานะ 1 = สร้างรายการเคลม
+      .input("remark", sql.NVarChar(500), "สร้างรายการเคลมสินค้าใหม่ในระบบ")
+      .input("update_by", sql.Int, created_by ? parseInt(created_by) : null)
+      .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
                 (
                     claim_id,
@@ -748,15 +789,15 @@ exports.creartClaim = async (req, res) => {
                 );
             `);
 
-            
-        const updateBy = req.user?.id || req.body.created_by || 0; 
 
-        await transaction.request()
-            .input("claim_id_auto", sql.Int, claim_id)
-            .input("status_auto", sql.Int, 5) 
-            .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
-            .input("update_by", sql.Int, parseInt(updateBy))
-            .query(`
+    const updateBy = req.user?.id || req.body.created_by || 0;
+
+    await transaction.request()
+      .input("claim_id_auto", sql.Int, claim_id)
+      .input("status_auto", sql.Int, 5)
+      .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
+      .input("update_by", sql.Int, parseInt(updateBy))
+      .query(`
                 INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
                 (
                     claim_id,
@@ -775,102 +816,102 @@ exports.creartClaim = async (req, res) => {
                 );
             `);
 
-        // =====================================
-        // 4. Commit Transaction
-        // =====================================
-        await transaction.commit();
+    // =====================================
+    // 4. Commit Transaction
+    // =====================================
+    await transaction.commit();
 
-        // ส่งการแจ้งเตือนเข้า MS Teams หลังบันทึกข้อมูลสำเร็จ
-        try {
-            sendTeamsNotification({
-                claim_no: claim_no,
-                created_by: created_by,
-                lot_no: items[0]?.lot_no || "-",
-                qty: items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0),
-                remark: items[0]?.remark || "สร้างรายการเคลมใหม่"
-            }, agent_id ? parseInt(agent_id) : null); // 👈 ส่ง agent_id เพิ่มตรงนี้
-        } catch (teamsErr) {
-            console.error("Teams Notification Call Error:", teamsErr);
-        }
-
-        return res.json({
-            status: true,
-            message: "สร้างรายการเคลมเรียบร้อยแล้ว",
-            claim_id: claim_id,
-            claim_no: claim_no,
-            item_count: items.length
-        });
-
-    } catch (error) {
-        try {
-            await transaction.rollback();
-        } catch (rollbackError) {
-            console.error("Rollback Error:", rollbackError);
-        }
-
-        console.error("Create Claim Error:", error);
-
-        return res.status(500).json({
-            status: false,
-            message: error.message
-        });
+    // ส่งการแจ้งเตือนเข้า MS Teams หลังบันทึกข้อมูลสำเร็จ
+    try {
+      sendTeamsNotification({
+        claim_no: claim_no,
+        created_by: created_by,
+        lot_no: items[0]?.lot_no || "-",
+        qty: items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0),
+        remark: items[0]?.remark || "สร้างรายการเคลมใหม่"
+      }, agent_id ? parseInt(agent_id) : null); // 👈 ส่ง agent_id เพิ่มตรงนี้
+    } catch (teamsErr) {
+      console.error("Teams Notification Call Error:", teamsErr);
     }
+
+    return res.json({
+      status: true,
+      message: "สร้างรายการเคลมเรียบร้อยแล้ว",
+      claim_id: claim_id,
+      claim_no: claim_no,
+      item_count: items.length
+    });
+
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      console.error("Rollback Error:", rollbackError);
+    }
+
+    console.error("Create Claim Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message
+    });
+  }
 };
 
 
 exports.delClaim = async (req, res) => {
 
+  try {
+
+    const { claim_id } = req.body;
+
+    // =========================
+    // ตรวจสอบ claim_id
+    // =========================
+    if (!claim_id) {
+      return res.status(400).json({
+        status: false,
+        message: "claim_id is required"
+      });
+    }
+
+    const pool = await connectDB();
+    const transaction = new sql.Transaction(pool);
+
+    // เก็บข้อมูลไฟล์ไว้สำหรับลบหลัง Commit
+    let imageFiles = [];
+
     try {
 
-        const { claim_id } = req.body;
+      await transaction.begin();
 
-        // =========================
-        // ตรวจสอบ claim_id
-        // =========================
-        if (!claim_id) {
-            return res.status(400).json({
-                status: false,
-                message: "claim_id is required"
-            });
-        }
-
-        const pool = await connectDB();
-        const transaction = new sql.Transaction(pool);
-
-        // เก็บข้อมูลไฟล์ไว้สำหรับลบหลัง Commit
-        let imageFiles = [];
-
-        try {
-
-            await transaction.begin();
-
-            // =========================
-            // 1. ตรวจสอบ Claim
-            // =========================
-            const checkClaim = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
+      // =========================
+      // 1. ตรวจสอบ Claim
+      // =========================
+      const checkClaim = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .query(`
                     SELECT claim_id
                     FROM [EasyClaim_Dev].[dbo].[claims]
                     WHERE claim_id = @claim_id
                 `);
 
-            if (checkClaim.recordset.length === 0) {
+      if (checkClaim.recordset.length === 0) {
 
-                await transaction.rollback();
+        await transaction.rollback();
 
-                return res.status(404).json({
-                    status: false,
-                    message: "Claim not found"
-                });
-            }
+        return res.status(404).json({
+          status: false,
+          message: "Claim not found"
+        });
+      }
 
-            // =========================
-            // 2. ดึงรูปทั้งหมดของ Claim
-            // =========================
-            const imageResult = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
+      // =========================
+      // 2. ดึงรูปทั้งหมดของ Claim
+      // =========================
+      const imageResult = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .query(`
                     SELECT 
                         image_id,
                         image_path
@@ -878,263 +919,305 @@ exports.delClaim = async (req, res) => {
                     WHERE claim_id = @claim_id
                 `);
 
-            imageFiles = imageResult.recordset;
+      imageFiles = imageResult.recordset;
 
-            console.log("Images to delete:", imageFiles);
+      console.log("Images to delete:", imageFiles);
 
-            // =========================
-            // 3. ลบ claim_images ก่อน
-            // =========================
-            const deleteImages = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
+      // =========================
+      // 3. ลบ claim_images ก่อน
+      // =========================
+      const deleteImages = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .query(`
                     DELETE FROM [EasyClaim_Dev].[dbo].[claim_images]
                     WHERE claim_id = @claim_id
                 `);
 
-            // =========================
-            // 4. ลบ claim_approves
-            // =========================
-            const deleteApproves = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
+      // =========================
+      // 4. ลบ claim_approves
+      // =========================
+      const deleteApproves = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .query(`
                     DELETE FROM [EasyClaim_Dev].[dbo].[claim_approves]
                     WHERE claim_id = @claim_id
                 `);
 
-            // =========================
-            // 5. ลบ claim_items
-            // =========================
-            const deleteItems = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
+      // =========================
+      // 5. ลบ claim_items
+      // =========================
+      const deleteItems = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .query(`
                     DELETE FROM [EasyClaim_Dev].[dbo].[claim_items]
                     WHERE claim_id = @claim_id
                 `);
 
-            // =========================
-            // 6. ลบ claims
-            // =========================
-            const deleteClaim = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
+      // =========================
+      // 6. ลบ claims
+      // =========================
+      const deleteClaim = await transaction.request()
+        .input("claim_id", sql.Int, claim_id)
+        .query(`
                     DELETE FROM [EasyClaim_Dev].[dbo].[claims]
                     WHERE claim_id = @claim_id
                 `);
 
-            // =========================
-            // 7. Commit
-            // =========================
-            await transaction.commit();
+      // =========================
+      // 7. Commit
+      // =========================
+      await transaction.commit();
 
-            // ==================================================
-            // 8. ลบไฟล์จริง หลังจาก Database Commit สำเร็จ
-            // ==================================================
-            const fs = require("fs");
-            const path = require("path");
+      // ==================================================
+      // 8. ลบไฟล์จริง หลังจาก Database Commit สำเร็จ
+      // ==================================================
+      const fs = require("fs");
+      const path = require("path");
 
-            for (const image of imageFiles) {
+      for (const image of imageFiles) {
 
-                if (!image.image_path) {
-                    continue;
-                }
-
-                const filePath = path.join(
-                    __dirname,
-                    "../uploads/claims",
-                    image.image_path
-                );
-
-                console.log("Delete file:", filePath);
-
-                if (fs.existsSync(filePath)) {
-
-                    fs.unlinkSync(filePath);
-
-                    console.log(
-                        "Deleted:",
-                        image.image_path
-                    );
-
-                } else {
-
-                    console.log(
-                        "File not found:",
-                        filePath
-                    );
-                }
-            }
-
-            // =========================
-            // Response
-            // =========================
-            return res.json({
-                status: true,
-                message: "Delete Success",
-                claim_id: claim_id,
-                deleted: {
-                    claim_approves: deleteApproves.rowsAffected[0],
-                    claim_images: deleteImages.rowsAffected[0],
-                    claim_items: deleteItems.rowsAffected[0],
-                    claims: deleteClaim.rowsAffected[0]
-                }
-            });
-
-        } catch (error) {
-
-            // =========================
-            // Rollback
-            // =========================
-            try {
-                await transaction.rollback();
-            } catch (rollbackError) {
-                console.error(
-                    "Rollback error:",
-                    rollbackError
-                );
-            }
-
-            throw error;
+        if (!image.image_path) {
+          continue;
         }
+
+        const filePath = path.join(
+          __dirname,
+          "../uploads/claims",
+          image.image_path
+        );
+
+        console.log("Delete file:", filePath);
+
+        if (fs.existsSync(filePath)) {
+
+          fs.unlinkSync(filePath);
+
+          console.log(
+            "Deleted:",
+            image.image_path
+          );
+
+        } else {
+
+          console.log(
+            "File not found:",
+            filePath
+          );
+        }
+      }
+
+      // =========================
+      // Response
+      // =========================
+      return res.json({
+        status: true,
+        message: "Delete Success",
+        claim_id: claim_id,
+        deleted: {
+          claim_approves: deleteApproves.rowsAffected[0],
+          claim_images: deleteImages.rowsAffected[0],
+          claim_items: deleteItems.rowsAffected[0],
+          claims: deleteClaim.rowsAffected[0]
+        }
+      });
 
     } catch (error) {
 
-        console.error("delClaim Error:", error);
+      // =========================
+      // Rollback
+      // =========================
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error(
+          "Rollback error:",
+          rollbackError
+        );
+      }
 
-        return res.status(500).json({
-            status: false,
-            message: error.message
-        });
+      throw error;
     }
-  };
+
+  } catch (error) {
+
+    console.error("delClaim Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message
+    });
+  }
+};
+
 
 exports.updateclaim = async (req, res) => {
+  const transaction = null;
+
+  try {
+    const { claim_id } = req.body;
+    let { items } = req.body;
+
+    // ตรวจสอบ claim_id
+    const claimId = Number(claim_id);
+
+    if (!Number.isInteger(claimId) || claimId <= 0) {
+      return res.status(400).json({
+        status: false,
+        message: "claim_id ไม่ถูกต้อง"
+      });
+    }
+
+    // แปลง items จาก JSON String เป็น Array
+    if (typeof items === "string") {
+      items = JSON.parse(items);
+    }
+
+    if (!Array.isArray(items)) {
+      return res.status(400).json({
+        status: false,
+        message: "items ต้องเป็น Array"
+      });
+    }
+
+    const pool = await connectDB();
+    const tx = new sql.Transaction(pool);
+
+    await tx.begin();
+
     try {
-        const { claim_id, status, actionsname, items } = req.body;
+      for (const item of items) {
+        const {
+          claim_item_id,
+          item_id,
+          qty,
+          qtychang,
+          qtyreceived,
+          remark
+        } = item;
 
-        if (!claim_id) {
-            return res.status(400).json({ status: false, message: "claim_id is required" });
+        const claimItemId = Number(claim_item_id);
+        const itemId = Number(item_id);
+        const quantity = Number(qty);
+        const quantityChange = Number(qtychang);
+        const quantityReceived = Number(qtyreceived);
+
+        // ตรวจสอบข้อมูลก่อน Update
+        if (
+          !Number.isInteger(claimItemId) ||
+          claimItemId <= 0 ||
+          !Number.isInteger(itemId) ||
+          !Number.isFinite(quantity) ||
+          !Number.isFinite(quantityChange) ||
+          !Number.isFinite(quantityReceived)
+        ) {
+          throw new Error("ข้อมูลรายการสินค้าไม่ถูกต้อง");
         }
-        if (!actionsname) {
-            return res.status(400).json({ status: false, message: "actionsname is required" });
-        }
 
-        const pool = await connectDB();
-        const transaction = new sql.Transaction(pool);
+        const request = new sql.Request(tx);
 
-        try {
-            await transaction.begin();
-
-            // 1. ตรวจสอบว่ามี Claim ID นี้หรือไม่
-            const checkClaim = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .query(`
-                    SELECT claim_id
-                    FROM [EasyClaim_Dev].[dbo].[claim_items] -- หรือ [claims]
-                    WHERE claim_id = @claim_id
-                `);
-
-            if (checkClaim.recordset.length === 0) {
-                await transaction.rollback();
-                return res.status(404).json({ status: false, message: "Claim not found" });
-            }
-            
-            // 2. อัปเดต items ภายใน Transaction
-            if (Array.isArray(items) && items.length > 0) {
-              for (const item of items) {
-                if (item.claim_item_id || item.item_id) {
-
-                  // 🟢 เพิ่ม: หากเป็นแอ็กชันรับเข้าคลัง/เปลี่ยนสินค้า ให้ใช้วันที่ที่ส่งมาหรือเวลาปัจจุบัน
-                  let finalWithdrawDate = item.withdraw_date || null;
-                  if (actionsname === "warehouse_receive_date" && !finalWithdrawDate) {
-                    finalWithdrawDate = new Date();
-                  }
-
-                  const itemDataObj = {
-                    qty: item.qty || 0,
-                    receivedQty: item.received_qty !== undefined ? item.received_qty : (item.qty || 0),
-                    returnedQty: item.returned_qty !== undefined ? item.returned_qty : (item.qty || 0),
-                    approvedQty: item.approved_qty !== undefined ? item.approved_qty : (item.qty || 0),
-                    withdrawDate: finalWithdrawDate, // 🟢 บันทึกวันที่เบิกลง JSON
-                    itemRemark: item.item_remark || item.remark || ""
-                  };
-
-                  const itemRemarkJson = JSON.stringify(itemDataObj);
-
-                  await transaction.request()
-                    .input("claim_id", sql.Int, claim_id)
-                    .input("item_id", sql.Int, item.item_id || null)
-                    .input("claim_item_id", sql.Int, item.claim_item_id || null)
-                    .input("remark_json", sql.NVarChar(sql.MAX), itemRemarkJson)
-                    .input("withdraw_date", sql.DateTime, finalWithdrawDate ? new Date(finalWithdrawDate) : null) // 🟢 กำหนดค่า Param
-                    .query(`
-                        UPDATE [EasyClaim_Dev].[dbo].[claim_items]
-                        SET remark = @remark_json,
-                            -- withdraw_date = ISNULL(@withdraw_date, withdraw_date), -- 🟢 ปลดคอมเมนต์บรรทัดนี้หากในตาราง claim_items มีคอลัมน์ withdraw_date
-                            updated_at = GETDATE()
-                        WHERE claim_id = @claim_id 
-                          AND (claim_item_id = @claim_item_id OR item_id = @item_id)
+        await request
+          .input("claim_id", sql.Int, claimId)
+          .input("claim_item_id", sql.Int, claimItemId)
+          .input("item_id", sql.Int, itemId)
+          .input("qty", sql.Int, quantity)
+          .input("qtychang", sql.Int, quantityChange)
+          .input("qtyreceived", sql.Int, quantityReceived)
+          .input("remark", sql.NVarChar(sql.MAX), remark || null)
+          .query(`
+                        UPDATE Claim_Items
+                        SET
+                            item_id = @item_id,
+                            qty = @qty,
+                            qtychang = @qtychang,
+                            qtyreceived = @qtyreceived,
+                            remark = @remark
+                        WHERE claim_item_id = @claim_item_id
+                          AND claim_id = @claim_id;
                     `);
-                }
-              }
-            }
+      }
 
-            // 3. กำหนด Date Column ตาม actionsname
-            let dateColumn = null;
-            switch (actionsname) {
-                case "driver_receive_date": dateColumn = "driver_receive_date"; break;
-                case "warehouse_receive_date": dateColumn = "warehouse_receive_date"; break;
-                case "approve_date": dateColumn = "approve_date"; break;
-                case "delivery_date": dateColumn = "delivery_date"; break;
-                case "receive_finish_date": dateColumn = "receive_finish_date"; break;
-                default:
-                    await transaction.rollback();
-                    return res.status(400).json({ status: false, message: "Invalid actionsname" });
-            }
+      await tx.commit();
 
-            // 4. อัปเดตตาราง claims
-            const result = await transaction.request()
-                .input("claim_id", sql.Int, claim_id)
-                .input("status", sql.NVarChar(50), status || null)
-                .query(`
-                    UPDATE [EasyClaim_Dev].[dbo].[claims]
-                    SET
-                        current_status = @status,
-                        ${dateColumn} = GETDATE(),
-                        updated_at = GETDATE()
-                    WHERE claim_id = @claim_id
-                `);
-
-            await transaction.commit();
-
-            // 5. ส่ง Socket
-            try {
-                const updatedData = { claim_id, status, actionsname, updated_at: new Date() };
-                getIO().to(`claim:${claim_id}`).emit("claim:status_updated", updatedData);
-                getIO().to("staff").emit("claim:status_updated", updatedData);
-            } catch (socketErr) {
-                console.error("Socket emit error:", socketErr.message);
-            }
-
-            return res.json({
-                status: true,
-                message: "Update Success",
-                claim_id: claim_id,
-                actionsname: actionsname,
-                current_status: status,
-                updated: result.rowsAffected[0] > 0
-            });
-
-        } catch (error) {
-            try { await transaction.rollback(); } catch (rbErr) {}
-            throw error;
-        }
+      return res.json({
+        status: true,
+        message: "Update Claims Success",
+        claim_id: claimId,
+        total_items: items.length
+      });
 
     } catch (error) {
-        console.error("updateclaim Error:", error);
-        return res.status(500).json({ status: false, message: error.message });
+      await tx.rollback();
+      throw error;
     }
+
+  } catch (error) {
+    console.error("updateclaim Error:", error);
+
+    return res.status(500).json({
+      status: false,
+      message: error.message
+    });
+  }
 };
+
+exports.updateClaimDate = async (req, res) => {
+  try {
+    const { claim_id, columnname } = req.body;
+
+    // อนุญาตเฉพาะคอลัมน์ที่กำหนดไว้
+    const allowedColumns = [
+      'warehouse_receive_date',
+      'approve_date',
+      'delivery_date',
+      'receive_finish_date'
+    ];
+
+    if (
+      claim_id === undefined ||
+      claim_id === null ||
+      claim_id === '' ||
+      !allowedColumns.includes(columnname)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'claim_id หรือ columnname ไม่ถูกต้อง'
+      });
+    }
+
+    const query = `
+      UPDATE claims
+      SET [${columnname}] = GETDATE()
+      WHERE claim_id = @claim_id
+    `;
+
+    const pool = await connectDB();
+
+    const result = await pool.request()
+      .input('claim_id', sql.Int, Number(claim_id))
+      .query(query);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'ไม่พบข้อมูล claim_id นี้'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'อัปเดตวันที่เรียบร้อยแล้ว'
+    });
+
+  } catch (error) {
+    console.error('updateClaimDate error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการอัปเดตข้อมูล'
+    });
+  }
+};
+
 
 exports.getClaimItems = async (req, res) => {
   try {
@@ -1172,5 +1255,7 @@ exports.getClaimItems = async (req, res) => {
     });
   }
 };
+
+
 
 

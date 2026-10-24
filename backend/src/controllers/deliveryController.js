@@ -50,7 +50,14 @@ exports.DeliveryDriver = async (req, res) => {
 				c.shipment
                 FROM [EasyClaim_Dev].[dbo].[Delivery] D
 				left join claims c on c.claim_id=D.claim_id
-                Where D.driver_id=@driver_id and convert(date,D.receive_date)=@receive_date and D.delivery_status=@delivery_status
+                Where D.driver_id=@driver_id and convert(date,D.receive_date)=@receive_date 
+                and D.delivery_status=@delivery_status
+                    AND NOT EXISTS (
+        SELECT 1
+        FROM [EasyClaim_Dev].[dbo].[Delivery] D2
+        WHERE D2.claim_id = D.claim_id
+          AND D2.delivery_status = 9
+    )
                 ORDER BY D.created_at DESC
             `);
 

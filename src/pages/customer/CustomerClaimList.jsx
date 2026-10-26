@@ -16,6 +16,7 @@ import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
 import userService from "../../services/userService";
+import agentService from "../../services/agentService";
 
 const CustomerClaimList = () => {
   const navigate = useNavigate();
@@ -33,6 +34,7 @@ const CustomerClaimList = () => {
     fetchClaimsAndItems();
   }, []);
 
+  // ปรับปรุงฟังก์ชัน fetchClaimsAndItems ใน CustomerClaimList.jsx
   const fetchClaimsAndItems = async () => {
     const user = loginService.getCurrentUser();
     const role = user?.role || user?.user_type;
@@ -42,22 +44,14 @@ const CustomerClaimList = () => {
       return;
     }
 
-    const agentId = user?.agent_id || (Array.isArray(user?.agent_ids) && user.agent_ids.length > 0 ? user.agent_ids[0] : null);
-
-    if (!agentId) {
-      loginService.logout();
-      navigate("/login", { replace: true });
-      return;
-    }
-
     setLoading(true);
     try {
-      // ดึงข้อมูล Master และ Logs
-      const [resClaim, resItems, resUsers, resLogs] = await Promise.all([
-        claimService.getClaimByAgent(agentId),
-        itemService.getItems(),
-        userService.getUsers().catch(() => []), // ดึงข้อมูล Users
-        claimService.getClaimStatusLogs().catch(() => []), // ดึง Status Logs
+      const [resClaim, resItems, resUsers, resLogs, resAgents] = await Promise.all([
+        claimService.getClaim().catch(() => ({ data: [] })),
+        itemService.getItems().catch(() => ({ data: [] })),
+        userService.getUsers().catch(() => []),
+        claimService.getClaimStatusLogs().catch(() => []),
+        agentService.getAgent().catch(() => []),
       ]);
 
       // 1. เก็บ Users List
@@ -84,38 +78,72 @@ const CustomerClaimList = () => {
       if (resItems && resItems.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[item.item_id] = item.item_name;
+          map[String(item.item_id)] = item.item_name;
         });
         setItemsMap(map);
       }
 
-      // 4. Map ข้อมูล Claim Items
-      if (resClaim.status && Array.isArray(resClaim.data)) {
-        const claimsWithItems = await Promise.all(
-          resClaim.data.map(async (claim) => {
-            try {
-              const resItems = await claimService.getClaimItems(claim.claim_id);
-              const rawItems = Array.isArray(resItems) ? resItems : (resItems?.data || []);
-              if (rawItems.length > 0) {
-                const firstItem = rawItems[0];
-                return {
-                  ...claim,
-                  item_id: firstItem.item_id,
-                  qty: firstItem.qty,
-                  remark: firstItem.remark,
-                  lot_no: firstItem.lot_no,
-                  items: rawItems
-                };
-              }
-            } catch (err) {
-              console.error(`Error fetching items for claim ${claim.claim_id}`, err);
-            }
-            return claim;
-          })
-        );
+      // 4. รวบรวม Agent Identifiers และ กรองข้อมูลรายการเคลม
+      const currentUserId = String(user?.user_id || user?.id || "");
+      let userAgentIdentifiers = [];
 
-        setClaims(claimsWithItems);
+      if (Array.isArray(user?.agent_ids)) {
+        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
       }
+      if (user?.agent_id) {
+        userAgentIdentifiers.push(String(user.agent_id));
+      }
+
+      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
+      const allowedClaims = rawClaims.filter((claim) => {
+        const claimAgentIdStr = String(claim.agent_id || "");
+        const claimAgentCodeStr = String(claim.agent_code || "");
+        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+
+        const isAgentMatch =
+          userAgentIdentifiers.length > 0 &&
+          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
+        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+
+        return isAgentMatch || isUserMatch;
+      });
+
+      // 5. ดึงข้อมูล Items ประกอบตั๋วเคลม
+      const claimsWithItems = await Promise.all(
+        allowedClaims.map(async (claim) => {
+          try {
+            const resItems = await claimService.getClaimItems(claim.claim_id);
+            const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
+            if (rawItems.length > 0) {
+              const firstItem = rawItems[0];
+              return {
+                ...claim,
+                item_id: firstItem.item_id,
+                qty: firstItem.qty,
+                remark: firstItem.remark,
+                lot_no: firstItem.lot_no,
+                items: rawItems,
+              };
+            }
+          } catch (err) {
+            console.error(`Error fetching items for claim ${claim.claim_id}`, err);
+          }
+          return claim;
+        })
+      );
+
+      setClaims(claimsWithItems);
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {

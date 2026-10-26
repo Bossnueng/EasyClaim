@@ -26,8 +26,7 @@ const MenuList = () => {
     // Customer
     if (location.pathname.includes("/customer/setting")) {
       return "customer-setting";
-    }
-    
+    }    
 
     if (location.pathname.includes("/customer/list-claim")) {
       return "customer-list-claim";
@@ -129,12 +128,18 @@ const MenuList = () => {
           </Menu.Item>
           {/**
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
            * 
            <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
             <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
           </Menu.Item>
            * 
            * 
+=======
+           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
+            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
+          </Menu.Item>
+>>>>>>> Stashed changes
 =======
            <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
             <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>

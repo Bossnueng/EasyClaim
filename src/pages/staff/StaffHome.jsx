@@ -174,7 +174,8 @@ const StaffHome = () => {
           const timeA = parsedA.isValid() ? parsedA.valueOf() : 0;
           const timeB = parsedB.isValid() ? parsedB.valueOf() : 0;
 
-          return timeB - timeA;
+          // 🟢 เรียงจาก เก่าสุด (สร้างก่อน) ไป ใหม่สุด
+          return timeA - timeB; 
         });
 
         setLatestClaims(sortedClaims.slice(0, 8));

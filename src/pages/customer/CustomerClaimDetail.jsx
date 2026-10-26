@@ -184,17 +184,12 @@ const CustomerClaimDetail = () => {
       return;
     }
 
-    if (!user?.agent_id) {
-      loginService.logout();
-      navigate("/login", { replace: true });
-      return;
-    }
-
     setLoading(true);
     try {
+      // 🟢 1. เปลี่ยนมาใช้ claimService.getClaim() และดึง agentService เพิ่มเติม
       const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
-        claimService.getClaimByAgent(user.agent_id).catch((err) => {
-          console.error("getClaimByAgent error:", err);
+        claimService.getClaim().catch((err) => {
+          console.error("getClaim error:", err);
           return { data: [] };
         }),
         itemService.getItems().catch(() => ({ data: [] })),
@@ -234,16 +229,51 @@ const CustomerClaimDetail = () => {
         setUsersMap(uMap);
       }
 
-      const claimsList = Array.isArray(resClaim?.data)
+      // 🟢 2. รวบรวมสิทธิ์ Agent ID / Agent Code และ User ID ปัจจุบัน
+      const currentUserId = String(user?.user_id || user?.id || "");
+      let userAgentIdentifiers = [];
+
+      if (Array.isArray(user?.agent_ids)) {
+        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
+      }
+      if (user?.agent_id) {
+        userAgentIdentifiers.push(String(user.agent_id));
+      }
+
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      // 🟢 3. กรองรายการเคลมที่สอดคล้อง
+      const rawClaims = Array.isArray(resClaim?.data)
         ? resClaim.data
         : Array.isArray(resClaim)
         ? resClaim
         : [];
 
-      if (claimsList.length > 0) {
+      const allowedClaims = rawClaims.filter((claim) => {
+        const claimAgentIdStr = String(claim.agent_id || "");
+        const claimAgentCodeStr = String(claim.agent_code || "");
+        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+
+        const isAgentMatch =
+          userAgentIdentifiers.length > 0 &&
+          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
+        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+
+        return isAgentMatch || isUserMatch;
+      });
+
+      if (allowedClaims.length > 0) {
         const targetId = String(claimId || "").trim();
 
-        const currentClaim = claimsList.find((item) => {
+        const currentClaim = allowedClaims.find((item) => {
           const itemClaimId = String(item.claim_id || "").trim();
           const itemClaimNo = String(item.claim_no || "").trim();
           return itemClaimId === targetId || itemClaimNo === targetId;

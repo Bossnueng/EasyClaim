@@ -10,6 +10,7 @@ import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
+import agentService from "../../services/agentService"; // 🟢 เพิ่ม import agentService
 
 const CustomerHome = () => {
   const navigate = useNavigate();
@@ -18,7 +19,6 @@ const CustomerHome = () => {
   const [itemsMap, setItemsMap] = useState({});
   const [allClaims, setAllClaims] = useState([]);
 
-  // ดึงข้อมูล User ผ่าน loginService
   const user = loginService.getCurrentUser();
   const role = user?.role || user?.user_type;
 
@@ -26,6 +26,12 @@ const CustomerHome = () => {
     fetchClaimsAndItems();
   }, []);
 
+  const getPriority = (item) => {
+    if (!item) return 99;
+    const statusVal = item?.current_status || item?.status;
+    const statusName = getStatusName(statusVal, "customer");
+    return STATUS_PRIORITY[statusVal] || STATUS_PRIORITY[statusName] || 99;
+  };
 
   const fetchClaimsAndItems = async () => {
     if (role === "staff" || role === "admin") {
@@ -33,43 +39,68 @@ const CustomerHome = () => {
       return;
     }
 
-    // 🟢 2. หา agentId อย่างถูกต้อง (รองรับทั้ง agent_id และ agent_ids)
-    let agentId = user?.agent_id;
-    if (!agentId && Array.isArray(user?.agent_ids) && user.agent_ids.length > 0) {
-      agentId = user.agent_ids[0];
-    }
-
-    if (!agentId) {
-      message.warning("บัญชีผู้ใช้งานนี้ยังไม่ได้ผูกกับตัวแทนจำหน่าย (Agent)");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
-      // ดึง Master Items และ รายการ Claims เฉพาะ Agent
-      const [resClaim, resItems] = await Promise.all([
-        claimService.getClaimByAgent(agentId),
-        itemService.getItems(),
+      // 🟢 1. ดึง Master Data ทั้งหมด (Claims, Items, Agents) พร้อมกันเหมือนฝั่ง Staff
+      const [resClaim, resItems, resAgents] = await Promise.all([
+        claimService.getClaim().catch(() => ({ data: [] })),
+        itemService.getItems().catch(() => ({ data: [] })),
+        agentService.getAgent().catch(() => []),
       ]);
 
+      // 🟢 2. Map รายการสินค้า
       if (resItems && resItems.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[item.item_id] = item.item_name;
+          map[String(item.item_id)] = item.item_name;
         });
         setItemsMap(map);
       }
 
-      const claimsData = resClaim?.data || [];
+      // 🟢 3. รวบรวม Identifiers ของ Agent ที่สอดคล้องกับ Customer รายนี้ (ทั้ง ID และ Code)
+      const currentUserId = String(user?.user_id || user?.id || "");
+      let userAgentIdentifiers = [];
 
-      if (claimsData.length > 0) {
-        // ดึง claim_items เพิ่มเติมเพื่อนำข้อมูล item_id, qty, remark มารวมกับแต่ละ claim
+      if (Array.isArray(user?.agent_ids)) {
+        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
+      }
+      if (user?.agent_id) {
+        userAgentIdentifiers.push(String(user.agent_id));
+      }
+
+      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      // 🟢 4. กรองรายการเคลมที่สอดคล้องกับ Agent ID, Agent Code หรือที่ Customer เป็นผู้สร้าง (created_by)
+      const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
+      const allowedClaims = rawClaims.filter((claim) => {
+        const claimAgentIdStr = String(claim.agent_id || "");
+        const claimAgentCodeStr = String(claim.agent_code || "");
+        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+
+        const isAgentMatch =
+          userAgentIdentifiers.length > 0 &&
+          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
+        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+
+        return isAgentMatch || isUserMatch;
+      });
+
+      // 🟢 5. ดึงรายละเอียดสินค้าแต่ละรายการเคลมเพิ่มเติม
+      if (allowedClaims.length > 0) {
         const claimsWithItems = await Promise.all(
-          claimsData.map(async (claim) => {
+          allowedClaims.map(async (claim) => {
             try {
               const resItems = await claimService.getClaimItems(claim.claim_id);
-              const rawItems = Array.isArray(resItems) ? resItems : (resItems?.data || []);
+              const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
               if (rawItems.length > 0) {
                 const firstItem = rawItems[0];
                 return {
@@ -88,10 +119,9 @@ const CustomerHome = () => {
           })
         );
 
-        // เก็บข้อมูลรายการเคลมทั้งหมดเพื่อนำไปคำนวณป้าย Dashboard
         setAllClaims(claimsWithItems);
 
-        // เรียงลำดับตามสถานะ Priority และ วันที่สร้าง
+        // จัดเรียงตาม Priority และ วันที่สร้าง
         const sortedClaims = claimsWithItems.sort((a, b) => {
           const priorityA = getPriority(a);
           const priorityB = getPriority(b);
@@ -105,7 +135,6 @@ const CustomerHome = () => {
           return dateB.valueOf() - dateA.valueOf();
         });
 
-        // ดึงเฉพาะ 8 รายการล่าสุด
         setLatestClaims(sortedClaims.slice(0, 8));
       } else {
         setAllClaims([]);
@@ -118,7 +147,8 @@ const CustomerHome = () => {
     }
   };
 
-  const getPriority = (item) => {
+  {/**
+     const getPriority = (item) => {
     if (!item) return 99;
     const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
     
@@ -129,8 +159,9 @@ const CustomerHome = () => {
       return STATUS_PRIORITY[statusVal];
     }
     return 99;
-  };
-
+  };    
+    */}
+ 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
 
@@ -166,7 +197,7 @@ const CustomerHome = () => {
           </p>
         </header>
 
-        {/* Summary Dashboard Cards */}
+        {/* Dashboard Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
             <div className="flex flex-col gap-1">
@@ -233,7 +264,7 @@ const CustomerHome = () => {
          
         
 
-        {/* รายการเคลมล่าสุด */}
+        {/* List Section */}
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">รายการเคลมล่าสุด</h2>
@@ -259,11 +290,11 @@ const CustomerHome = () => {
                 const getDisplayProductName = () => {
                   if (Array.isArray(claim.items) && claim.items.length > 0) {
                     return claim.items
-                      .map((i) => itemsMap[i.item_id] || i.item_name || i.name || `สินค้า ID: ${i.item_id}`)
+                      .map((i) => itemsMap[String(i.item_id)] || i.item_name || i.name || `สินค้า ID: ${i.item_id}`)
                       .join(" + ");
                   }
                   return (
-                    itemsMap[claim.item_id] ||
+                    itemsMap[String(claim.item_id)] ||
                     claim.item_name ||
                     (claim.item_id ? `สินค้า ID: ${claim.item_id}` : "ไม่พบข้อมูลสินค้า")
                   );

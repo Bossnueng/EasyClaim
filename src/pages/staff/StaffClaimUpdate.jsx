@@ -100,16 +100,35 @@ const getPreviousStatusName = (currentStatus) => {
 
 const isValidStatusTransition = (currentStatus, newStatus) => {
   if (currentStatus === newStatus) return true;
-  const normalizedCurrent = getStatusName(currentStatus);
-  const normalizedNew = getStatusName(newStatus);
+  
+  // 🟢 Normalize ค่าสถานะปัจจุบันให้เป็นมาตรฐาน (Pending, Approved, Rejected...)
+  let normalizedCurrent = getStatusName(currentStatus);
+  let normalizedNew = getStatusName(newStatus);
 
-  if (normalizedCurrent === "รอการพิจารณา" && normalizedNew === "ไม่มีสิทธิ์เคลม") return true;
-  if (normalizedCurrent === "รับสินค้าจริงแล้ว" && normalizedNew === "ไม่อนุมัติเคลมสินค้า") return true;
+  // เงื่อนไขการเปลี่ยนสถานะจาก "Pending" (หรือ รอการพิจารณา)
+  if (normalizedCurrent === "Pending" || normalizedCurrent === "รอการพิจารณา") {
+    if (
+      normalizedNew === "Approved" || 
+      normalizedNew === "Rejected" ||
+      normalizedNew === "อนุมัติเคลมสินค้า" || 
+      normalizedNew === "ไม่อนุมัติเคลมสินค้า" ||
+      normalizedNew === "ไม่มีสิทธิ์เคลม" || 
+      normalizedNew === "มีสิทธิ์เคลม"
+    ) {
+      return true;
+    }
+  }
 
-  if (normalizedCurrent === "ไม่มีสิทธิ์เคลม" && (normalizedNew === "มีสิทธิ์เคลม" || normalizedNew === "รอการพิจารณา")) return true;
-  if (normalizedCurrent === "ไม่อนุมัติเคลมสินค้า" && (normalizedNew === "อนุมัติเคลมสินค้า" || normalizedNew === "รับสินค้าจริงแล้ว")) return true;
-  if (normalizedCurrent === "จัดส่งสินค้าเคลมสำเร็จ" && normalizedNew === "กำลังจัดส่งสินค้าเคลม") return true;
+  // เงื่อนไขข้อยกเว้นสำหรับสถานะอื่นๆ
+  if ((normalizedCurrent === "รับสินค้าจริงแล้ว" || normalizedCurrent === "Approved") && 
+      (normalizedNew === "Rejected" || normalizedNew === "ไม่อนุมัติเคลมสินค้า")) return true;
 
+  if ((normalizedCurrent === "Rejected" || normalizedCurrent === "ไม่มีสิทธิ์เคลม") && 
+      (normalizedNew === "Approved" || normalizedNew === "Pending" || normalizedNew === "มีสิทธิ์เคลม" || normalizedNew === "รอการพิจารณา")) return true;
+
+  if (normalizedCurrent === "Delivered" && normalizedNew === "Shipping") return true;
+
+  // ตรวจสอบตามระดับ Priority
   const currentLevel = STATUS_PRIORITY[normalizedCurrent] || 1;
   const newLevel = STATUS_PRIORITY[normalizedNew] || 1;
 
@@ -543,7 +562,10 @@ const StaffClaimUpdate = () => {
     );
   }
 
-  const currentStatusInDB = getStatusName(data.current_status || "สร้างรายการเคลม");
+  const rawStatus = data.current_status || "สร้างรายการเคลม";
+  const currentStatusInDB = (rawStatus === "pending" || rawStatus === "5") 
+    ? "รอการพิจารณา" 
+    : getStatusName(rawStatus);
   const currentStatusId = String(getStatusId(data.current_status));
   const isRejectedInDB =
     currentStatusId === "3" ||
@@ -579,31 +601,28 @@ const StaffClaimUpdate = () => {
     return "-";
   };
 
-  const getLogDate = (statusTarget) => {
-    const targetId = String(statusTarget);
-    const currentPriority = CLAIM_STATUS_MAP[String(currentStatusId)]?.priority || 0;
-    const targetPriority = CLAIM_STATUS_MAP[targetId]?.priority || 0;
+  const getLogDate = (targetStatusId) => {
+    const targetId = String(targetStatusId);
+    const targetName = getStatusName(targetId);
 
-    if (!isRejectedInDB && targetPriority > currentPriority) {
-      return "-";
-    }
-
-    const matchingLogs = statusLogs.filter(
-      (item) => String(item.status || item.status_id) === targetId
-    );
+    // 1. ค้นหาใน claim_status_logs ล่าสุดก่อน
+    const matchingLogs = statusLogs.filter((log) => {
+      const logStatusStr = String(log.status || log.status_id || "");
+      return logStatusStr === targetId || getStatusName(logStatusStr) === targetName;
+    });
 
     if (matchingLogs.length > 0) {
       const lastLog = matchingLogs[matchingLogs.length - 1];
-      const rawDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
-      return formatDate(rawDate);
+      const logDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
+      if (logDate) return formatDate(logDate);
     }
 
-    if (targetId === "1" || targetId === "5") return formatDate(data.claim_date || data.created_at);
-    if (targetId === "2" || targetId === "6") return formatDate(data.approve_date);
-    if (targetId === "4") return formatDate(data.driver_receive_date || data.warehouse_receive_date);
-    if (targetId === "8") return formatDate(data.withdraw_date);
-    if (targetId === "9") return formatDate(data.delivery_date);
-    if (targetId === "10") return formatDate(data.receive_finish_date);
+    // 2. หากใน Log ไม่มี ให้ดึงจากคอลัมน์ Timestamp โดยตรงในตาราง claims
+    if (["1", "5", "Pending"].includes(targetId)) return formatDate(data?.claim_date || data?.created_at);
+    if (["2", "6", "Approved"].includes(targetId)) return formatDate(data?.approve_date);
+    if (["8", "Processing"].includes(targetId)) return formatDate(data?.warehouse_receive_date);
+    if (["9", "Shipping"].includes(targetId)) return formatDate(data?.delivery_date);
+    if (["10", "Delivered"].includes(targetId)) return formatDate(data?.receive_finish_date);
 
     return "-";
   };
@@ -708,59 +727,51 @@ const StaffClaimUpdate = () => {
   };
 
   const getCurrentStep = () => {
-    const level = STATUS_PRIORITY[currentStatusInDB];
+    // 🟢 ถ้าเป็นสถานะปฏิเสธ/ไม่อนุมัติ ให้ล็อกตำแหน่งไว้ที่ขั้นตอนพิจารณาอนุมัติ (Step Index 1)
+    if (isRejectedInDB) return 1;
 
-    if (isRejectedInDB) {
-      if (currentStatusInDB === "ไม่มีสิทธิ์เคลม" || currentStatusId === "3") return 2;
-      if (currentStatusInDB === "ไม่อนุมัติเคลมสินค้า" || currentStatusId === "7") return 2;
-      return 1;
-    }
+    const currentName = getStatusName(data?.current_status || currentStatusInDB);
 
-    return level ? level - 1 : 0;
+    if (["Pending", "รอการพิจารณา", "5", "1"].includes(currentName)) return 0;
+    if (["Approved", "อนุมัติเคลมสินค้า", "6", "2"].includes(currentName)) return 1;
+    if (["Processing", "กำลังดำเนินการเปลี่ยนสินค้า", "8"].includes(currentName)) return 2;
+    if (["Shipping", "กำลังจัดส่งสินค้าเคลม", "9"].includes(currentName)) return 3;
+    if (["Delivered", "จัดส่งสินค้าเคลมสำเร็จ", "10"].includes(currentName)) return 4;
+
+    return 0;
   };
 
   const getSelectOptions = () => {
-    if (currentStatusInDB === "ไม่อนุมัติเคลมสินค้า") {
-      return [
-        { value: "อนุมัติเคลมสินค้า", label: "อนุมัติเคลมสินค้า (เปลี่ยนกลับมาดำเนินรายการต่อ)" },
-        { value: "ไม่อนุมัติเคลมสินค้า", label: "ไม่อนุมัติเคลมสินค้า (คงเดิม)" },
-      ];
-    }
+    const currentName = getStatusName(data?.current_status);
 
-    if (currentStatusInDB === "ไม่มีสิทธิ์เคลม") {
+    if (currentName === "Rejected") {
       return [
-        { value: "มีสิทธิ์เคลม", label: "มีสิทธิ์เคลม (เปลี่ยนกลับมาดำเนินรายการต่อ)" },
-        { value: "ไม่มีสิทธิ์เคลม", label: "ไม่มีสิทธิ์เคลม (คงเดิม)" },
+        { value: "Approved", label: "Approved (อนุมัติย้อนกลับดำเนินรายการต่อ)" },
+        { value: "Rejected", label: "Rejected (คงเดิม)" },
       ];
     }
 
     const nextOptionsMap = {
-      "สร้างรายการเคลม": [
-        { value: "รอการพิจารณา", label: "ขั้นที่ 2: รอการพิจารณา" },
+      "Pending": [
+        { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
+        { value: "Rejected", label: "2. Rejected (ปฏิเสธ/ไม่อนุมัติเคลม)" },
       ],
-      "รอการพิจารณา": [
-        { value: "มีสิทธิ์เคลม", label: "ขั้นที่ 3: มีสิทธิ์เคลม" },
-        { value: "ไม่มีสิทธิ์เคลม", label: "ขั้นที่ 3: ไม่มีสิทธิ์เคลม (สิ้นสุด)" },
+      "Approved": [
+        { value: "Processing", label: "3. Processing (ดำเนินการเบิกเปลี่ยนสินค้า)" },
+        { value: "Rejected", label: "Rejected (ปฏิเสธ/ไม่อนุมัติเคลม)" },
       ],
-      "มีสิทธิ์เคลม": [
-        { value: "รับสินค้าจริงแล้ว", label: "ขั้นที่ 4: รับสินค้าจริงแล้ว" },
+      "Processing": [
+        { value: "Shipping", label: "4. Shipping (กำลังจัดส่งสินค้าเคลม)" },
       ],
-      "รับสินค้าจริงแล้ว": [
-        { value: "อนุมัติเคลมสินค้า", label: "ขั้นที่ 5: อนุมัติเคลมสินค้า" },
-        { value: "ไม่อนุมัติเคลมสินค้า", label: "ขั้นที่ 5: ไม่อนุมัติเคลมสินค้า (สิ้นสุด)" },
-      ],
-      "อนุมัติเคลมสินค้า": [
-        { value: "กำลังดำเนินการเปลี่ยนสินค้า", label: "ขั้นที่ 6: กำลังดำเนินการเปลี่ยนสินค้า" },
-      ],
-      "กำลังดำเนินการเปลี่ยนสินค้า": [
-        { value: "กำลังจัดส่งสินค้าเคลม", label: "ขั้นที่ 7: กำลังจัดส่งสินค้าเคลม" },
-      ],
-      "กำลังจัดส่งสินค้าเคลม": [
-        { value: "จัดส่งสินค้าเคลมสำเร็จ", label: "ขั้นที่ 8: จัดส่งสินค้าเคลมสำเร็จ" },
+      "Shipping": [
+        { value: "Delivered", label: "5. Delivered (จัดส่งสินค้าเคลมสำเร็จ)" },
       ],
     };
 
-    return nextOptionsMap[currentStatusInDB] || [];
+    return nextOptionsMap[currentName] || [
+      { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
+      { value: "Rejected", label: "2. Rejected (ปฏิเสธ/ไม่อนุมัติเคลม)" },
+    ];
   };
 
   const validateForm = () => {
@@ -803,185 +814,108 @@ const StaffClaimUpdate = () => {
   };
 
   const handleSaveStatus = async () => {
-      if (!validateForm()) return;
+    if (!validateForm()) return;
+    if (!currentUserId) {
+      message.error("ไม่พบรหัสผู้ใช้งาน กรุณาล็อกอินใหม่อีกครั้ง");
+      return;
+    }
 
-      if (!currentUserId) {
-        message.error("ไม่พบรหัสผู้ใช้งาน (User ID) กรุณาล็อกอินใหม่อีกครั้ง");
-        return;
+    setIsSubmitting(true);
+
+    try {
+      const { images, image, ...cleanData } = data;
+      const realClaimId = cleanData.claim_id || data.claim_id;
+      
+      // 🟢 1. รับชื่อสถานะภาษาอังกฤษ เช่น 'Approved', 'Processing'
+      const targetStatusName = formData.status; 
+      
+      // 🟢 2. แปลงชื่อสถานะเป็น ID ตัวเลข (Approved -> 6, Processing -> 8, Shipping -> 9, Delivered -> 10)
+      const statusId = Number(getStatusId(targetStatusName)); 
+
+      const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
+      const formattedEstDate = formatDatePayload(formData.estimatedDeliveryDate);
+      const nowFormattedStandard = dayjs().format("YYYY-MM-DD HH:mm:ss");
+
+      const isModalStatusRejected = targetStatusName === "Rejected";
+
+      const extraData = {
+        driverName: formData.driverName,
+        truckPlate: formData.truckPlate,
+        deliveryDriver: formData.deliveryDriver,
+        deliveryPlate: formData.deliveryPlate,
+        estimatedDeliveryDate: formattedEstDate
+      };
+
+      const fullRemark = `เปลี่ยนสถานะเป็น ${targetStatusName} | DATA:${JSON.stringify(extraData)}`;
+
+      const formattedClaimItems = claimItems.map((item) => ({
+        ...item,
+        claim_item_id: item.claim_item_id,
+        item_id: item.item_id,
+        qty: item.qty,
+        received_qty: item.received_qty !== undefined ? item.received_qty : item.qty,
+        returned_qty: item.returned_qty !== undefined ? item.returned_qty : item.qty,
+        approved_qty: item.approved_qty !== undefined ? item.approved_qty : item.qty,
+        item_remark: item.item_remark || item.remark || "",
+      }));
+
+      // 🟢 3. กำหนดค่า stamp เวลาตามสถานะการอัปเดต
+      const timestampUpdates = {};
+      if (targetStatusName === "Approved" && !cleanData.approve_date) {
+        timestampUpdates.approve_date = nowFormattedStandard;
+      } else if (targetStatusName === "Processing" && !cleanData.warehouse_receive_date) {
+        timestampUpdates.warehouse_receive_date = nowFormattedStandard;
+      } else if (targetStatusName === "Shipping" && !cleanData.delivery_date) {
+        timestampUpdates.delivery_date = nowFormattedStandard;
+      } else if (targetStatusName === "Delivered" && !cleanData.receive_finish_date) {
+        timestampUpdates.receive_finish_date = nowFormattedStandard;
       }
 
-      setIsSubmitting(true);
+      // 🟢 4. ส่ง status เป็น ID ตัวเลขลงตาราง claims ใน Database
+      const updatePayload = {
+        ...cleanData,
+        claim_id: realClaimId,
+        current_status: statusId, // ส่ง 6, 8, 9, 10
+        status: statusId,
+        status_name: targetStatusName,
+        reject_reason: isModalStatusRejected ? formData.rejectReason : "",
+        items: formattedClaimItems,
+        ...timestampUpdates,
+        update_by: currentUserId,
+      };
 
-      try {
-        const { images, image, ...cleanData } = data;
-        const realClaimId = cleanData.claim_id || data.claim_id;
-        const { status, rejectReason, driverName, truckPlate, claimNoInput, fullReceive, deliveryDriver, deliveryPlate, estimatedDeliveryDate } = formData;
+      const resUpdate = await claimService.updateClaim(updatePayload);
 
-        // 1. ย้าย Helper และแปลงวันที่ขึ้นมาไว้ด้านบนสุด
-        const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
-        const formattedEstDate = formatDatePayload(estimatedDeliveryDate);
-
-        // ✅ 2. ย้ายประกาศตัวแปร nowFormattedStandard ขึ้นมาตรงนี้ก่อนนำไปใช้
-        const nowFormattedStandard = dayjs().format("YYYY-MM-DD HH:mm:ss");
-
-        const statusId = getStatusId(status);
-        const actionsName = getActionNameByStatus(status);
-
-        const isProcessChangeStatus = status === "กำลังดำเนินการเปลี่ยนสินค้า";
-        const isReceiveStatus = status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว";
-        const isDeliveryStatus = status === "กำลังจัดส่งสินค้าเคลม";
-
-        const extraData = {
-          driverName,
-          truckPlate,
-          deliveryDriver,
-          deliveryPlate,
-          estimatedDeliveryDate: formattedEstDate
-        };
-
-        const isSteppingBack = (STATUS_PRIORITY[status] || 0) < (STATUS_PRIORITY[currentStatusInDB] || 0);
-        const mainRemarkText = isSteppingBack
-          ? `ถอยสถานะย้อนกลับเป็น ${status}`
-          : isModalStatusRejected
-          ? rejectReason
-          : `เปลี่ยนสถานะเป็น ${status}`;
-
-        let fullRemark = `${mainRemarkText} | DATA:${JSON.stringify(extraData)}`;
-
-        const formattedClaimItems = claimItems.map((item) => {
-          return {
-            ...item,
-            claim_item_id: item.claim_item_id,
-            item_id: item.item_id,
-            qty: item.qty,
-            received_qty: item.received_qty !== undefined ? item.received_qty : item.qty,
-            returned_qty: item.returned_qty !== undefined ? item.returned_qty : item.qty,
-            approved_qty: item.approved_qty !== undefined ? item.approved_qty : item.qty,
-            item_remark: item.item_remark || item.remark || "", 
-          };
-        });
-        // (ลบ const nowFormattedStandard เดิมที่อยู่ตรงนี้ออก)
-
-        const timestampUpdates = {};
-        if (isReceiveStatus) {
-          timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-          if (!cleanData.driver_receive_date) {
-            timestampUpdates.driver_receive_date = nowFormattedStandard;
-          }
-        } else if ((status === "อนุมัติเคลมสินค้า") && !cleanData.approve_date) {
-          timestampUpdates.approve_date = nowFormattedStandard;
-        } else if (status === "กำลังดำเนินการเปลี่ยนสินค้า" && !cleanData.warehouse_receive_date) {
-          timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-        } else if (isDeliveryStatus && !cleanData.delivery_date) {
-          timestampUpdates.delivery_date = nowFormattedStandard;
-        } else if (status === "จัดส่งสินค้าเคลมสำเร็จ" && !cleanData.receive_finish_date) {
-          timestampUpdates.receive_finish_date = nowFormattedStandard;
-        }
-
-        if (isReceiveStatus) {
-          timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-          if (!cleanData.driver_receive_date) {
-            timestampUpdates.driver_receive_date = nowFormattedStandard;
-          }
-        } else if ((status === "อนุมัติเคลมสินค้า") && !cleanData.approve_date) {
-          timestampUpdates.approve_date = nowFormattedStandard;
-        } else if (status === "กำลังดำเนินการเปลี่ยนสินค้า" && !cleanData.warehouse_receive_date) {
-          timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-        } else if (isDeliveryStatus && !cleanData.delivery_date) {
-          timestampUpdates.delivery_date = nowFormattedStandard;
-        } else if (status === "จัดส่งสินค้าเคลมสำเร็จ" && !cleanData.receive_finish_date) {
-          timestampUpdates.receive_finish_date = nowFormattedStandard;
-        }
-
-        // 🟢 3. อัปเดต payload ให้ใช้ค่าที่ถูกต้อง
-        const updatePayload = {
-          ...cleanData,
-          claim_id: realClaimId,
-          actionsname: actionsName,
-          claim_date: cleanData.claim_date ? dayjs(cleanData.claim_date).format("YYYY-MM-DD") : null,
-          mfg_date: cleanData.mfg_date ? dayjs(cleanData.mfg_date).format("YYYY-MM-DD") : null,
-          exp_date: cleanData.exp_date || cleanData.expire_date ? dayjs(cleanData.exp_date || cleanData.expire_date).format("YYYY-MM-DD") : null,
-
-          current_status: statusId,
+      if (resUpdate?.status) {
+        // 🟢 5. บันทึกประวัติลง claim_status_logs เพื่อเอาเวลาที่ stamp ไปแสดงผลใน Timeline
+        await claimService.createClaimStatusLogs({
+          claim_id: String(realClaimId),
           status: statusId,
-          status_name: status,
-
-          reject_reason: isModalStatusRejected ? rejectReason : "",
-          driver_name: isReceiveStatus || cleanData.driver_name ? driverName : "",
-          truck_plate: isReceiveStatus || cleanData.truck_plate ? truckPlate : "",
-          claim_no: isReceiveStatus || cleanData.claim_no ? claimNoInput : cleanData.claim_no,
-          full_receive: isReceiveStatus || cleanData.full_receive ? fullReceive : "",
-          delivery_driver: isDeliveryStatus || cleanData.delivery_driver ? deliveryDriver : "",
-          delivery_plate: isDeliveryStatus || cleanData.delivery_plate ? deliveryPlate : "",
-          estimated_delivery_date: isDeliveryStatus ? formattedEstDate : (cleanData.estimated_delivery_date || ""),
-          items: formattedClaimItems,
-          ...timestampUpdates,
+          remark: fullRemark,
           update_by: currentUserId,
-        };
+          user_id: currentUserId,
+        });
 
-        const resUpdate = await claimService.updateClaim(updatePayload);
-
-        if (resUpdate?.status) {
-          if (isReceiveStatus || isDeliveryStatus) {
-            try {
-              const rawId = realClaimId;
-              const numericClaimId = typeof rawId === "number" ? rawId : parseInt(rawId, 10);
-              const numericDriverId = parseInt(currentUserId, 10);
-              const validDriverId = !isNaN(numericDriverId) && numericDriverId > 0 ? numericDriverId : null;
-
-              if (!isNaN(numericClaimId) && numericClaimId > 0) {
-                const deliveryPayload = {
-                  claim_id: numericClaimId,
-                  driver_id: validDriverId,
-                  delivery_status: isReceiveStatus ? "1" : "2",
-                  driver_name: isReceiveStatus ? driverName : deliveryDriver,
-                  truck_plate: isReceiveStatus ? truckPlate : deliveryPlate,
-                  estimated_delivery_date: isDeliveryStatus ? formattedEstDate : null,
-                  claim_no: claimNoInput || cleanData.claim_no || "",
-                  receive_date: new Date().toISOString(),
-                };
-
-                await deliveryService.createDelivery(deliveryPayload);
-              }
-            } catch (delErr) {
-              console.error("Error จาก Backend createDelivery:", delErr?.response?.data || delErr.message);
-            }
-          }
-
-          await claimService.createClaimStatusLogs({
+        if (targetStatusName === "Approved" || targetStatusName === "Rejected") {
+          await claimService.createClaimapproves({
             claim_id: String(realClaimId),
-            status: String(statusId),
-            remark: fullRemark,
-            update_by: currentUserId,
-            user_id: currentUserId,
+            approve_by: String(currentUserId),
+            approve_status: targetStatusName === "Approved" ? "true" : "false",
+            approve_remark: isModalStatusRejected ? formData.rejectReason : `ดำเนินการสถานะ: ${targetStatusName}`,
           });
-
-          let approveStatusValue = null;
-          if (status === "อนุมัติเคลมสินค้า") {
-            approveStatusValue = true;
-          } else if (status === "ไม่อนุมัติเคลมสินค้า" || status === "ไม่มีสิทธิ์เคลม") {
-            approveStatusValue = false;
-          }
-
-          if (approveStatusValue !== null) {
-            await claimService.createClaimapproves({
-              claim_id: String(realClaimId),
-              approve_by: String(currentUserId),
-              approve_status: approveStatusValue,
-              approve_remark: isModalStatusRejected ? rejectReason : `ดำเนินการสถานะ: ${status}`,
-            }); 
-          }
-
-          message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
-          
-          setIsModalOpen(false);
-          await fetchClaimDetail();
         }
-      } catch (error) {
-        message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
-      } finally {
-        setIsSubmitting(false);
+
+        message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
+        setIsModalOpen(false);
+
+        // 🟢 6. ดึงข้อมูลใหม่เพื่อ Re-render UI ทันที
+        await fetchClaimDetail(); 
       }
+    } catch (error) {
+      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderDotIcon = (IconComponent) => (
@@ -996,10 +930,13 @@ const StaffClaimUpdate = () => {
 
     if (isRejectedInDB) {
       return [
-        { title: "สร้างรายการ", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
-        { title: "รอการพิจารณา", description: getLogDate(5), icon: renderDotIcon(FileSearchOutlined) },
+        { 
+          title: "1. Pending", 
+          description: getLogDate(5) !== "-" ? getLogDate(5) : getLogDate(1), 
+          icon: renderDotIcon(CheckCircleOutlined) 
+        },
         {
-          title: CLAIM_STATUS_MAP[currentStatusId]?.staffName || "ปฏิเสธการเคลม",
+          title: CLAIM_STATUS_MAP[currentStatusId]?.staffName || "Rejected",
           description: (
             <div className="text-xs">
               <div>{getLogDate(currentStatusId)}</div>
@@ -1012,14 +949,31 @@ const StaffClaimUpdate = () => {
     }
 
     return [
-      { title: "สร้างรายการ", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
-      { title: "รอการพิจารณา", description: getLogDate(5), icon: renderDotIcon(FileSearchOutlined) },
-      { title: "มีสิทธิ์เคลม", description: getLogDate(2), icon: renderDotIcon(CheckCircleOutlined) },
-      { title: "รับสินค้าแล้ว", description: getLogDate(4), icon: renderDotIcon(InboxOutlined) },
-      { title: "อนุมัติเคลม", description: getLogDate(6), icon: renderDotIcon(CheckCircleOutlined) },
-      { title: "กำลังเปลี่ยนสินค้า", description: getLogDate(8), icon: renderDotIcon(FileSearchOutlined) },
-      { title: "กำลังจัดส่ง", description: getLogDate(9), icon: renderDotIcon(CarOutlined) },
-      { title: "จัดส่งสำเร็จ", description: getLogDate(10), icon: renderDotIcon(SmileOutlined) },
+      { 
+        title: "1. Pending", 
+        description: getLogDate(5) !== "-" ? getLogDate(5) : getLogDate(1), 
+        icon: renderDotIcon(CheckCircleOutlined) 
+      },
+      { 
+        title: "2. Approved", 
+        description: getLogDate(6) !== "-" ? getLogDate(6) : (getLogDate(2) !== "-" ? getLogDate(2) : getLogDate(4)), 
+        icon: renderDotIcon(CheckCircleOutlined) 
+      },
+      { 
+        title: "3. Processing", 
+        description: getLogDate(8), 
+        icon: renderDotIcon(FileSearchOutlined) 
+      },
+      { 
+        title: "4. Shipping", 
+        description: getLogDate(9), 
+        icon: renderDotIcon(CarOutlined) 
+      },
+      { 
+        title: "5. Delivered", 
+        description: getLogDate(10), 
+        icon: renderDotIcon(SmileOutlined) 
+      },
     ];
   };
 
@@ -1167,7 +1121,7 @@ const StaffClaimUpdate = () => {
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto justify-start md:justify-end">
             <div className="shrink-0">
-              <ClaimStatusTag status={data.current_status || data.status} />
+              <ClaimStatusTag status={currentStatusInDB} />
             </div>
 
             {STATUS_PRIORITY[currentStatusInDB] >= 4 && (
@@ -1291,25 +1245,19 @@ const StaffClaimUpdate = () => {
         </div>
       </Card>
 
-      <Card
-        title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
-        className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden"
-        bodyStyle={{ padding: "20px 12px", overflow: "hidden" }}
-      >
+      <Card title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px 12px" }}>
         <ConfigProvider
           theme={{
-            token: {
+            token: { 
               colorPrimary: isRejectedInDB ? "#ef4444" : "#059669",
-              fontWeightStrong: 400,
             },
-            components: {
-              Steps: {
-                lineWidth: 1.5,
-                iconSize: 20,
-                customIconSize: 20,
-                titleFontSize: 11,
-                descriptionFontSize: 8,
-              },
+            components: { 
+              Steps: { 
+                lineWidth: 1.5, 
+                iconSize: 20, 
+                titleFontSize: 11, 
+                descriptionFontSize: 8 
+              } 
             },
           }}
         >
@@ -1318,7 +1266,22 @@ const StaffClaimUpdate = () => {
               responsive={true}
               current={getCurrentStep()}
               status={isRejectedInDB ? "error" : "process"}
-              items={getStepItems()}
+              items={getStepItems().map((item, idx) => {
+                const currentIdx = getCurrentStep();
+                let itemStatus = "wait";
+                
+                if (isRejectedInDB) {
+                  if (idx < currentIdx) itemStatus = "finish";
+                  else if (idx === currentIdx) itemStatus = "error";
+                } else {
+                  if (idx <= currentIdx) itemStatus = "finish"; // 🟢 บังคับให้จุดปัจจุบันและจุดก่อนหน้าสว่างเป็นสีเขียวทั้งหมด
+                }
+
+                return {
+                  ...item,
+                  status: itemStatus,
+                };
+              })}
             />
           </div>
         </ConfigProvider>

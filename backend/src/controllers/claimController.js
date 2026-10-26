@@ -1182,6 +1182,85 @@ exports.updateclaim = async (req, res) => {
   }
 };
 
+/*=================== */
+//For updateClaimStatus 
+//by Koka 26/10/69
+/*=================== */
+exports.updateClaimStatus = async (req, res) => {
+  const pool = await connectDB();
+  const transaction = new sql.Transaction(pool);
+
+  try {
+    const { claim_id, status, remark, update_by } = req.body;
+
+    const claimId = Number(claim_id);
+    const statusId = Number(status);
+
+    if (!Number.isInteger(claimId) || !Number.isInteger(statusId)) {
+      return res.status(400).json({
+        status: false,
+        message: "claim_id หรือ status ไม่ถูกต้อง"
+      });
+    }
+
+    await transaction.begin();
+
+    // 🟢 1. UPDATE ค่า current_status ในตาราง claims โดยตรง
+    const updateClaimReq = new sql.Request(transaction);
+    await updateClaimReq
+      .input("claim_id", sql.Int, claimId)
+      .input("current_status", sql.NVarChar(50), String(statusId))
+      .query(`
+        UPDATE [EasyClaim_Dev].[dbo].[claims]
+        SET current_status = @current_status,
+            updated_at = GETDATE()
+        WHERE claim_id = @claim_id;
+      `);
+
+    // 🟢 2. บันทึกประวัติการเปลี่ยนสถานะลงตาราง claim_status_logs
+    const logReq = new sql.Request(transaction);
+    await logReq
+      .input("claim_id", sql.Int, claimId)
+      .input("status", sql.Int, statusId)
+      .input("remark", sql.NVarChar(500), remark || `เปลี่ยนสถานะเป็น ${statusId}`)
+      .input("update_by", sql.Int, update_by ? Number(update_by) : null)
+      .query(`
+        INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
+        (claim_id, status, remark, update_by, update_date)
+        VALUES (@claim_id, @status, @remark, @update_by, GETDATE());
+      `);
+
+    await transaction.commit();
+
+    // 🟢 3. ยิง Socket แจ้งเตือน Realtime ไปยังผู้ใช้
+    try {
+      getIO().to(`claim:${claimId}`).emit("claim:status_updated", {
+        claim_id: claimId,
+        status: statusId,
+        update_by,
+        update_date: new Date()
+      });
+    } catch (socketErr) {
+      console.error("Socket emit error:", socketErr.message);
+    }
+
+    return res.json({
+      status: true,
+      message: "อัปเดตสถานะในตาราง claims เรียบร้อยแล้ว",
+      claim_id: claimId,
+      current_status: statusId
+    });
+
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rbErr) {
+      console.error("Rollback error:", rbErr);
+    }
+    return res.status(500).json({ status: false, message: error.message });
+  }
+};
+
 exports.updateClaimDate = async (req, res) => {
   try {
     const { claim_id, columnname } = req.body;

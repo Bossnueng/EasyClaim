@@ -118,6 +118,15 @@ export const claimService = {
     }
   },
 
+  updateClaimStatus: async (payload) => {
+    try {
+      const response = await api.post("/updateClaimStatus", payload);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
   updateClaim: async (claimData) => {
     try {
       const response = await api.post("/updateClaim", claimData);

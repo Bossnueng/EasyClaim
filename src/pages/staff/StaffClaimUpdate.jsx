@@ -826,17 +826,13 @@ const StaffClaimUpdate = () => {
       const { images, image, ...cleanData } = data;
       const realClaimId = cleanData.claim_id || data.claim_id;
       
-      // 🟢 1. รับชื่อสถานะภาษาอังกฤษ เช่น 'Approved', 'Processing'
       const targetStatusName = formData.status; 
-      
-      // 🟢 2. แปลงชื่อสถานะเป็น ID ตัวเลข (Approved -> 6, Processing -> 8, Shipping -> 9, Delivered -> 10)
       const statusId = Number(getStatusId(targetStatusName)); 
 
       const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
       const formattedEstDate = formatDatePayload(formData.estimatedDeliveryDate);
-      const nowFormattedStandard = dayjs().format("YYYY-MM-DD HH:mm:ss");
 
-      const isModalStatusRejected = targetStatusName === "Rejected";
+      const isModalStatusRejected = targetStatusName === "Rejected" || targetStatusName === "ไม่อนุมัติเคลมสินค้า" || targetStatusName === "ไม่มีสิทธิ์เคลม";
 
       const extraData = {
         driverName: formData.driverName,
@@ -848,6 +844,53 @@ const StaffClaimUpdate = () => {
 
       const fullRemark = `เปลี่ยนสถานะเป็น ${targetStatusName} | DATA:${JSON.stringify(extraData)}`;
 
+      // 🟢 1. ยิงเรียก API ใหม่ updateClaimStatus เพื่อ UPDATE current_status ในตาราง claims และเพิ่ม Log ทันที
+      await claimService.updateClaimStatus({
+        claim_id: realClaimId,
+        status: statusId,
+        remark: fullRemark,
+        update_by: currentUserId,
+      });
+
+      // 🟢 2. เรียก API updateClaimDate เพื่ออัปเดต Timestamp วันที่ในตาราง claims ให้สอดคล้องกัน
+      let columnName = null;
+      if (targetStatusName === "Approved" || targetStatusName === "อนุมัติเคลมสินค้า" || targetStatusName === "มีสิทธิ์เคลม") {
+        columnName = "approve_date";
+      } else if (targetStatusName === "Processing" || targetStatusName === "กำลังดำเนินการเปลี่ยนสินค้า") {
+        columnName = "warehouse_receive_date";
+      } else if (targetStatusName === "Shipping" || targetStatusName === "กำลังจัดส่งสินค้าเคลม") {
+        columnName = "delivery_date";
+      } else if (targetStatusName === "Delivered" || targetStatusName === "จัดส่งสินค้าเคลมสำเร็จ") {
+        columnName = "receive_finish_date";
+      }
+
+      if (columnName) {
+        try {
+          await claimService.updateClaimDate({
+            claim_id: realClaimId,
+            columnname: columnName
+          });
+        } catch (dateErr) {
+          console.warn("อัปเดตวันที่สำเร็จบางส่วน:", dateErr);
+        }
+      }
+
+      // 🟢 3. ถ้าเป็นสถานะอนุมัติ/ไม่อนุมัติ ให้บันทึกประวัติลง claim_approves
+      if (
+        targetStatusName === "Approved" || 
+        targetStatusName === "Rejected" || 
+        targetStatusName === "อนุมัติเคลมสินค้า" || 
+        targetStatusName === "ไม่อนุมัติเคลมสินค้า"
+      ) {
+        await claimService.createClaimapproves({
+          claim_id: String(realClaimId),
+          approve_by: String(currentUserId),
+          approve_status: (targetStatusName === "Approved" || targetStatusName === "อนุมัติเคลมสินค้า") ? "true" : "false",
+          approve_remark: isModalStatusRejected ? formData.rejectReason : `ดำเนินการสถานะ: ${targetStatusName}`,
+        });
+      }
+
+      // 🟢 4. อัปเดตรายการสินค้า (qty, remark ฯลฯ)
       const formattedClaimItems = claimItems.map((item) => ({
         ...item,
         claim_item_id: item.claim_item_id,
@@ -859,58 +902,19 @@ const StaffClaimUpdate = () => {
         item_remark: item.item_remark || item.remark || "",
       }));
 
-      // 🟢 3. กำหนดค่า stamp เวลาตามสถานะการอัปเดต
-      const timestampUpdates = {};
-      if (targetStatusName === "Approved" && !cleanData.approve_date) {
-        timestampUpdates.approve_date = nowFormattedStandard;
-      } else if (targetStatusName === "Processing" && !cleanData.warehouse_receive_date) {
-        timestampUpdates.warehouse_receive_date = nowFormattedStandard;
-      } else if (targetStatusName === "Shipping" && !cleanData.delivery_date) {
-        timestampUpdates.delivery_date = nowFormattedStandard;
-      } else if (targetStatusName === "Delivered" && !cleanData.receive_finish_date) {
-        timestampUpdates.receive_finish_date = nowFormattedStandard;
-      }
-
-      // 🟢 4. ส่ง status เป็น ID ตัวเลขลงตาราง claims ใน Database
-      const updatePayload = {
+      await claimService.updateClaim({
         ...cleanData,
         claim_id: realClaimId,
-        current_status: statusId, // ส่ง 6, 8, 9, 10
-        status: statusId,
-        status_name: targetStatusName,
-        reject_reason: isModalStatusRejected ? formData.rejectReason : "",
         items: formattedClaimItems,
-        ...timestampUpdates,
         update_by: currentUserId,
-      };
+      });
 
-      const resUpdate = await claimService.updateClaim(updatePayload);
+      message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
+      setIsModalOpen(false);
 
-      if (resUpdate?.status) {
-        // 🟢 5. บันทึกประวัติลง claim_status_logs เพื่อเอาเวลาที่ stamp ไปแสดงผลใน Timeline
-        await claimService.createClaimStatusLogs({
-          claim_id: String(realClaimId),
-          status: statusId,
-          remark: fullRemark,
-          update_by: currentUserId,
-          user_id: currentUserId,
-        });
+      // 🟢 5. โหลดข้อมูลใหม่ทั้งหมดมาแสดงผลทันที
+      await fetchClaimDetail();
 
-        if (targetStatusName === "Approved" || targetStatusName === "Rejected") {
-          await claimService.createClaimapproves({
-            claim_id: String(realClaimId),
-            approve_by: String(currentUserId),
-            approve_status: targetStatusName === "Approved" ? "true" : "false",
-            approve_remark: isModalStatusRejected ? formData.rejectReason : `ดำเนินการสถานะ: ${targetStatusName}`,
-          });
-        }
-
-        message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
-        setIsModalOpen(false);
-
-        // 🟢 6. ดึงข้อมูลใหม่เพื่อ Re-render UI ทันที
-        await fetchClaimDetail(); 
-      }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
     } finally {

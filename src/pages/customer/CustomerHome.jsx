@@ -230,8 +230,7 @@ const CustomerHome = () => {
             </div>
           </div>
         </div>
-           */
-        }
+         
         
 
         {/* รายการเคลมล่าสุด */}

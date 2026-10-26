@@ -44,6 +44,10 @@ const StaffClaimList = () => {
   const [claimLogsMap, setClaimLogsMap] = useState({});
   const [agentsRawList, setAgentsRawList] = useState([]);
 
+  // 🟢 ประกาศไว้ด้านบนสุดเพื่อให้ JSX และทุกฟังก์ชันเรียกใช้ได้โดยไม่ติด Error
+  const currentUser = loginService.getCurrentUser();
+  const userRoleId = Number(currentUser?.role_id);
+
   useEffect(() => {
     fetchClaimsAndItems();
   }, []);
@@ -62,14 +66,11 @@ const StaffClaimList = () => {
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       if (Array.isArray(agentsData)) {
-        setAgentsRawList(agentsData); // เก็บข้อมูล Array ดั้งเดิมเอาไว้ใช้ Map รหัส
-        
+        setAgentsRawList(agentsData);
         agentsData.forEach((agent) => {
           const aId = String(agent.agent_id || agent.id || "");
           const aCode = String(agent.agent_code || agent.code || "");
           const name = agent.agent_name || agent.name;
-          
-          // เก็บชื่อ และ Object ข้อมูล Agent
           if (aId) aMap[aId] = name;
           if (aCode) aMap[aCode] = name;
         });
@@ -102,24 +103,45 @@ const StaffClaimList = () => {
 
       const rawClaims = resClaim && resClaim.status ? resClaim.data : [];
 
-      // 2. ดึงข้อมูล User ปัจจุบัน
-      const currentUser = loginService.getCurrentUser();
-      const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
-      const userRoleId = Number(currentUser?.role_id);
+      // 🟢 รวบรวมสิทธิ์ Agent ทั้ง ID และ Code
+      let userAgentIdentifiers = [];
 
-      // 3. กรองเฉพาะเคลมที่ agent_id ตรงกับ agent_ids ของ user (ยกเว้น Admin role_id === 1)
-      const allowedClaims = (userRoleId === 1 || userAgentIds.length === 0 && userRoleId === 1)
-        ? rawClaims
-        : rawClaims.filter((claim) => userAgentIds.includes(String(claim.agent_id || "")));
+      if (Array.isArray(currentUser?.agent_ids)) {
+        currentUser.agent_ids.forEach((id) => {
+          userAgentIdentifiers.push(String(id));
+        });
+      } else if (currentUser?.agent_id) {
+        userAgentIdentifiers.push(String(currentUser.agent_id));
+      }
 
-      // ดึงรายละเอียด Item แต่ละรายการเพิ่ม เพื่อให้ Card แสดงผลได้ครบ
+      // ค้นหา agent_code ที่เกี่ยวข้องเพิ่มจาก agentsData
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      // 🟢 กรองรายการเคลม
+      const allowedClaims = (userAgentIdentifiers.length > 0)
+        ? rawClaims.filter((claim) => {
+            const claimAgentIdStr = String(claim.agent_id || "");
+            const claimAgentCodeStr = String(claim.agent_code || "");
+            return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
+          })
+        : rawClaims;
+
+      // ดึงรายละเอียด Item แต่ละรายการเพิ่ม
       const claimsWithItems = await Promise.all(
         allowedClaims.map(async (claim) => {
           try {
             const itemRes = await claimService.getClaimItems(claim.claim_id);
             const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
             const itemDetails = rawItems[0] || {};
-            
             const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
 
             return {
@@ -466,9 +488,6 @@ const StaffClaimList = () => {
 
     message.success("ดาวน์โหลด Export Log เรียบร้อยแล้ว");
   };
-
-  const currentUser = loginService.getCurrentUser();
-  const userRoleId = Number(currentUser?.role_id);
 
   const tabCounts = claims.reduce((acc, claim) => {
     const rawStatus = claim.current_status || claim.status;

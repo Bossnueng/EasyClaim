@@ -1,4 +1,10 @@
-// src/constants/claimStatus.js
+/**
+รอพิจารณา ->  Pending 
+อนุมัติ / ไม่อนุมัติ -> Approved / Rejected 
+กำลังดำเนินการเปลี่ยนสินค้า -> Processing
+กำลังจัดส่งสินค้าเคลม -> Shipping 
+จัดส่งสินค้าเคลมสำเร็จ -> Delivered
+ */
 
 export const CLAIM_STATUS_MAP = {
   "1": { priority: 1, name: "สร้างรายการเคลม", staffName: "รายการเคลมใหม่", customerName: "สร้างรายการเคลมใหม่", color: "default" },

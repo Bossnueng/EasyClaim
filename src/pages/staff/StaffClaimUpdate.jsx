@@ -292,12 +292,36 @@ const StaffClaimUpdate = () => {
         });
 
         if (currentClaim) {
-          // เช็คสิทธิ์ agent_id
-          const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
-          const claimAgentId = String(currentClaim.agent_id || "");
+          let userAgentIdentifiers = [];
 
-          // ถ้าไม่ใช่ Admin และ agent_id ของรายการนี้ ไม่อยู่ใน agent_ids ของ user
-          if (userRoleId !== 1 && !userAgentIds.includes(claimAgentId)) {
+          if (Array.isArray(currentUser?.agent_ids)) {
+            currentUser.agent_ids.forEach((id) => {
+              userAgentIdentifiers.push(String(id));
+            });
+          } else if (currentUser?.agent_id) {
+            userAgentIdentifiers.push(String(currentUser.agent_id));
+          }
+
+          // ค้นหา agent_code ที่คู่กันจาก agentsData มาใส่เพิ่ม
+          if (Array.isArray(agentsData)) {
+            agentsData.forEach((agent) => {
+              const aId = String(agent.agent_id || agent.id || "");
+              const aCode = String(agent.agent_code || agent.code || "");
+              
+              if (userAgentIdentifiers.includes(aId) && aCode) {
+                userAgentIdentifiers.push(aCode);
+              }
+            });
+          } 
+          const claimAgentId = String(currentClaim.agent_id || "");
+          const claimAgentCode = String(currentClaim.agent_code || "");
+
+          if (
+            userRoleId !== 1 &&
+            userAgentIdentifiers.length > 0 &&
+            !userAgentIdentifiers.includes(claimAgentId) &&
+            !userAgentIdentifiers.includes(claimAgentCode)
+          ) {
             message.error("คุณไม่มีสิทธิ์เข้าถึงรายการเคลมนี้");
             navigate("/staff/list-claim");
             return;

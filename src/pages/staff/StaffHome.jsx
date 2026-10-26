@@ -15,7 +15,10 @@ import { getAgentNameByUserId } from "../../utils/agentHelper";
 
 const StaffHome = () => {
   const navigate = useNavigate();
-  const user = loginService.getCurrentUser();
+  const currentUser = loginService.getCurrentUser();
+  const userRoleId = Number(currentUser?.role_id);
+  
+
   const [allClaims, setAllClaims] = useState([]);
   const [latestClaims, setLatestClaims] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -53,6 +56,8 @@ const StaffHome = () => {
     setLoading(true);
 
     try {
+      let userAgentIdentifiers = [];
+      
       const [resClaim, resItems, resAgents, resUsers] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
@@ -94,38 +99,58 @@ const StaffHome = () => {
         ? resClaim
         : resClaim?.data || [];
 
-        // 1. ดึงข้อมูล user และก๊อปปี้กรอง agent_id
-        const currentUser = loginService.getCurrentUser();
-        const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
-        const userRoleId = Number(currentUser?.role_id);
+      if (Array.isArray(currentUser?.agent_ids)) {
+        currentUser.agent_ids.forEach((id) => {
+          userAgentIdentifiers.push(String(id));
+        });
+      } else if (currentUser?.agent_id) {
+        userAgentIdentifiers.push(String(currentUser.agent_id));
+      }
 
-        const allowedClaims = (userRoleId === 1)
-          ? claimData
-          : claimData.filter((claim) => userAgentIds.includes(String(claim.agent_id || "")));
-
-      const claimWithDetails = await Promise.all(
-        allowedClaims.map(async (claim) => {
-          try {
-            const itemRes = await claimService.getClaimItems(claim.claim_id);
-            const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
-            const itemDetails = rawItems[0] || {};
-
-            const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-
-            return {
-              ...claim,
-              items: rawItems,
-              item_id: itemDetails.item_id || claim.item_id,
-              qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
-              qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
-              lot_no: itemDetails.lot_no || claim.lot_no || "-",
-              remark: itemDetails.remark || claim.remark || "",
-            };
-          } catch {
-            return claim;
+      // 3. ค้นหา agent_code ที่คู่กันจาก agentsData มาใส่เพิ่ม
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
           }
-        })
-      );
+        });
+      }
+
+      const allowedClaims = (userRoleId === 1 || userAgentIdentifiers.length === 0)
+        ? claimData
+        : claimData.filter((claim) => {
+            const claimAgentIdStr = String(claim.agent_id || "");
+            const claimAgentCodeStr = String(claim.agent_code || "");
+            return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
+          });
+
+
+        const claimWithDetails = await Promise.all(
+          allowedClaims.map(async (claim) => {
+            try {
+              const itemRes = await claimService.getClaimItems(claim.claim_id);
+              const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
+              const itemDetails = rawItems[0] || {};
+
+              const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+
+              return {
+                ...claim,
+                items: rawItems,
+                item_id: itemDetails.item_id || claim.item_id,
+                qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
+                qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
+                lot_no: itemDetails.lot_no || claim.lot_no || "-",
+                remark: itemDetails.remark || claim.remark || "",
+              };
+            } catch {
+              return claim;
+            }
+          })
+        );
 
       setAllClaims(claimWithDetails);
 
@@ -177,7 +202,7 @@ const StaffHome = () => {
       >
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, คุณ{user?.full_name || user?.name || "-"}
+            สวัสดี, คุณ{currentUser?.full_name || currentUser?.name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่

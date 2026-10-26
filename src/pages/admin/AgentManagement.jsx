@@ -177,38 +177,56 @@ export default function AgentManagement() {
       key: "action",
       align: "center",
       width: 180,
-      render: (_, record) => (
-        <Space size="small">
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined style={{ color: "#faad14" }} />}
-            onClick={() => handleOpenModal(record)}
-            style={{ paddingLeft: 12, paddingRight: 12 }}
-          >
-            แก้ไข
-          </Button>
+      render: (_, record) => {
+        const isInactive = Number(record.status) === 0;
 
-          <Popconfirm
-            title={Number(record.status) === 1 ? "ปิดการใช้งาน Agent" : "เปิดการใช้งาน Agent"}
-            description={`คุณแน่ใจหรือไม่ที่จะ${Number(record.status) === 1 ? "ปิด" : "เปิด"}ใช้งาน "${record.agent_name}" ?`}
-            onConfirm={() => handleToggleStatus(record)}
-            okText="ยืนยัน"
-            cancelText="ยกเลิก"
-            okButtonProps={{ style: { paddingLeft: 16, paddingRight: 16 } }}
-            cancelButtonProps={{ style: { paddingLeft: 16, paddingRight: 16 } }}
-          >
+        return (
+          <Space size="small">
             <Button
               type="text"
-              danger={Number(record.status) === 1}
               size="small"
+              icon={<EditOutlined style={{ color: "#faad14" }} />}
+              onClick={() => handleOpenModal(record)}
               style={{ paddingLeft: 12, paddingRight: 12 }}
             >
-              {Number(record.status) === 1 ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+              <span style={{ fontSize: 12 }}>แก้ไข</span>
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+
+            <Popconfirm
+              title={Number(record.status) === 1 ? "ปิดการใช้งาน Agent" : "เปิดการใช้งาน Agent"}
+              description={`คุณแน่ใจหรือไม่ที่จะ${Number(record.status) === 1 ? "ปิด" : "เปิด"}ใช้งาน "${record.agent_name}" ?`}
+              onConfirm={() => handleToggleStatus(record)}
+              okText="ยืนยัน"
+              cancelText="ยกเลิก"
+              okButtonProps={{ danger: true, style: { paddingLeft: 20, paddingRight: 20 } }}
+              cancelButtonProps={{ style: { paddingLeft: 20, paddingRight: 20 } }}
+            >
+              {Number(record.status) === 1 ? (
+                /* 🟢 ใช้สไตล์ปุ่มทรงกล่อง Ghost Danger + Padding เดียวกับ UserManagement */
+                <Button
+                  type="primary"
+                  danger
+                  ghost
+                  size="small"
+                  style={{ fontSize: 11, paddingLeft: 16, paddingRight: 16 }}
+                  icon={<StopOutlined />}
+                >
+                  <span style={{ paddingLeft: 4 }}>ปิดใช้งาน</span>
+                </Button>
+              ) : (
+                <Button
+                  type="default"
+                  size="small"
+                  style={{ fontSize: 11, paddingLeft: 16, paddingRight: 16, color: "#52c41a", borderColor: "#52c41a" }}
+                  icon={<CheckCircleOutlined />}
+                >
+                  <span style={{ paddingLeft: 4 }}>เปิดใช้งาน</span>
+                </Button>
+              )}
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -268,7 +286,11 @@ export default function AgentManagement() {
             dataSource={filteredData}
             rowKey="agent_id"
             loading={loading}
-            pagination={{ pageSize: 10, showSizeChanger: true }}
+            pagination={{ pageSize: 10, showSizeChanger: true, 
+              locale: {
+                items_per_page: " แถว",
+              }, 
+            }}
             scroll={{ x: true }}
           />
         </Card>

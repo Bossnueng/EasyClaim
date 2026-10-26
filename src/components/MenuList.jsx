@@ -28,10 +28,6 @@ const MenuList = () => {
       return "customer-setting";
     }
     
-    if (location.pathname.includes("/customer/new-claim")) {
-      return "customer-create-claim";
-    }
-    
 
     if (location.pathname.includes("/customer/list-claim")) {
       return "customer-list-claim";
@@ -59,6 +55,10 @@ const MenuList = () => {
 
     if (location.pathname.includes("/staff/setting")) {
       return "staff-setting";
+    }
+    
+    if (location.pathname.includes("/staff/new-claim")) {
+      return "staff-create-claim";
     }
 
     if (location.pathname.includes("/staff/list-claim")) {
@@ -97,9 +97,14 @@ const MenuList = () => {
           {/* 🟢 4. แสดงเมนูนี้เฉพาะผู้ที่มี role_id === 1 เท่านั้น */}
           {isAdminRole && (
             <>
+              <Menu.Item key="staff-create-claim" icon={<FileAddOutlined />}>
+                <NavLink to="/staff/new-claim">สร้างรายการเคลม</NavLink>
+              </Menu.Item>
+
               <Menu.Item key="staff-users" icon={<UserOutlined />}>
                 <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
               </Menu.Item>
+
               <Menu.Item key="staff-agents" icon={<ShopOutlined />}>
                 <NavLink to="/staff/agents">จัดการ Agent</NavLink>
               </Menu.Item>
@@ -123,12 +128,18 @@ const MenuList = () => {
             <NavLink to="/customer">หน้าแรก</NavLink>
           </Menu.Item>
           {/**
+<<<<<<< Updated upstream
            * 
            <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
             <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
           </Menu.Item>
            * 
            * 
+=======
+           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
+            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
+          </Menu.Item>
+>>>>>>> Stashed changes
            */}
           
           <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>

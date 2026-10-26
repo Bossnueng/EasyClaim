@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
-import { RightOutlined, CheckCircleOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined } from "@ant-design/icons";
+import { RightOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
@@ -20,26 +20,28 @@ const CustomerHome = () => {
 
   // ดึงข้อมูล User ผ่าน loginService
   const user = loginService.getCurrentUser();
+  const role = user?.role || user?.user_type;
 
   useEffect(() => {
     fetchClaimsAndItems();
   }, []);
 
-  const fetchClaimsAndItems = async () => {
-    const role = user?.role || user?.user_type;
 
-    // 🟢 1. ถ้าผู้ใช้เป็น Staff/Admin ให้ส่งไปหน้า /staff ทันที
+  const fetchClaimsAndItems = async () => {
     if (role === "staff" || role === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
 
-    // 🟢 2. ถ้าเป็น Customer แต่ไม่มี agent_id ให้ล้าง Session และไปหน้า /login
-    const agentId = user?.agent_id || (Array.isArray(user?.agent_ids) && user.agent_ids.length > 0 ? user.agent_ids[0] : null);
+    // 🟢 2. หา agentId อย่างถูกต้อง (รองรับทั้ง agent_id และ agent_ids)
+    let agentId = user?.agent_id;
+    if (!agentId && Array.isArray(user?.agent_ids) && user.agent_ids.length > 0) {
+      agentId = user.agent_ids[0];
+    }
 
     if (!agentId) {
-      loginService.logout();
-      navigate("/login", { replace: true });
+      message.warning("บัญชีผู้ใช้งานนี้ยังไม่ได้ผูกกับตัวแทนจำหน่าย (Agent)");
+      setLoading(false);
       return;
     }
 
@@ -59,21 +61,24 @@ const CustomerHome = () => {
         setItemsMap(map);
       }
 
-      if (resClaim.status && Array.isArray(resClaim.data)) {
-        // 🟢 3. ดึง claim_items เพิ่มเติมเพื่อนำข้อมูล item_id, qty, remark มารวมกับแต่ละ claim
+      const claimsData = resClaim?.data || [];
+
+      if (claimsData.length > 0) {
+        // ดึง claim_items เพิ่มเติมเพื่อนำข้อมูล item_id, qty, remark มารวมกับแต่ละ claim
         const claimsWithItems = await Promise.all(
-          resClaim.data.map(async (claim) => {
+          claimsData.map(async (claim) => {
             try {
               const resItems = await claimService.getClaimItems(claim.claim_id);
-              if (resItems && resItems.status && resItems.data?.length > 0) {
-                const firstItem = resItems.data[0];
+              const rawItems = Array.isArray(resItems) ? resItems : (resItems?.data || []);
+              if (rawItems.length > 0) {
+                const firstItem = rawItems[0];
                 return {
                   ...claim,
                   item_id: firstItem.item_id,
                   qty: firstItem.qty,
                   remark: firstItem.remark,
                   lot_no: firstItem.lot_no,
-                  items: resItems.data,
+                  items: rawItems,
                 };
               }
             } catch (err) {
@@ -83,12 +88,13 @@ const CustomerHome = () => {
           })
         );
 
-        // 🟢 4. เรียงลำดับตามสถานะ Priority และ วันที่สร้าง
+        // เก็บข้อมูลรายการเคลมทั้งหมดเพื่อนำไปคำนวณป้าย Dashboard
+        setAllClaims(claimsWithItems);
+
+        // เรียงลำดับตามสถานะ Priority และ วันที่สร้าง
         const sortedClaims = claimsWithItems.sort((a, b) => {
-          const statusA = a.current_status || a.status;
-          const statusB = b.current_status || b.status;
-          const priorityA = STATUS_PRIORITY[statusA] || STATUS_PRIORITY[getStatusName(statusA, "customer")] || 99;
-          const priorityB = STATUS_PRIORITY[statusB] || STATUS_PRIORITY[getStatusName(statusB, "customer")] || 99;
+          const priorityA = getPriority(a);
+          const priorityB = getPriority(b);
 
           if (priorityA !== priorityB) {
             return priorityA - priorityB;
@@ -101,6 +107,9 @@ const CustomerHome = () => {
 
         // ดึงเฉพาะ 8 รายการล่าสุด
         setLatestClaims(sortedClaims.slice(0, 8));
+      } else {
+        setAllClaims([]);
+        setLatestClaims([]);
       }
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
@@ -129,8 +138,10 @@ const CustomerHome = () => {
       const response = await claimService.delClaim(claimId);
       if (response.status) {
         message.success("ลบรายการเคลมเรียบร้อยแล้ว");
-        // อัปเดต State ลบรายการออกทันที
         setLatestClaims((prev) =>
+          prev.filter((item) => (item.claim_id || item.claim_no) !== claimId)
+        );
+        setAllClaims((prev) =>
           prev.filter((item) => (item.claim_id || item.claim_no) !== claimId)
         );
       }
@@ -144,11 +155,8 @@ const CustomerHome = () => {
       className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6"
       style={{ boxSizing: "border-box", width: "100%" }}
     >
-      <div
-        className="w-full flex flex-col gap-6"
-        style={{ boxSizing: "border-box" }}
-      >
-        {/* ==================== Header ==================== */}
+      <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
+        {/* Header */}
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
             สวัสดี, คุณ{user?.full_name || user?.username || "-"}
@@ -158,221 +166,78 @@ const CustomerHome = () => {
           </p>
         </header>
 
-        {/* ==================== Banner แจ้งเคลม ==================== */}
+        {/* Summary Dashboard Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          
-          {/**
-          <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
-          >
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
             <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการเคลมใหม่
+              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการเคลมใหม่</span>
+              <span className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight">
+                {allClaims.filter((item) => getPriority(item) <= 2).length}
               </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
-                {allClaims.filter((item) => {
-                  const p = getPriority(item);
-                  return p <= 2;
-                }).length}
-              </span>
-              <span className="text-xs text-blue-500 font-medium">
-                รอการพิจารณา
-              </span>
+              <span className="text-xs text-blue-500 font-medium">รอการพิจารณา</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <FileSearchOutlined />
             </div>
           </div>
-           */}
-          
-          
-          
 
-
-          <div
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-          >
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
             <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการกำลังดำเนินการ
-              </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
+              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการกำลังดำเนินการ</span>
+              <span className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight">
                 {allClaims.filter((item) => {
                   const p = getPriority(item);
                   return p >= 3 && p <= 7;
                 }).length}
               </span>
-              <span className="text-xs text-amber-500 font-medium">
-                อยู่ระหว่างการจัดการ
-              </span>
+              <span className="text-xs text-amber-500 font-medium">อยู่ระหว่างการจัดการ</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <ClockCircleOutlined />
             </div>
           </div>
 
-          <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
-          >
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
             <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการที่สำเร็จ
-              </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
+              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการที่สำเร็จ</span>
+              <span className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight">
                 {allClaims.filter((item) => getPriority(item) === 8).length}
               </span>
-              <span className="text-xs text-emerald-500 font-medium">
-                จัดส่ง/เสร็จสิ้นแล้ว
-              </span>
+              <span className="text-xs text-emerald-500 font-medium">จัดส่ง/เสร็จสิ้นแล้ว</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <CheckCircleOutlined />
             </div>
           </div>
 
-          <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
-          >
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
             <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการค้างเกิน 7 วัน
-              </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
+              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการค้างเกิน 3 วัน</span>
+              <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight">
                 {allClaims.filter((item) => {
                   const priority = getPriority(item);
-                  const isFinished = priority === 8 || priority === 9 || priority === 10;
-                  if (isFinished) return false;
-
+                  if (priority === 8 || priority === 9 || priority === 10) return false;
                   const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
                   if (!rawDate) return false;
-
                   const parsedDate = dayjs(rawDate);
-                  if (!parsedDate.isValid()) return false;
-
-                  const diffDays = dayjs().diff(parsedDate, "day");
-                  return diffDays >= 7;
+                  return parsedDate.isValid() && dayjs().diff(parsedDate, "day") >= 3;
                 }).length}
               </span>
-              <span className="text-xs text-rose-500 font-medium">
-                ต้องเร่งดำเนินการ
-              </span>
+              <span className="text-xs text-rose-500 font-medium">ต้องเร่งดำเนินการ</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <WarningOutlined />
             </div>
           </div>
-
-          <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการค้างเกิน 30 วัน
-              </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
-                {allClaims.filter((item) => {
-                  const priority = getPriority(item);
-                  const isFinished = priority === 8 || priority === 9 || priority === 10;
-                  if (isFinished) return false;
-
-                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
-                  if (!rawDate) return false;
-
-                  const parsedDate = dayjs(rawDate);
-                  if (!parsedDate.isValid()) return false;
-
-                  const diffDays = dayjs().diff(parsedDate, "day");
-                  return diffDays >= 30;
-                }).length}
-              </span>
-              <span className="text-xs text-rose-500 font-medium">
-                ต้องเร่งดำเนินการ
-              </span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <WarningOutlined />
-            </div>
-          </div>
-        </div>
-        {
-          /**
-            <div
-          style={{
-            boxSizing: "border-box",
-            padding: "24px 28px",
-            overflow: "hidden",
-          }}
-          className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl shadow-sm text-white flex flex-col sm:flex-row justify-between items-center gap-4 w-full"
-        >
-          <div className="flex flex-col gap-1 text-center sm:text-left">
-            <h3 className="text-lg sm:text-xl font-bold text-white m-0">
-              แจ้งเคลมสินค้าใหม่ได้ทันที
-            </h3>
-            <p className="text-sm opacity-90 text-emerald-50 m-0">
-              ใช้เวลาเพียงไม่กี่นาที เพื่อเริ่มต้นกระบวนการเคลมสินค้าของคุณ
-            </p>
-          </div>
-          
-          <Button
-            type="default"
-            size="large"
-            icon={<PlusCircleOutlined />}
-            onClick={() => navigate("/customer/new-claim")}
-            className="bg-white text-emerald-800 font-bold border-none hover:bg-emerald-50 rounded-full flex items-center justify-center shadow-sm shrink-0 h-11 px-6"
-          >
-            แจ้งเคลมสินค้าใหม่
-          </Button>
         </div>
            */
         }
         
 
-        {/* ==================== รายการเคลมล่าสุด (8) ==================== */}
+        {/* รายการเคลมล่าสุด */}
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">
-              รายการเคลมล่าสุด
-            </h2>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">รายการเคลมล่าสุด</h2>
             <Button
               type="link"
               onClick={() => navigate("/customer/list-claim")}
@@ -382,19 +247,15 @@ const CustomerHome = () => {
             </Button>
           </div>
 
-          {/* === Card List แนวตั้ง/แนวนอน === */}
           {loading ? (
             <div className="bg-white rounded-2xl p-12 text-center w-full shadow-sm">
-              <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+              <Spin size="large" description="กำลังโหลดข้อมูล..." />
             </div>
           ) : latestClaims.length > 0 ? (
             <div className="flex flex-col gap-3.5 w-full">
-
               {latestClaims.map((claim) => {
                 const dateVal = claim.claim_date || claim.created_at;
-                const formattedDate = dateVal
-                  ? dayjs(dateVal).format("DD/MM/YY HH:mm")
-                  : "-";
+                const formattedDate = dateVal ? dayjs(dateVal).format("DD/MM/YY HH:mm") : "-";
 
                 const getDisplayProductName = () => {
                   if (Array.isArray(claim.items) && claim.items.length > 0) {

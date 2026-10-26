@@ -1,5 +1,31 @@
 const { sql, connectDB } = require("../config/db");
 
+
+function convertstatusClaim(staus) {
+    switch (staus) {
+        case '5':
+            return 'Pending'
+            break;
+        case '6':
+            return 'Approved'
+            break;
+        case '7':
+            return 'Rejected'
+            break;
+        case '8':
+            return 'Processing'
+            break;
+        case '9':
+            return 'Shipping'
+            break;
+        case '10':
+            return 'Delivered'
+            break;
+        default:
+            break;
+    }
+}
+
 exports.Delivery = async (req, res) => {
     try {
         const pool = await connectDB();
@@ -87,7 +113,7 @@ exports.createDelivery = async (req, res) => {
         console.log('createDelivery req body', req.body);
         // รับชื่อไฟล์จาก multer
         uploadedFile = req.file ? req.file.filename : null;
-
+        const statusClaim = convertstatusClaim(delivery_status);
         const pool = await connectDB();
 
         const deliveryResult = await pool.request()
@@ -122,6 +148,16 @@ exports.createDelivery = async (req, res) => {
 
                 SELECT SCOPE_IDENTITY() AS delivery_id;
             `);
+
+        const sqlupdataClaim = `
+      UPDATE claims
+      SET current_status=@status
+      WHERE claim_id = @claim_id
+    `;
+        const Claimresult = await pool.request()
+            .input('claim_id', sql.Int, Number(claim_id))
+            .input('status', sql.NVarChar(50), statusClaim)
+            .query(sqlupdataClaim);
 
         res.json({
             status: true,

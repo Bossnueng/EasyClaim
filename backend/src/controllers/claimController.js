@@ -1162,7 +1162,7 @@ exports.updateclaim = async (req, res) => {
 
 exports.updateClaimDate = async (req, res) => {
   try {
-    const { claim_id, columnname } = req.body;
+    const { claim_id, columnname,status } = req.body;
 
     // อนุญาตเฉพาะคอลัมน์ที่กำหนดไว้
     const allowedColumns = [
@@ -1187,6 +1187,7 @@ exports.updateClaimDate = async (req, res) => {
     const query = `
       UPDATE claims
       SET [${columnname}] = GETDATE()
+      ,current_status=@status
       WHERE claim_id = @claim_id
     `;
 
@@ -1194,6 +1195,7 @@ exports.updateClaimDate = async (req, res) => {
 
     const result = await pool.request()
       .input('claim_id', sql.Int, Number(claim_id))
+      .input('status', sql.NVarChar(50), status)
       .query(query);
 
     if (result.rowsAffected[0] === 0) {

@@ -1,3 +1,5 @@
+// src/pages/staff/StaffClaimUpdate.jsx
+
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -15,7 +17,7 @@ import {
   Table,
   Tag,
   InputNumber,
-  Form,
+  Timeline,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -32,6 +34,9 @@ import {
   PictureOutlined,
   SendOutlined,
   UserOutlined,
+  EllipsisOutlined,
+  HistoryOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { useClaimRealtime } from "../../hooks/useClaimRealtime";
@@ -87,25 +92,21 @@ const parseExtraDataFromLogs = (logs) => {
 const getPreviousStatusName = (currentStatus) => {
   const normalizedCurrent = getStatusName(currentStatus);
 
-  if (normalizedCurrent === "ไม่มีสิทธิ์เคลม") return "รอการพิจารณา";
-  if (normalizedCurrent === "ไม่อนุมัติเคลมสินค้า") return "รับสินค้าจริงแล้ว";
+  if (normalizedCurrent === "Rejected") return "Approved";
+  if (normalizedCurrent === "Approved") return "Pending";
+  if (normalizedCurrent === "Processing") return "Approved";
+  if (normalizedCurrent === "Shipping") return "Processing";
+  if (normalizedCurrent === "Delivered") return "Shipping";
 
-  const currentLevel = STATUS_PRIORITY[normalizedCurrent] || 1;
-  if (currentLevel <= 1) return null;
-
-  const prevLevel = currentLevel - 1;
-  const entry = Object.entries(STATUS_PRIORITY).find(([_, level]) => level === prevLevel);
-  return entry ? entry[0] : null;
+  return null;
 };
 
 const isValidStatusTransition = (currentStatus, newStatus) => {
   if (currentStatus === newStatus) return true;
   
-  // 🟢 Normalize ค่าสถานะปัจจุบันให้เป็นมาตรฐาน (Pending, Approved, Rejected...)
   let normalizedCurrent = getStatusName(currentStatus);
   let normalizedNew = getStatusName(newStatus);
 
-  // เงื่อนไขการเปลี่ยนสถานะจาก "Pending" (หรือ รอการพิจารณา)
   if (normalizedCurrent === "Pending" || normalizedCurrent === "รอการพิจารณา") {
     if (
       normalizedNew === "Approved" || 
@@ -119,7 +120,13 @@ const isValidStatusTransition = (currentStatus, newStatus) => {
     }
   }
 
-  // เงื่อนไขข้อยกเว้นสำหรับสถานะอื่นๆ
+  if (
+    (normalizedCurrent === "Approved" || normalizedCurrent === "อนุมัติเคลมสินค้า" || normalizedCurrent === "รับสินค้าจริงแล้ว") &&
+    (normalizedNew === "Processing" || normalizedNew === "กำลังดำเนินการเปลี่ยนสินค้า")
+  ) {
+    return true;
+  }
+
   if ((normalizedCurrent === "รับสินค้าจริงแล้ว" || normalizedCurrent === "Approved") && 
       (normalizedNew === "Rejected" || normalizedNew === "ไม่อนุมัติเคลมสินค้า")) return true;
 
@@ -128,38 +135,10 @@ const isValidStatusTransition = (currentStatus, newStatus) => {
 
   if (normalizedCurrent === "Delivered" && normalizedNew === "Shipping") return true;
 
-  // ตรวจสอบตามระดับ Priority
   const currentLevel = STATUS_PRIORITY[normalizedCurrent] || 1;
   const newLevel = STATUS_PRIORITY[normalizedNew] || 1;
 
   return newLevel === currentLevel + 1 || newLevel === currentLevel - 1;
-};
-
-const getActionNameByStatus = (statusVal) => {
-  const statusStr = String(statusVal);
-  switch (statusStr) {
-    case "2":
-    case "มีสิทธิ์เคลม":
-      return "approve_date";
-    case "4":
-    case "รับสินค้าจริงแล้ว":
-    case "รับสินค้าแล้ว":
-      return "driver_receive_date";
-    case "6":
-    case "อนุมัติเคลมสินค้า":
-      return "approve_date";
-    case "8":
-    case "กำลังดำเนินการเปลี่ยนสินค้า":
-      return "warehouse_receive_date";
-    case "9":
-    case "กำลังจัดส่งสินค้าเคลม":
-      return "delivery_date";
-    case "10":
-    case "จัดส่งสินค้าเคลมสำเร็จ":
-      return "receive_finish_date";
-    default:
-      return "approve_date";
-  }
 };
 
 const StaffClaimUpdate = () => {
@@ -183,16 +162,24 @@ const StaffClaimUpdate = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 🟢 State สำหรับ Modal บันทึก Delivery (มอบหมาย พขร.)
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
+  const [submittingDelivery, setSubmittingDelivery] = useState(false);
+  const [deliveryDataList, setDeliveryDataList] = useState([]);
+  const [deliveryForm, setDeliveryForm] = useState({
+    driver_id: "",
+    truck_plate: "",
+    delivery_status: "8", // Default เป็น "8"
+  });
 
   const currentUser = loginService.getCurrentUser();
   const currentUserId = currentUser?.user_id || currentUser?.id;
   const userRoleId = Number(currentUser?.role_id);
 
-  // 1. ตรวจสอบสิทธิ์ว่ามีสิทธิ์ใช้งานหน้านี้หรือไม่ (1, 4, 5)
   const isStaffUser = [1, 4, 5].includes(userRoleId);
-
-  // 2. ตรวจสอบสิทธิ์เฉพาะ "ถอยสถานะ" และ "ขอแก้ไขรายการเคลม" (อนุญาตเฉพาะ 1 และ 4 เท่านั้น)
   const canRevertOrEdit = [1, 4].includes(userRoleId);
 
   const [formData, setFormData] = useState({
@@ -209,6 +196,15 @@ const StaffClaimUpdate = () => {
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+
+    if (field === "status" && (value === "Processing" || value === "กำลังดำเนินการเปลี่ยนสินค้า")) {
+      setClaimItems((prevItems) =>
+        prevItems.map((item) => ({
+          ...item,
+          approved_qty: item.approved_qty ?? item.qtychang ?? item.qty,
+        }))
+      );
+    }
   };
 
   const handleItemChange = (index, field, value) => {
@@ -220,10 +216,10 @@ const StaffClaimUpdate = () => {
   };
 
   useClaimRealtime({
-    claimId: data?.claim_id || claimId,
+    claimId: claimId,
     isStaff: true,
-    onStatusUpdated: (updatedData) => {
-      fetchClaimDetail();
+    onStatusUpdated: () => {
+      fetchClaimDetail(false);
     },
     onCommentCreated: (newLog) => {
       if (newLog && newLog.remark && newLog.remark.startsWith("[MSG]")) {
@@ -244,32 +240,41 @@ const StaffClaimUpdate = () => {
   });
 
   useEffect(() => {
-    // บล็อก Role อื่นๆ ที่ไม่ใช่ 1, 4, 5 ไม่ให้เข้าหน้านี้
-    if (!isStaffUser) {
-      message.error("คุณไม่มีสิทธิ์เข้าถึงหน้านี้");
-      navigate("/staff/list-claim");
-      return;
-    }
+    if (!claimId) return;
 
-    fetchClaimDetail();
-  }, [claimId, userRoleId]);
+    fetchClaimDetail(true);
 
-  const fetchClaimDetail = async () => {
-    setLoading(true);
+    const interval = setInterval(() => {
+      if (!isModalOpen && !isDeliveryModalOpen) {
+        fetchClaimDetail(false);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [claimId, isModalOpen, isDeliveryModalOpen]);
+
+  const fetchClaimDetail = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
-      const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
+      const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents, resDeliveries] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
         claimService.getClaimStatusLogs(),
         claimService.getclaimapproves(),
         userService.getUsers(),
         agentService.getAgent(),
+        deliveryService.getDelivery ? deliveryService.getDelivery().catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
       ]);
 
       const masterItemsMap = {};
       const masterItemsData = Array.isArray(resMasterItems?.data) ? resMasterItems.data : Array.isArray(resMasterItems) ? resMasterItems : [];
       masterItemsData.forEach((item) => {
-        masterItemsMap[item.item_id] = `${item.item_code || ""} - ${item.item_name || ""}`;
+        const code = item.item_code || "";
+        const name = item.item_name || "";
+        const fullName = code && name ? `${code} - ${name}` : name || code;
+
+        if (item.item_id) masterItemsMap[String(item.item_id)] = { code, name, fullName };
+        if (code) masterItemsMap[String(code)] = { code, name, fullName };
       });
 
       const aMap = {};
@@ -311,6 +316,10 @@ const StaffClaimUpdate = () => {
         });
 
         if (currentClaim) {
+          const allDeliveryData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
+          const matchedDeliveries = allDeliveryData.filter((d) => String(d.claim_id) === String(currentClaim.claim_id));
+          setDeliveryDataList(matchedDeliveries);
+
           let userAgentIdentifiers = [];
 
           if (Array.isArray(currentUser?.agent_ids)) {
@@ -321,7 +330,6 @@ const StaffClaimUpdate = () => {
             userAgentIdentifiers.push(String(currentUser.agent_id));
           }
 
-          // ค้นหา agent_code ที่คู่กันจาก agentsData มาใส่เพิ่ม
           if (Array.isArray(agentsData)) {
             agentsData.forEach((agent) => {
               const aId = String(agent.agent_id || agent.id || "");
@@ -394,31 +402,37 @@ const StaffClaimUpdate = () => {
           let itemsList = [];
           try {
             const resClaimItems = await claimService.getClaimItems(currentClaim.claim_id);
-            // 🟢 จุดที่ดึงรายการสินค้ามาแสดงใน fetchClaimDetail
             if (resClaimItems?.data && Array.isArray(resClaimItems.data)) {
               itemsList = resClaimItems.data.map((ci, idx) => {
                 let parsedItemData = {};
                 if (ci.remark) {
-                  try {
-                    // หาก ci.remark เป็น JSON String เช่น {"qty":24,"receivedQty":7,...,"itemRemark":"[แตกแห้งหลังการส่งสินค้า] -----"}
-                    parsedItemData = JSON.parse(ci.remark);
-                  } catch (e) {
-                    // กรณีไม่ใช่ JSON (เป็นข้อความปกติ)
-                    parsedItemData = { itemRemark: ci.remark };
-                  }
+                  try { parsedItemData = JSON.parse(ci.remark); } catch (e) { parsedItemData = { itemRemark: ci.remark }; }
                 }
 
-                const itemName = masterItemsMap[ci.item_id] || `สินค้า ID: ${ci.item_id}`;
+                const itemInfo = masterItemsMap[String(ci.item_id)] || masterItemsMap[String(ci.item_code)] || {};
+                const itemCode = ci.item_code || itemInfo.code || String(ci.item_id || "");
+                const itemNameOnly = itemInfo.name || ci.item_name || "";
+
+                const itemFullName = itemInfo.fullName 
+                  ? itemInfo.fullName 
+                  : itemCode && itemNameOnly 
+                  ? `${itemCode} - ${itemNameOnly}` 
+                  : itemNameOnly || itemCode || `สินค้า ID: ${ci.item_id}`;
 
                 return {
                   key: ci.claim_item_id || idx,
                   ...ci,
-                  item_name: itemName,
+                  item_code: itemCode,
+                  item_name: itemFullName,
                   images: rawImages.map((i) => i.formattedUrl),
-                  received_qty: parsedItemData.receivedQty ?? ci.qty,
-                  returned_qty: parsedItemData.returnedQty ?? ci.qty,
+                  
+                  qtyreceived: ci.qtyreceived,
+                  qtychang: ci.qtychang,
+                  qty: ci.qty,
+                  
+                  received_qty: ci.qtyreceived ?? parsedItemData.receivedQty ?? ci.qty,
+                  returned_qty: ci.qtychang ?? parsedItemData.returnedQty ?? ci.qty,
                   approved_qty: parsedItemData.approvedQty ?? ci.qty,
-                  // 🟢 ดึงเฉพาะ itemRemark ออกมาเก็บไว้
                   item_remark: parsedItemData.itemRemark || (typeof ci.remark === "string" && !ci.remark.startsWith("{") ? ci.remark : ""),
                   withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
                   lot_no_change: ci.lot_no_change || "",
@@ -443,8 +457,9 @@ const StaffClaimUpdate = () => {
                   lot_no: currentClaim.lot_no || currentClaim.lot,
                   mfg_date: currentClaim.mfg_date,
                   expire_date: currentClaim.exp_date || currentClaim.expire_date,
-                  qty: currentClaim.qty,
-                  received_qty: fallbackReceivedQty,
+                  qty: currentClaim.qty, //แตกจริง
+                  qtyreceived: currentClaim.qtyreceived,//พขร. นำไปเปลี่ยน
+                  qtychang: currentClaim.qtychang, //จำนวนที่เก็บจาก agent
                   approved_qty: fallbackApprovedQty,
                   returned_qty: fallbackReturnedQty,
                   withdraw_date: currentClaim.withdraw_date ? dayjs(currentClaim.withdraw_date) : null,
@@ -488,17 +503,19 @@ const StaffClaimUpdate = () => {
 
           const currentStatusName = getStatusName(currentClaim.current_status || "สร้างรายการเคลม");
 
-          setFormData({
-            status: currentStatusName,
-            rejectReason: currentClaim.reject_reason || "",
-            driverName: mergedClaimData.driver_name,
-            truckPlate: mergedClaimData.truck_plate,
-            claimNoInput: mergedClaimData.claim_no || "",
-            fullReceive: mergedClaimData.full_receive,
-            deliveryDriver: mergedClaimData.delivery_driver,
-            deliveryPlate: mergedClaimData.delivery_plate,
-            estimatedDeliveryDate: mergedClaimData.estimated_delivery_date ? dayjs(mergedClaimData.estimated_delivery_date) : null,
-          });
+          if (!isModalOpen) {
+            setFormData({
+              status: currentStatusName,
+              rejectReason: currentClaim.reject_reason || "",
+              driverName: mergedClaimData.driver_name,
+              truckPlate: mergedClaimData.truck_plate,
+              claimNoInput: mergedClaimData.claim_no || "",
+              fullReceive: mergedClaimData.full_receive,
+              deliveryDriver: mergedClaimData.delivery_driver,
+              deliveryPlate: mergedClaimData.delivery_plate,
+              estimatedDeliveryDate: mergedClaimData.estimated_delivery_date ? dayjs(mergedClaimData.estimated_delivery_date) : null,
+            });
+          }
 
           const approvesData = resApproves?.data || resApproves || [];
           if (Array.isArray(approvesData)) {
@@ -516,7 +533,36 @@ const StaffClaimUpdate = () => {
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  // 🟢 ฟังก์ชันบันทึกข้อมูล Delivery (default delivery_status เป็น "8")
+  const handleSaveDelivery = async () => {
+    if (!deliveryForm.driver_id || !deliveryForm.truck_plate) {
+      message.error("กรุณากรอก Driver ID และทะเบียนรถให้ครบถ้วน");
+      return;
+    }
+
+    setSubmittingDelivery(true);
+    try {
+      const payload = {
+        claim_id: String(data.claim_id),
+        driver_id: String(deliveryForm.driver_id),
+        delivery_status: String(deliveryForm.delivery_status || "8"),
+        truck_plate: String(deliveryForm.truck_plate),
+      };
+
+      await deliveryService.createDelivery(payload);
+
+      message.success("สร้างรายการจัดส่งสินค้า (มอบหมาย พขร.) เรียบร้อยแล้ว");
+      setIsDeliveryModalOpen(false);
+      setDeliveryForm({ driver_id: "", truck_plate: "", delivery_status: "8" });
+      await fetchClaimDetail(false);
+    } catch (err) {
+      message.error("สร้างรายการจัดส่งไม่สำเร็จ: " + (err.message || "เกิดข้อผิดพลาด"));
+    } finally {
+      setSubmittingDelivery(false);
     }
   };
 
@@ -525,21 +571,25 @@ const StaffClaimUpdate = () => {
     const messageToSend = newMessage.trim();
     setSendingMsg(true);
     try {
+      const userId = String(currentUserId || currentUser?.user_id || currentUser?.id || "");
       const realClaimId = data.claim_id;
       const formattedRemark = `[MSG] [STAFF] ${messageToSend}`;
 
+      const rawStatusVal = data?.current_status || data?.status || data?.status_id || "1";
+      const targetStatusId = Number(getStatusId(rawStatusVal)) || 1;
+
       await claimService.createClaimStatusLogs({
         claim_id: String(realClaimId),
-        status: String(getStatusId(data.current_status)),
+        status: String(targetStatusId),
         remark: formattedRemark,
-        update_by: currentUserId,
-        user_id: currentUserId,
+        update_by: userId,
+        user_id: userId,
       });
 
       setNewMessage("");
       message.success("ส่งข้อความเรียบร้อยแล้ว");
     } catch (err) {
-      message.error("ส่งข้อความไม่สำเร็จ: " + err.message);
+      message.error("ส่งข้อความไม่สำเร็จ: " + (err.message || "เกิดข้อผิดพลาด"));
     } finally {
       setSendingMsg(false);
     }
@@ -575,12 +625,14 @@ const StaffClaimUpdate = () => {
 
   const isModalStatusRejected = formData.status === "ไม่อนุมัติเคลมสินค้า" || formData.status === "ไม่มีสิทธิ์เคลม";
   const isFinalStatus = ["ไม่มีสิทธิ์เคลม", "ไม่อนุมัติเคลมสินค้า", "จัดส่งสินค้าเคลมสำเร็จ"].includes(currentStatusInDB);
-   // 🟢 เพิ่มตัวแปรเช็คสถานะเกี่ยวกับการจัดส่ง
   const isDeliveryOrSuccessStatus = ["กำลังจัดส่งสินค้าเคลม", "จัดส่งสินค้าเคลมสำเร็จ"].includes(currentStatusInDB);
   const previousStatusName = getPreviousStatusName(currentStatusInDB);
 
   const getLogRawDateString = (statusTarget) => {
     const targetId = String(statusTarget);
+
+    if (targetId === "1" || targetId === "5") return formatDateString(data?.created_at || data?.claim_date);
+
     const matchingLogs = statusLogs.filter(
       (item) => String(item.status || item.status_id) === targetId
     );
@@ -591,7 +643,6 @@ const StaffClaimUpdate = () => {
       return formatDateString(rawDate);
     }
 
-    if (targetId === "1" || targetId === "5") return formatDateString(data.claim_date || data.created_at);
     if (targetId === "2" || targetId === "6") return formatDateString(data.approve_date);
     if (targetId === "4") return formatDateString(data.driver_receive_date || data.warehouse_receive_date);
     if (targetId === "8") return formatDateString(data.withdraw_date);
@@ -603,9 +654,12 @@ const StaffClaimUpdate = () => {
 
   const getLogDate = (targetStatusId) => {
     const targetId = String(targetStatusId);
-    const targetName = getStatusName(targetId);
+    
+    if (["1", "5", "Pending"].includes(targetId)) {
+      return formatDate(data?.created_at || data?.claim_date);
+    }
 
-    // 1. ค้นหาใน claim_status_logs ล่าสุดก่อน
+    const targetName = getStatusName(targetId);
     const matchingLogs = statusLogs.filter((log) => {
       const logStatusStr = String(log.status || log.status_id || "");
       return logStatusStr === targetId || getStatusName(logStatusStr) === targetName;
@@ -617,8 +671,6 @@ const StaffClaimUpdate = () => {
       if (logDate) return formatDate(logDate);
     }
 
-    // 2. หากใน Log ไม่มี ให้ดึงจากคอลัมน์ Timestamp โดยตรงในตาราง claims
-    if (["1", "5", "Pending"].includes(targetId)) return formatDate(data?.claim_date || data?.created_at);
     if (["2", "6", "Approved"].includes(targetId)) return formatDate(data?.approve_date);
     if (["8", "Processing"].includes(targetId)) return formatDate(data?.warehouse_receive_date);
     if (["9", "Shipping"].includes(targetId)) return formatDate(data?.delivery_date);
@@ -651,63 +703,54 @@ const StaffClaimUpdate = () => {
       return;
     }
 
-    try {
-      const { images, image, ...cleanData } = data;
-      const realClaimId = cleanData.claim_id || data.claim_id;
-      const statusId = getStatusId(targetStatus);
-      const actionsName = getActionNameByStatus(targetStatus);
+    setLoading(true);
 
-      const formattedClaimItems = claimItems.map((item) => ({
-        ...item,
-        withdraw_date: item.withdraw_date ? (dayjs.isDayjs(item.withdraw_date) ? item.withdraw_date.format("YYYY-MM-DD") : item.withdraw_date) : null,
-        mfg_date_change: item.mfg_date_change ? (dayjs.isDayjs(item.mfg_date_change) ? item.mfg_date_change.format("YYYY-MM-DD") : item.mfg_date_change) : null,
-      }));
+    try {
+      const realClaimId = data.claim_id;
+      const statusId = String(getStatusId(targetStatus));
+
+      let columnName = "approve_date";
+      if (targetStatus === "Approved" || targetStatus === "อนุมัติเคลมสินค้า") {
+        columnName = "approve_date";
+      } else if (targetStatus === "Processing" || targetStatus === "กำลังดำเนินการเปลี่ยนสินค้า") {
+        columnName = "warehouse_receive_date";
+      } else if (targetStatus === "Shipping" || targetStatus === "กำลังจัดส่งสินค้าเคลม") {
+        columnName = "delivery_date";
+      } else if (targetStatus === "Delivered" || targetStatus === "จัดส่งสินค้าเคลมสำเร็จ") {
+        columnName = "receive_finish_date";
+      }
+
+      await claimService.updateClaimDate({
+        claim_id: Number(realClaimId),
+        columnname: columnName,
+        status: statusId,
+      });
 
       const extraData = {
         driverName: formData.driverName,
         truckPlate: formData.truckPlate,
-        claimNoInput: formData.claimNoInput,
-        fullReceive: formData.fullReceive,
         deliveryDriver: formData.deliveryDriver,
         deliveryPlate: formData.deliveryPlate,
         estimatedDeliveryDate: formData.estimatedDeliveryDate ? dayjs(formData.estimatedDeliveryDate).format("YYYY-MM-DD") : "",
       };
 
-      const mainRemarkText = isSteppingBack
-        ? `ถอยสถานะย้อนกลับจาก (${currentStatusInDB}) เป็น ${targetStatus}`
-        : `เปลี่ยนสถานะเป็น ${targetStatus}`;
+      const fullRemark = `ถอยสถานะย้อนกลับจาก (${currentStatusInDB}) เป็น ${targetStatus} | DATA:${JSON.stringify(extraData)}`;
 
-      const fullRemark = `${mainRemarkText} | DATA:${JSON.stringify(extraData)}`;
-
-      const updatePayload = {
-        ...cleanData,
-        claim_id: realClaimId,
-        current_status: statusId,
-        status: statusId,
-        status_name: targetStatus,
-        actionsname: actionsName,
-        is_revert: true,
+      await claimService.createClaimStatusLogs({
+        claim_id: String(realClaimId),
+        status: String(statusId),
+        remark: fullRemark,
         update_by: currentUserId,
-        items: formattedClaimItems,
-      };
+        user_id: currentUserId,
+      });
 
-      const resUpdate = await claimService.updateClaim(updatePayload);
+      message.success(`ถอยสถานะกลับเป็น "${targetStatus}" เรียบร้อยแล้ว`);
+      await fetchClaimDetail();
 
-      if (resUpdate?.status) {
-        await claimService.createClaimStatusLogs({
-          claim_id: String(realClaimId),
-          status: String(statusId),
-          remark: fullRemark,
-          update_by: currentUserId,
-          user_id: currentUserId,
-        });
-
-        message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
-        setIsModalOpen(false);
-        fetchClaimDetail();
-      }
     } catch (error) {
-      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+      message.error(error.message || "เกิดข้อผิดพลาดในการถอยสถานะ");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -727,7 +770,6 @@ const StaffClaimUpdate = () => {
   };
 
   const getCurrentStep = () => {
-    // 🟢 ถ้าเป็นสถานะปฏิเสธ/ไม่อนุมัติ ให้ล็อกตำแหน่งไว้ที่ขั้นตอนพิจารณาอนุมัติ (Step Index 1)
     if (isRejectedInDB) return 1;
 
     const currentName = getStatusName(data?.current_status || currentStatusInDB);
@@ -781,35 +823,34 @@ const StaffClaimUpdate = () => {
       message.error(`ไม่สามารถเปลี่ยนจาก "${currentStatusInDB}" ไปเป็น "${status}" ได้`);
       return false;
     }
-    if (isModalStatusRejected && !rejectReason.trim()) {
+
+    if ((status === "Rejected" || status === "ไม่อนุมัติเคลมสินค้า" || status === "ไม่มีสิทธิ์เคลม") && !rejectReason.trim()) {
       message.error("กรุณาระบุเหตุผลการปฏิเสธการเคลม");
       return false;
     }
+
     if ((status === "รับสินค้าจริงแล้ว" || status === "รับสินค้าแล้ว") && (!driverName.trim() || !truckPlate.trim())) {
       message.error("กรุณาระบุชื่อ พขร. และทะเบียนรถผู้ไปรับสินค้า");
       return false;
     }
-    if (status === "กำลังดำเนินการเปลี่ยนสินค้า") {
+
+    if (status === "Processing" || status === "กำลังดำเนินการเปลี่ยนสินค้า") {
       for (let i = 0; i < claimItems.length; i++) {
         const item = claimItems[i];
+        const appQty = item.approved_qty ?? item.qtychang ?? item.qty;
 
-        //  ดึงค่าจริง ถ้าไม่มีให้ดึง Fallback (item.qty) เหมือนที่โชว์บน UI
-        const retQty = item.returned_qty ?? item.qty;
-        const appQty = item.approved_qty ?? item.qty;
-
-        if (
-          retQty === undefined || retQty === null || retQty === "" ||
-          appQty === undefined || appQty === null || appQty === ""
-        ) {
-          message.error(`กรุณาระบุจำนวนที่ส่งคืน และจำนวนที่แลกเปลี่ยนจริงให้ครบถ้วนในรายการที่ ${i + 1} (${item.item_name})`);
+        if (appQty === undefined || appQty === null || appQty === "") {
+          message.error(`กรุณาระบุจำนวนสินค้าที่เปลี่ยนแตกในรายการที่ ${i + 1} (${item.item_name})`);
           return false;
         }
       }
     }
-    if (status === "กำลังจัดส่งสินค้าเคลม" && (!deliveryDriver.trim() || !deliveryPlate.trim() || !estimatedDeliveryDate)) {
-      message.error("กรุณาระบุชื่อ พขร., ทะเบียนรถ และวันที่คาดว่าจะส่งถึงลูกค้าให้ครบถ้วน");
+
+    if ((status === "Shipping" || status === "กำลังจัดส่งสินค้าเคลม") && (!deliveryDriver.trim() || !deliveryPlate.trim() || !estimatedDeliveryDate)) {
+      message.error("กรุณาระบุชื่อ พขร., ทะเบียนรถจัดส่ง และวันที่คาดว่าจะส่งถึงให้ครบถ้วน");
       return false;
     }
+
     return true;
   };
 
@@ -827,7 +868,7 @@ const StaffClaimUpdate = () => {
       const realClaimId = cleanData.claim_id || data.claim_id;
       
       const targetStatusName = formData.status; 
-      const statusId = Number(getStatusId(targetStatusName)); 
+      const statusId = String(getStatusId(targetStatusName));
 
       const formatDatePayload = (date) => (date ? (dayjs.isDayjs(date) ? date.format("YYYY-MM-DD") : date) : "");
       const formattedEstDate = formatDatePayload(formData.estimatedDeliveryDate);
@@ -842,17 +883,10 @@ const StaffClaimUpdate = () => {
         estimatedDeliveryDate: formattedEstDate
       };
 
-      const fullRemark = `เปลี่ยนสถานะเป็น ${targetStatusName} | DATA:${JSON.stringify(extraData)}`;
+      const fullRemark = isModalStatusRejected
+        ? `ปฏิเสธรายการเคลม: ${formData.rejectReason} | DATA:${JSON.stringify(extraData)}`
+        : `เปลี่ยนสถานะเป็น ${targetStatusName} | DATA:${JSON.stringify(extraData)}`;
 
-      // 🟢 1. ยิงเรียก API ใหม่ updateClaimStatus เพื่อ UPDATE current_status ในตาราง claims และเพิ่ม Log ทันที
-      await claimService.updateClaimStatus({
-        claim_id: realClaimId,
-        status: statusId,
-        remark: fullRemark,
-        update_by: currentUserId,
-      });
-
-      // 🟢 2. เรียก API updateClaimDate เพื่ออัปเดต Timestamp วันที่ในตาราง claims ให้สอดคล้องกัน
       let columnName = null;
       if (targetStatusName === "Approved" || targetStatusName === "อนุมัติเคลมสินค้า" || targetStatusName === "มีสิทธิ์เคลม") {
         columnName = "approve_date";
@@ -865,43 +899,63 @@ const StaffClaimUpdate = () => {
       }
 
       if (columnName) {
-        try {
-          await claimService.updateClaimDate({
-            claim_id: realClaimId,
-            columnname: columnName
-          });
-        } catch (dateErr) {
-          console.warn("อัปเดตวันที่สำเร็จบางส่วน:", dateErr);
-        }
+        await claimService.updateClaimDate({
+          claim_id: Number(realClaimId),
+          columnname: columnName,
+          status: statusId
+        });
+      } else {
+        await claimService.updateClaim({
+          ...cleanData,
+          claim_id: realClaimId,
+          current_status: statusId,
+          update_by: currentUserId,
+        });
       }
 
-      // 🟢 3. ถ้าเป็นสถานะอนุมัติ/ไม่อนุมัติ ให้บันทึกประวัติลง claim_approves
-      if (
-        targetStatusName === "Approved" || 
-        targetStatusName === "Rejected" || 
-        targetStatusName === "อนุมัติเคลมสินค้า" || 
-        targetStatusName === "ไม่อนุมัติเคลมสินค้า"
-      ) {
+      await claimService.createClaimStatusLogs({
+        claim_id: String(realClaimId),
+        status: String(statusId),
+        remark: fullRemark,
+        update_by: currentUserId,
+        user_id: currentUserId,
+      });
+
+      if (isModalStatusRejected || targetStatusName === "Approved" || targetStatusName === "อนุมัติเคลมสินค้า") {
         await claimService.createClaimapproves({
           claim_id: String(realClaimId),
           approve_by: String(currentUserId),
-          approve_status: (targetStatusName === "Approved" || targetStatusName === "อนุมัติเคลมสินค้า") ? "true" : "false",
+          approve_status: isModalStatusRejected ? "false" : "true",
           approve_remark: isModalStatusRejected ? formData.rejectReason : `ดำเนินการสถานะ: ${targetStatusName}`,
         });
       }
 
-      // 🟢 4. อัปเดตรายการสินค้า (qty, remark ฯลฯ)
-      const formattedClaimItems = claimItems.map((item) => ({
-        ...item,
-        claim_item_id: item.claim_item_id,
-        item_id: item.item_id,
-        qty: item.qty,
-        received_qty: item.received_qty !== undefined ? item.received_qty : item.qty,
-        returned_qty: item.returned_qty !== undefined ? item.returned_qty : item.qty,
-        approved_qty: item.approved_qty !== undefined ? item.approved_qty : item.qty,
-        item_remark: item.item_remark || item.remark || "",
-      }));
+      const isProcessing = targetStatusName === "Processing" || targetStatusName === "กำลังดำเนินการเปลี่ยนสินค้า";
 
+      const formattedClaimItems = claimItems.map((item) => {
+        if (isProcessing) {
+          const rawVal = item.approved_qty;
+          const newQty = (rawVal !== null && rawVal !== undefined) ? Number(rawVal) : 0;
+
+          return {
+            claim_item_id: item.claim_item_id,
+            item_id: item.item_id,
+            qty: newQty,
+            qtyreceived: item.qtyreceived ?? item.received_qty ?? item.qty,
+            qtychang: item.qtychang ?? item.returned_qty ?? item.qty,
+            remark: item.item_remark || item.remark || "",
+          };
+        } else {
+          return {
+            claim_item_id: item.claim_item_id,
+            item_id: item.item_id,
+            qty: item.qty,
+            qtyreceived: item.qtyreceived,
+            qtychang: item.qtychang,
+            remark: item.item_remark || item.remark || "",
+          };
+        }
+      });
       await claimService.updateClaim({
         ...cleanData,
         claim_id: realClaimId,
@@ -909,11 +963,9 @@ const StaffClaimUpdate = () => {
         update_by: currentUserId,
       });
 
-      message.success("ปรับปรุงสถานะรายการเคลมเรียบร้อยแล้ว");
+      message.success("อัปเดตสถานะเรียบร้อยแล้ว");
       setIsModalOpen(false);
-
-      // 🟢 5. โหลดข้อมูลใหม่ทั้งหมดมาแสดงผลทันที
-      await fetchClaimDetail();
+      await fetchClaimDetail(false);
 
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
@@ -1015,6 +1067,8 @@ const StaffClaimUpdate = () => {
 
   const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || data?.reporter || "-";
 
+  const latestDelivery = deliveryDataList.length > 0 ? deliveryDataList[deliveryDataList.length - 1] : null;
+
   const itemColumns = [
     {
       title: "ลำดับ",
@@ -1029,50 +1083,22 @@ const StaffClaimUpdate = () => {
       key: "item_name",
       render: (text) => <span className="font-medium text-slate-800 break-words">{text}</span>,
     },
-    {
-      title: "จำนวนแจ้งเคลม",
-      dataIndex: "qty",
-      key: "qty",
+     {
+      title: "จำนวนรับคืน",
+      dataIndex: "qtychang",
+      key: "qtychang",
       width: 110,
       align: "right",
       render: (qty) => <span className="font-semibold text-slate-700">{qty ?? "-"}</span>,
     },
     {
-      title: "จำนวนรับจริง",
-      dataIndex: "received_qty",
-      key: "received_qty",
-      width: 110,
-      align: "right",
-      render: (rQty, record) => {
-        const isReceivedStep = STATUS_PRIORITY[currentStatusInDB] >= 4;
-        if (!isReceivedStep) return <span className="text-slate-400 font-normal">-</span>;
-        return <span className="font-semibold text-emerald-600">{rQty ?? record.qty ?? "-"}</span>;
-      },
-    },
-    {
-      title: "จำนวนส่งคืน",
-      dataIndex: "returned_qty",
-      key: "returned_qty",
-      width: 110,
-      align: "right",
-      render: (retQty, record) => {
-        // แสดงข้อมูลเมื่อเริ่มเข้าสู่ขั้นตอนเบิกเปลี่ยนสินค้า (Priority >= 6)
-        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 6;
-        if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
-        
-        const val = retQty ?? record.returned_qty;
-        return <span className="font-semibold text-amber-600">{val !== undefined && val !== null ? val : "-"}</span>;
-      },
-    },
-    {
-      title: "จำนวนเปลี่ยนแตก",
-      dataIndex: "approved_qty",
-      key: "approved_qty",
+      title: "จำนวนแตก",
+      dataIndex: "qty",
+      key: "qty",
       width: 120,
       align: "right",
       render: (appQty, record) => {
-        // แสดงข้อมูลเมื่อเริ่มเข้าสู่ขั้นตอนเบิกเปลี่ยนสินค้า (Priority >= 6)
-        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 6;
+        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 8;
         if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
         
         const val = appQty ?? record.approved_qty;
@@ -1080,7 +1106,22 @@ const StaffClaimUpdate = () => {
       },
     },
     {
-      title: "สาเหตุและรายละเอียด",
+      title: "จำนวนส่งคืน",
+      dataIndex: "qtyreceived",
+      key: "qtyreceived",
+      width: 110,
+      align: "right",
+      render: (retQty, record) => {
+        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 9;
+        if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
+        
+        const val = retQty ?? record.returned_qty;
+        return <span className="font-semibold text-amber-600">{val !== undefined && val !== null ? val : "-"}</span>;
+      },
+    },
+    
+    {
+      title: "สาเหตุ",
       dataIndex: "item_remark",
       key: "item_remark",
       render: (text, record) => {
@@ -1158,7 +1199,6 @@ const StaffClaimUpdate = () => {
 
                       if (!targetDate || targetDate === "-") return "-";
 
-                      // อ่านวันที่จาก format ที่เป็นไปได้ แล้วแปลงออกเป็น DD/MM/YY
                       const parsedDate = dayjs(targetDate, ["DD/MM/YYYY", "YYYY-MM-DD", "DD/MM/YY", "YYYY-MM-DD HH:mm:ss"]);
                       
                       return parsedDate.isValid() ? parsedDate.format("DD/MM/YY") : "-";
@@ -1187,13 +1227,11 @@ const StaffClaimUpdate = () => {
               </div>
             )}
 
-            {/* ปุ่มถอยสถานะ: แสดงเมื่อมีสิทธิ์ (1 หรือ 4) และสถานะยังไม่สิ้นสุด */}
             {canRevertOrEdit && !isFinalStatus && previousStatusName && (
               <Button
                 type="default"
                 icon={<UndoOutlined />}
                 onClick={handleStepBack}
-                // 🟢 กำหนด padding ซ้าย-ขวา และความสูงของปุ่มให้รับกับปุ่มอื่น
                 style={{ paddingLeft: "18px", paddingRight: "18px" }}
                 className="border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400 hover:bg-slate-50 rounded-xl font-normal shrink-0 h-10 shadow-sm"
               >
@@ -1201,7 +1239,6 @@ const StaffClaimUpdate = () => {
               </Button>
             )}
 
-            {/* เมื่อสถานะสิ้นสุดแล้ว (isFinalStatus) */}
             {isFinalStatus ? (
               canRevertOrEdit && (
                 <Button
@@ -1216,7 +1253,6 @@ const StaffClaimUpdate = () => {
                 </Button>
               )
             ) : (
-              /* 2. ถ้าอยู่ระหว่างจัดส่งหรือสำเร็จแล้ว ปุ่มอัปเดตสถานะจะไม่แสดง (ถูกซ่อน) */
               !isDeliveryOrSuccessStatus && (
                 <Button
                   type="primary"
@@ -1278,7 +1314,7 @@ const StaffClaimUpdate = () => {
                   if (idx < currentIdx) itemStatus = "finish";
                   else if (idx === currentIdx) itemStatus = "error";
                 } else {
-                  if (idx <= currentIdx) itemStatus = "finish"; // 🟢 บังคับให้จุดปัจจุบันและจุดก่อนหน้าสว่างเป็นสีเขียวทั้งหมด
+                  if (idx <= currentIdx) itemStatus = "finish";
                 }
 
                 return {
@@ -1385,15 +1421,10 @@ const StaffClaimUpdate = () => {
                 <Descriptions.Item label="พนักงานขับรถ (พขร.)"><span className="text-slate-800 break-words">{data.driver_name || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถ"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.truck_plate || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="เลขที่เอกสารเคลม"><span className="font-mono">{data.claim_no || "-"}</span></Descriptions.Item>
-                {/**
-                 * <Descriptions.Item label="จำนวนที่รับคืนสินค้าแตก"><span className="font-mono">{data.full_receive || "-"}</span></Descriptions.Item>
-                 */}
-                
               </Descriptions>
             </Card>
           )}
 
-          {/* 🟢 แก้ไข: ข้อมูลการเบิกเปลี่ยนสินค้า (แสดง warehouse_receive_date จุดเดียว) */}
           {(STATUS_PRIORITY[currentStatusInDB] >= 6) && (
             <Card 
               title={<span className="font-medium text-slate-800">ข้อมูลการเบิกเปลี่ยนสินค้า</span>} 
@@ -1425,32 +1456,69 @@ const StaffClaimUpdate = () => {
             </Card>
           )}
 
-          {(STATUS_PRIORITY[currentStatusInDB] >= 7) && (
-            <Card title={<span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions 
-                column={1} 
-                bordered 
-                size="middle" 
-                labelStyle={{ 
-                  fontWeight: "500", 
-                  color: "#475569", 
-                  width: "130px", 
-                  backgroundColor: "#f8fafc",
-                  verticalAlign: "top" 
-                }}
-                contentStyle={{
-                  color: "#1e293b",
-                  wordBreak: "break-word"
-                }}
-              >
-                <Descriptions.Item label="พนักงานขับรถจัดส่งสินค้าเคลม"><span className="text-slate-800 break-words">{data.delivery_driver || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
-                <Descriptions.Item label="วันที่คาดว่าจะส่งถึงลูกค้า">
-                  <span className="text-blue-600">{data.estimated_delivery_date ? dayjs(data.estimated_delivery_date).format("DD/MM/YYYY") : "-"}</span>
-                </Descriptions.Item>
-              </Descriptions>
-            </Card>
-          )}
+          {/* 🟢 ข้อมูลการจัดส่งสินค้าเคลม */}
+          <Card 
+            title={
+              <div className="flex justify-between items-center w-full">
+                <span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม (Delivery)</span>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  size="small"
+                  className="bg-blue-600 hover:bg-blue-700 rounded-lg text-xs"
+                  onClick={() => setIsDeliveryModalOpen(true)}
+                >
+                  มอบหมายงาน พขร. (บันทึก Delivery)
+                </Button>
+              </div>
+            } 
+            className="rounded-2xl shadow-sm border-gray-200 w-full" 
+            bodyStyle={{ padding: "24px" }}
+          >
+            <Descriptions 
+              column={1} 
+              bordered 
+              size="middle" 
+              labelStyle={{ 
+                fontWeight: "500", 
+                color: "#475569", 
+                width: "160px", 
+                backgroundColor: "#f8fafc",
+                verticalAlign: "top" 
+              }}
+              contentStyle={{
+                color: "#1e293b",
+                wordBreak: "break-word"
+              }}
+            >
+              <Descriptions.Item label="Driver ID (พขร.)">
+                <span className="text-slate-800 font-mono font-medium">
+                  {latestDelivery?.driver_id || data.delivery_driver || "-"}
+                </span>
+              </Descriptions.Item>
+              <Descriptions.Item label="ทะเบียนรถจัดส่ง">
+                <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">
+                  {latestDelivery?.truck_plate || data.delivery_plate || "-"}
+                </span>
+              </Descriptions.Item>
+              {/**
+               <Descriptions.Item label="สถานะการจัดส่ง (Delivery Status)">
+                <span className="font-semibold text-blue-600">
+                  {latestDelivery?.delivery_status ? `Status ID: ${latestDelivery.delivery_status}` : "8"}
+                </span>
+              </Descriptions.Item>
+               */}
+              
+              
+            
+              
+              <Descriptions.Item label="วันที่สร้างรายการจัดส่ง">
+                <span className="font-mono text-slate-600 text-xs">
+                  {latestDelivery?.receive_date ? formatDateString(latestDelivery.receive_date) : "-"}
+                </span>
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
         </div>
 
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
@@ -1486,7 +1554,8 @@ const StaffClaimUpdate = () => {
               </div>
             )}
           </Card>
-<Card 
+
+          <Card 
             title={<span className="font-medium text-slate-800">ประวัติการพิจารณาอนุมัติ</span>} 
             className="rounded-2xl shadow-sm border-gray-200 w-full" 
             bodyStyle={{ padding: "16px" }}
@@ -1529,7 +1598,22 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          <Card title={<span className="font-medium text-slate-800">ประวัติการบันทึกสถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "16px 24px" }}>
+          <Card 
+            title={
+              <div className="flex justify-between items-center w-full">
+                <span className="font-medium text-slate-800">ประวัติการบันทึกสถานะ</span>
+                <Button
+                  type="text"
+                  icon={<EllipsisOutlined className="text-lg text-slate-600" />}
+                  onClick={() => setIsLogModalOpen(true)}
+                  className="hover:bg-slate-100 rounded-lg"
+                  title="ดูประวัติการบันทึก Log ทั้งหมด"
+                />
+              </div>
+            } 
+            className="rounded-2xl shadow-sm border-gray-200 w-full" 
+            bodyStyle={{ padding: "16px 24px" }}
+          >
             <Descriptions 
               column={1} 
               bordered 
@@ -1552,7 +1636,27 @@ const StaffClaimUpdate = () => {
                 <span className="font-mono">{formatDateString(data.updated_at)}</span>
               </Descriptions.Item>
             </Descriptions>
+
+            {statusLogs.filter(l => l.remark && !l.remark.startsWith("[MSG]")).length > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3 flex flex-col gap-2">
+                {statusLogs
+                  .filter(l => l.remark && !l.remark.startsWith("[MSG]"))
+                  .slice(-2)
+                  .map((log, index) => (
+                    <div key={index} className="flex flex-col bg-slate-50 p-2 rounded-lg text-[11px] border border-slate-100">
+                      <div className="flex justify-between font-mono text-slate-400">
+                        <span>{getStatusName(log.status)}</span>
+                        <span>{formatDateString(log.update_date || log.created_at)}</span>
+                      </div>
+                      <span className="text-slate-700 font-medium mt-0.5">
+                        {log.remark.split("|")[0].trim()}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </Card>
+
           <Card
             className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60"
             bodyStyle={{ padding: "20px" }}
@@ -1617,11 +1721,8 @@ const StaffClaimUpdate = () => {
               >
                 ส่ง
               </Button>
-
             </div>
           </Card>
-
-          
 
           <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px" }}>
             <Button
@@ -1636,6 +1737,63 @@ const StaffClaimUpdate = () => {
         </div>
       </div>
 
+      {/* 🟢 Modal สำหรับบันทึก Delivery (default delivery_status เป็น "8") */}
+      <Modal
+        title={<span className="font-medium text-slate-800">มอบหมายงาน พขร. (บันทึกข้อมูลจัดส่งสินค้าเคลม)</span>}
+        open={isDeliveryModalOpen}
+        onOk={handleSaveDelivery}
+        confirmLoading={submittingDelivery}
+        onCancel={() => !submittingDelivery && setIsDeliveryModalOpen(false)}
+        okText="บันทึก Delivery"
+        cancelText="ยกเลิก"
+        okButtonProps={{ className: "bg-blue-600 hover:bg-blue-700 font-normal" }}
+        width={500}
+      >
+        <div className="flex flex-col gap-4 py-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Claim ID:
+            </label>
+            <Input value={data?.claim_id} disabled className="bg-slate-50 font-mono" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Driver ID (รหัสพนักงานขับรถ) <span className="text-red-500">*</span>:
+            </label>
+            <Input
+              placeholder="เช่น 70079126"
+              value={deliveryForm.driver_id}
+              onChange={(e) => setDeliveryForm((prev) => ({ ...prev, driver_id: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              ทะเบียนรถ (Truck Plate) <span className="text-red-500">*</span>:
+            </label>
+            <Input
+              placeholder="เช่น 748895"
+              value={deliveryForm.truck_plate}
+              onChange={(e) => setDeliveryForm((prev) => ({ ...prev, truck_plate: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Delivery Status ID ( Default: 8 ):
+            </label>
+            <Input
+              placeholder="8"
+              value={deliveryForm.delivery_status}
+              disabled
+              className="bg-slate-50 font-mono text-slate-500"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal อัปเดตสถานะ */}
       <Modal
         width={750}
         title={
@@ -1672,56 +1830,12 @@ const StaffClaimUpdate = () => {
             />
           </div>
 
-          {(formData.status === "รับสินค้าจริงแล้ว" || formData.status === "รับสินค้าแล้ว") && (
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
-              <span className="text-sm font-medium text-slate-800 border-b pb-1">ข้อมูลที่เข้ารับสินค้า</span>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อ-นามสกุล พขร.:</label>
-                  <Input placeholder="เช่น นายสมชาย ใจดี" value={formData.driverName} onChange={(e) => handleInputChange("driverName", e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถ:</label>
-                  <Input placeholder="เช่น 70-1234 กทม." value={formData.truckPlate} onChange={(e) => handleInputChange("truckPlate", e.target.value)} />
-                </div>
-              </div>
-
-              <div className="mt-2">
-                <span className="text-xs font-semibold text-slate-700 mb-2 block">
-                  ระบุรายละเอียดสินค้าที่รับจริง:
-                </span>
-                <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
-                  {claimItems.map((item, index) => (
-                    <div key={item.key || index} className="p-2.5 bg-white rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-slate-800 truncate">{item.item_name}</div>
-                        <div className="text-[11px] text-slate-500">จำนวนที่แจ้ง: {item.qty}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <InputNumber
-                          min={0}
-                          size="small"
-                          className="w-full"
-                          selectOnFocus
-                          value={item.received_qty !== undefined ? item.received_qty : item.qty}
-                          onChange={(val) => handleItemChange(index, "received_qty", val)}
-                        />
-                        <div className="w-28 shrink-0">
-                          <label className="text-[10px] text-slate-500 block">ขวด/กระป๋อง</label>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {formData.status === "กำลังดำเนินการเปลี่ยนสินค้า" && (
+          {formData.status === "Processing" && (
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-4">
               <div className="flex justify-between items-center border-b pb-1">
-                <span className="text-sm font-medium text-slate-800">ระบุจำนวนส่งคืนและจำนวนแลกเปลี่ยนจริง</span>
+                <span className="text-sm font-medium text-slate-800">
+                  ระบุจำนวนสินค้าที่เปลี่ยนแตก (จำนวนเบิกเปลี่ยนสินค้า)
+                </span>
                 <span className="text-xs text-slate-500">{claimItems.length} รายการ</span>
               </div>
 
@@ -1729,36 +1843,31 @@ const StaffClaimUpdate = () => {
                 {claimItems.map((item, index) => (
                   <div key={item.key || index} className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col gap-2.5 shadow-sm">
                     <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                      <span className="text-xs font-semibold text-slate-800 truncate">{index + 1}. {item.item_name}</span>
-                      <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">แจ้งเคลม: {item.qty} | รับจริง: {item.received_qty ?? item.qty}</span>
+                      <span className="text-xs font-semibold text-slate-800 truncate">
+                        {index + 1}. {item.item_name}
+                      </span>
+                      <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                        แจ้งเคลม: {item.qty} | รับจริง: {item.received_qty ?? item.qty}
+                      </span>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       <div className="flex-1">
                         <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                          จำนวนส่งสินค้าคืน (ขวด/กระป๋อง) <span className="text-red-500">*</span>:
+                          จำนวนที่เปลี่ยนแตก (ชิ้น/ขวด/กระป๋อง) <span className="text-red-500">*</span>:
                         </label>
                         <InputNumber
                           min={0}
-                          size="small"
+                          size="middle"
                           className="w-full"
-                          selectOnFocus
-                          value={item.returned_qty ?? item.qty}
-                          onChange={(val) => handleItemChange(index, "returned_qty", val)}
-                        />
-                      </div>
-
-                      <div className="flex-1">
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                          จำนวนที่แลกเปลี่ยนจริง (ขวด/กระป๋อง) <span className="text-red-500">*</span>:
-                        </label>
-                        <InputNumber
-                          min={0}
-                          size="small"
-                          className="w-full"
-                          selectOnFocus
-                          value={item.approved_qty ?? item.qty}
-                          onChange={(val) => handleItemChange(index, "approved_qty", val)}
+                          keyboard={true}
+                          controls={true}
+                          placeholder="กรอกจำนวนที่เปลี่ยนแตก"
+                          value={item.approved_qty ?? ""}
+                          onChange={(val) => {
+                            const newQty = (val === null || val === "" || isNaN(val)) ? null : Number(val);
+                            handleItemChange(index, "approved_qty", newQty);
+                          }}
                         />
                       </div>
                     </div>
@@ -1768,21 +1877,40 @@ const StaffClaimUpdate = () => {
             </div>
           )}
 
-          {formData.status === "กำลังจัดส่งสินค้าเคลม" && (
+          {/**
+           
+           */}
+          {(formData.status === "Shipping" || formData.status === "กำลังจัดส่งสินค้าเคลม") && (
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
-              <span className="text-sm font-medium text-slate-800 border-b pb-1">ข้อมูลการจัดส่งสินค้าเคลม</span>
+              <span className="text-sm font-medium text-slate-800 border-b pb-1">
+                ข้อมูลการจัดส่งสินค้าเคลม
+              </span>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">พนักงานขับรถจัดส่ง <span className="text-red-500">*</span>:</label>
-                  <Input placeholder="เช่น นายสมศักดิ์ ขยันส่ง" value={formData.deliveryDriver} onChange={(e) => handleInputChange("deliveryDriver", e.target.value)} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    พนักงานขับรถจัดส่ง <span className="text-red-500">*</span>:
+                  </label>
+                  <Input 
+                    placeholder="เช่น นายสมศักดิ์ ขยันส่ง" 
+                    value={formData.deliveryDriver} 
+                    onChange={(e) => handleInputChange("deliveryDriver", e.target.value)} 
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">ทะเบียนรถจัดส่ง <span className="text-red-500">*</span>:</label>
-                  <Input placeholder="เช่น 80-9999 กทม." value={formData.deliveryPlate} onChange={(e) => handleInputChange("deliveryPlate", e.target.value)} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    ทะเบียนรถจัดส่ง <span className="text-red-500">*</span>:
+                  </label>
+                  <Input 
+                    placeholder="เช่น 80-9999 กทม." 
+                    value={formData.deliveryPlate} 
+                    onChange={(e) => handleInputChange("deliveryPlate", e.target.value)} 
+                  />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">วันที่คาดว่าจะส่งถึงลูกค้า <span className="text-red-500">*</span>:</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    วันที่คาดว่าจะส่งถึงลูกค้า <span className="text-red-500">*</span>:
+                  </label>
                   <DatePicker
                     className="w-full"
                     format="DD/MM/YYYY"
@@ -1807,6 +1935,56 @@ const StaffClaimUpdate = () => {
                 onChange={(e) => handleInputChange("rejectReason", e.target.value)}
               />
             </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal แสดงประวัติ Log ของรายการเคลมนี้ทั้งหมด */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2 text-slate-800 font-medium">
+            <HistoryOutlined />
+            <span>ประวัติการบันทึกสถานะทั้งหมด (Log History)</span>
+          </div>
+        }
+        open={isLogModalOpen}
+        onCancel={() => setIsLogModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setIsLogModalOpen(false)} className="rounded-xl">
+            ปิด
+          </Button>
+        ]}
+        width={650}
+      >
+        <div className="py-4 max-h-[500px] overflow-y-auto px-2">
+          {statusLogs && statusLogs.length > 0 ? (
+            <Timeline
+              items={statusLogs
+                .filter(log => log.remark && !log.remark.startsWith("[MSG]"))
+                .map((log, idx) => ({
+                  color: "blue",
+                  children: (
+                    <div className="flex flex-col gap-1 bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <Tag color="blue" className="rounded-md font-normal m-0">
+                          {getStatusName(log.status)}
+                        </Tag>
+                        <span className="font-mono text-slate-400 text-[11px]">
+                          {formatDateString(log.update_date || log.created_at || log.created_date)}
+                        </span>
+                      </div>
+                      <div className="text-slate-800 text-xs font-medium mt-1">
+                        {log.remark.split("|")[0].trim()}
+                      </div>
+                      <div className="text-[10px] text-slate-400 flex justify-between">
+                        <span>บันทึกโดย: {usersMap[String(log.update_by || log.user_id)] || log.update_by || "-"}</span>
+                      </div>
+                    </div>
+                  ),
+                }))}
+            />
+          ) : (
+            <div className="text-center py-8 text-slate-400 italic">ไม่มีประวัติการบันทึกสถานะ</div>
           )}
         </div>
       </Modal>

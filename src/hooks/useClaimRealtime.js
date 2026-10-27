@@ -1,15 +1,19 @@
 // src/hooks/useClaimRealtime.js
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import socket from "../services/socket";
 
 export const useClaimRealtime = ({ claimId, isStaff, userId, onCreated, onStatusUpdated, onCommentCreated }) => {
-  useEffect(() => {
-    // 🟢 เข้าร่วม Room ส่วนตัวของ User (เพื่อรับ notification ฝั่งตัวเอง)
-    if (userId) {
-      socket.emit("join:user", userId); // หรือส่ง userId เข้า room เช่น room:user_123
-    }
+  // 🟢 ใช้ useRef เพื่อเก็บ callback ล่าสุด ป้องกันปัญหา Listener หลุดเวลา Re-render
+  const callbacksRef = useRef({ onCreated, onStatusUpdated, onCommentCreated });
 
-    // เข้าร่วม Room ฝั่ง Staff / Claim
+  useEffect(() => {
+    callbacksRef.current = { onCreated, onStatusUpdated, onCommentCreated };
+  });
+
+  useEffect(() => {
+    if (userId) {
+      socket.emit("join:user", userId);
+    }
     if (isStaff) {
       socket.emit("join:staff");
     }
@@ -17,12 +21,14 @@ export const useClaimRealtime = ({ claimId, isStaff, userId, onCreated, onStatus
       socket.emit("join:claim", claimId);
     }
 
-    // ดักฟัง Events เดิม
-    if (onCreated) socket.on("claim:created", onCreated);
-    if (onStatusUpdated) socket.on("claim:status_updated", onStatusUpdated);
-    if (onCommentCreated) socket.on("claim:comment_created", onCommentCreated);
+    const handleCreated = (data) => callbacksRef.current.onCreated?.(data);
+    const handleStatusUpdated = (data) => callbacksRef.current.onStatusUpdated?.(data);
+    const handleCommentCreated = (data) => callbacksRef.current.onCommentCreated?.(data);
 
-    // 🟢 ดักฟัง Event เมื่อ Admin มีการอัปเดตสังกัด/สิทธิ์ของ User คนนี้
+    socket.on("claim:created", handleCreated);
+    socket.on("claim:status_updated", handleStatusUpdated);
+    socket.on("claim:comment_created", handleCommentCreated);
+
     const handleUserUpdated = (data) => {
       alert("ข้อมูลสังกัดของคุณถูกอัปเดต กรุณาเข้าสู่ระบบใหม่อีกครั้ง");
       localStorage.removeItem("token");
@@ -32,12 +38,11 @@ export const useClaimRealtime = ({ claimId, isStaff, userId, onCreated, onStatus
 
     socket.on("user:updated", handleUserUpdated);
 
-    // Cleanup listeners
     return () => {
-      if (onCreated) socket.off("claim:created", onCreated);
-      if (onStatusUpdated) socket.off("claim:status_updated", onStatusUpdated);
-      if (onCommentCreated) socket.off("claim:comment_created", onCommentCreated);
+      socket.off("claim:created", handleCreated);
+      socket.off("claim:status_updated", handleStatusUpdated);
+      socket.off("claim:comment_created", handleCommentCreated);
       socket.off("user:updated", handleUserUpdated);
     };
-  }, [claimId, isStaff, userId, onCreated, onStatusUpdated, onCommentCreated]);
+  }, [claimId, isStaff, userId]);
 };

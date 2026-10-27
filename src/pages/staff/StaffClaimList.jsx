@@ -11,6 +11,7 @@ import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 
 
 const parseDataFromLogs = (logs) => {
@@ -48,13 +49,27 @@ const StaffClaimList = () => {
   // 🟢 ประกาศไว้ด้านบนสุดเพื่อให้ JSX และทุกฟังก์ชันเรียกใช้ได้โดยไม่ติด Error
   const currentUser = loginService.getCurrentUser();
   const userRoleId = Number(currentUser?.role_id);
+  const currentUserId = currentUser?.user_id || currentUser?.id;
+
+  useClaimRealtime({
+    isStaff: true,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
 
   useEffect(() => {
-    fetchClaimsAndItems();
+    fetchClaimsAndItems(true);
+
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchClaimsAndItems = async () => {
-    setLoading(true);
+  const fetchClaimsAndItems = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [resClaim, resItems, resAgents, resUsers, resLogs] = await Promise.all([
         claimService.getClaim(),
@@ -164,7 +179,7 @@ const StaffClaimList = () => {
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 

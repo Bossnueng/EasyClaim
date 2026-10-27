@@ -90,12 +90,12 @@ export const getStatusColor = (statusVal) => {
 
 // 2. STATUS_PRIORITY สำหรับรองรับโค้ดเดิมที่เรียกใช้ชื่อภาษาไทย
 export const STATUS_PRIORITY = {
-  Pending: 1,
-  Approved: 2,
-  Processing: 3,
-  Shipping: 4,
-  Delivered: 5,
-  Rejected: 9,
+  Pending: 5,
+  Approved: 6,
+  Processing: 8,
+  Shipping: 9,
+  Delivered: 10,
+  Rejected: 7,
 };
 
 export const FILTER_OPTIONS = ["ทั้งหมด", "Pending", "Approved", "Processing", "Shipping", "Delivered", "Rejected"];

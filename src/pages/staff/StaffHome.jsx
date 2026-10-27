@@ -12,12 +12,13 @@ import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime"; // 🟢 1. Import Hook
 
 const StaffHome = () => {
   const navigate = useNavigate();
   const currentUser = loginService.getCurrentUser();
   const userRoleId = Number(currentUser?.role_id);
-  
+  const currentUserId = currentUser?.user_id || currentUser?.id;
 
   const [allClaims, setAllClaims] = useState([]);
   const [latestClaims, setLatestClaims] = useState([]);
@@ -26,8 +27,22 @@ const StaffHome = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
 
+  // 🟢 2. เรียกใช้ Realtime Hook เพื่ออัปเดตหน้า Home ทันทีที่มีการสร้าง/เปลี่ยนสถานะ
+  useClaimRealtime({
+    isStaff: true,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
+
   useEffect(() => {
-    fetchClaimsAndItems();
+    fetchClaimsAndItems(true); // ครั้งแรกโชว์ Spin ตามปกติ
+
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังนุ่มนวล ไม่โชว์ Spin
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const getPriority = (item) => {
@@ -52,8 +67,9 @@ const StaffHome = () => {
     return statusVal || "ไม่ระบุสถานะ";
   };
 
-  const fetchClaimsAndItems = async () => {
-    setLoading(true);
+  // 🟢 3. ปรับรองรับ showLoading
+  const fetchClaimsAndItems = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
 
     try {
       let userAgentIdentifiers = [];
@@ -83,7 +99,6 @@ const StaffHome = () => {
         setUsersList(usersData);
       }
 
-      // 🟢 แก้ไข: แปลง item_id เป็น String เสมอเพื่อป้องกัน Mismatch Type
       const itemsData = resItems?.data || resItems || [];
       const map = {};
       if (Array.isArray(itemsData)) {
@@ -107,7 +122,6 @@ const StaffHome = () => {
         userAgentIdentifiers.push(String(currentUser.agent_id));
       }
 
-      // 3. ค้นหา agent_code ที่คู่กันจาก agentsData มาใส่เพิ่ม
       if (Array.isArray(agentsData)) {
         agentsData.forEach((agent) => {
           const aId = String(agent.agent_id || agent.id || "");
@@ -127,30 +141,29 @@ const StaffHome = () => {
             return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
           });
 
+      const claimWithDetails = await Promise.all(
+        allowedClaims.map(async (claim) => {
+          try {
+            const itemRes = await claimService.getClaimItems(claim.claim_id);
+            const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
+            const itemDetails = rawItems[0] || {};
 
-        const claimWithDetails = await Promise.all(
-          allowedClaims.map(async (claim) => {
-            try {
-              const itemRes = await claimService.getClaimItems(claim.claim_id);
-              const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
-              const itemDetails = rawItems[0] || {};
+            const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
 
-              const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-
-              return {
-                ...claim,
-                items: rawItems,
-                item_id: itemDetails.item_id || claim.item_id,
-                qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
-                qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
-                lot_no: itemDetails.lot_no || claim.lot_no || "-",
-                remark: itemDetails.remark || claim.remark || "",
-              };
-            } catch {
-              return claim;
-            }
-          })
-        );
+            return {
+              ...claim,
+              items: rawItems,
+              item_id: itemDetails.item_id || claim.item_id,
+              qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
+              qtychang: itemDetails.qtychang ?? claim.qtychang ?? 0,
+              lot_no: itemDetails.lot_no || claim.lot_no || "-",
+              remark: itemDetails.remark || claim.remark || "",
+            };
+          } catch {
+            return claim;
+          }
+        })
+      );
 
       setAllClaims(claimWithDetails);
 
@@ -174,7 +187,6 @@ const StaffHome = () => {
           const timeA = parsedA.isValid() ? parsedA.valueOf() : 0;
           const timeB = parsedB.isValid() ? parsedB.valueOf() : 0;
 
-          // 🟢 เรียงจาก เก่าสุด (สร้างก่อน) ไป ใหม่สุด
           return timeA - timeB; 
         });
 
@@ -188,7 +200,7 @@ const StaffHome = () => {
           (error?.message || "เกิดข้อผิดพลาด")
       );
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 

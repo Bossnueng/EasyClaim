@@ -10,7 +10,8 @@ import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
-import agentService from "../../services/agentService"; // 🟢 เพิ่ม import agentService
+import agentService from "../../services/agentService";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 
 const CustomerHome = () => {
   const navigate = useNavigate();
@@ -21,9 +22,24 @@ const CustomerHome = () => {
 
   const user = loginService.getCurrentUser();
   const role = user?.role || user?.user_type;
+  const currentUserId = user?.user_id || user?.id;
 
+  useClaimRealtime({
+    isStaff: false,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
+  
+  // 🟢 1. ตั้งเวลาดึงข้อมูลเบื้องหลังนุ่มนวลทุกๆ 5 วินาที
   useEffect(() => {
-    fetchClaimsAndItems();
+    fetchClaimsAndItems(true); // โหลดครั้งแรกขึ้น Spin ปกติ
+
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังเงียบๆ ไม่ขึ้น Spin
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const getPriority = (item) => {
@@ -33,22 +49,21 @@ const CustomerHome = () => {
     return STATUS_PRIORITY[statusVal] || STATUS_PRIORITY[statusName] || 99;
   };
 
-  const fetchClaimsAndItems = async () => {
+  // 🟢 2. ปรับฟังก์ชัน fetchClaimsAndItems ให้รับพารามิเตอร์ showLoading
+  const fetchClaimsAndItems = async (showLoading = true) => {
     if (role === "staff" || role === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
 
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
-      // 🟢 1. ดึง Master Data ทั้งหมด (Claims, Items, Agents) พร้อมกันเหมือนฝั่ง Staff
       const [resClaim, resItems, resAgents] = await Promise.all([
         claimService.getClaim().catch(() => ({ data: [] })),
         itemService.getItems().catch(() => ({ data: [] })),
         agentService.getAgent().catch(() => []),
       ]);
 
-      // 🟢 2. Map รายการสินค้า
       if (resItems && resItems.data) {
         const map = {};
         resItems.data.forEach((item) => {
@@ -57,8 +72,6 @@ const CustomerHome = () => {
         setItemsMap(map);
       }
 
-      // 🟢 3. รวบรวม Identifiers ของ Agent ที่สอดคล้องกับ Customer รายนี้ (ทั้ง ID และ Code)
-      const currentUserId = String(user?.user_id || user?.id || "");
       let userAgentIdentifiers = [];
 
       if (Array.isArray(user?.agent_ids)) {
@@ -79,7 +92,6 @@ const CustomerHome = () => {
         });
       }
 
-      // 🟢 4. กรองรายการเคลมที่สอดคล้องกับ Agent ID, Agent Code หรือที่ Customer เป็นผู้สร้าง (created_by)
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
       const allowedClaims = rawClaims.filter((claim) => {
         const claimAgentIdStr = String(claim.agent_id || "");
@@ -94,7 +106,6 @@ const CustomerHome = () => {
         return isAgentMatch || isUserMatch;
       });
 
-      // 🟢 5. ดึงรายละเอียดสินค้าแต่ละรายการเคลมเพิ่มเติม
       if (allowedClaims.length > 0) {
         const claimsWithItems = await Promise.all(
           allowedClaims.map(async (claim) => {
@@ -121,7 +132,6 @@ const CustomerHome = () => {
 
         setAllClaims(claimsWithItems);
 
-        // จัดเรียงตาม Priority และ วันที่สร้าง
         const sortedClaims = claimsWithItems.sort((a, b) => {
           const priorityA = getPriority(a);
           const priorityB = getPriority(b);
@@ -143,25 +153,10 @@ const CustomerHome = () => {
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
-  {/**
-     const getPriority = (item) => {
-    if (!item) return 99;
-    const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
-    
-    if (statusVal !== undefined && statusVal !== null && CLAIM_STATUS_MAP[String(statusVal)]) {
-      return CLAIM_STATUS_MAP[String(statusVal)].priority;
-    }
-    if (statusVal !== undefined && statusVal !== null && STATUS_PRIORITY[statusVal] !== undefined) {
-      return STATUS_PRIORITY[statusVal];
-    }
-    return 99;
-  };    
-    */}
- 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
 
@@ -261,8 +256,6 @@ const CustomerHome = () => {
             </div>
           </div>
         </div>
-         
-        
 
         {/* List Section */}
         <section className="flex flex-col gap-4">

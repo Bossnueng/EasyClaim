@@ -96,9 +96,7 @@ const MenuList = () => {
           {/* 🟢 4. แสดงเมนูนี้เฉพาะผู้ที่มี role_id === 1 เท่านั้น */}
           {isAdminRole && (
             <>
-              <Menu.Item key="staff-create-claim" icon={<FileAddOutlined />}>
-                <NavLink to="/staff/new-claim">สร้างรายการเคลม</NavLink>
-              </Menu.Item>
+            
 
               <Menu.Item key="staff-users" icon={<UserOutlined />}>
                 <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>

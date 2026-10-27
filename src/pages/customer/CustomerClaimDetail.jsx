@@ -1,6 +1,6 @@
 // src/pages/customer/CustomerClaimDetail.jsx
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Card,
   Descriptions,
@@ -16,13 +16,11 @@ import {
   Tag,
   Input,
   Modal,
-  Timeline,
 } from "antd";
 import {
   CheckCircleOutlined,
   FileSearchOutlined,
   CloseCircleOutlined,
-  InboxOutlined,
   CarOutlined,
   SmileOutlined,
   ArrowLeftOutlined,
@@ -34,42 +32,23 @@ import {
   HistoryOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
-import customParseFormat from "dayjs/plugin/customParseFormat";
-dayjs.extend(utc);
-dayjs.extend(customParseFormat);
 
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 import ClaimStatusTag from "../../components/ClaimStatusTag";
 import ClaimPrintModal from "../../components/ClaimPrintModal";
-import { STATUS_PRIORITY, getStatusName, getStatusId, CLAIM_STATUS_MAP } from "../../constants/claimStatus";
+import ClaimTimeline from "../../components/claim/ClaimTimeline";
+import { STATUS_PRIORITY, getStatusName, getStatusId } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { parseDateSafely, formatDateString } from "../../utils/dateUtils";
+import { parseExtraDataFromLogs, getRejectReasonText } from "../../utils/logPaser";
 
-// ⏱️ ตั้งค่าเวลา Auto Stamp ที่ต้องการ (วินาที) เช่น 10 วินาที หรือ 86400 (24 ชม.)
 const AUTO_STAMP_DELAY_SECONDS = 10;
-
-const parseDateSafely = (dateStr) => {
-  if (!dateStr) return null;
-  let parsed = dayjs(dateStr);
-  if (parsed.isValid()) return parsed;
-  parsed = dayjs(dateStr, "DD/MM/YYYY HH:mm");
-  if (parsed.isValid()) return parsed;
-  parsed = dayjs(dateStr, "YYYY-MM-DD HH:mm:ss");
-  if (parsed.isValid()) return parsed;
-  return null;
-};
-
-const formatDateString = (date) => {
-  const parsed = parseDateSafely(date);
-  if (!parsed) return "-";
-  return parsed.format("DD/MM/YYYY HH:mm");
-};
 
 const formatDate = (date) => {
   const parsed = parseDateSafely(date);
@@ -81,23 +60,6 @@ const formatDate = (date) => {
       <span className="text-[9px] text-slate-400">{parsed.format("HH:mm")}</span>
     </div>
   );
-};
-
-const parseExtraDataFromLogs = (logs) => {
-  if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
-  
-  for (let i = logs.length - 1; i >= 0; i--) {
-    const log = logs[i];
-    if (log && log.remark && log.remark.includes("| DATA:")) {
-      try {
-        const jsonStr = log.remark.split("| DATA:")[1];
-        return JSON.parse(jsonStr);
-      } catch (e) {
-        console.error("Error parsing extra data from log remark", e);
-      }
-    }
-  }
-  return {};
 };
 
 const CustomerClaimDetail = () => {
@@ -114,7 +76,6 @@ const CustomerClaimDetail = () => {
   const [usersList, setUsersList] = useState([]);
   const [allImages, setAllImages] = useState([]);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
   const [chatMessages, setChatMessages] = useState([]);
@@ -123,78 +84,382 @@ const CustomerClaimDetail = () => {
   const [submittingClaim, setSubmittingClaim] = useState(false);
   const [confirmingDelivery, setConfirmingDelivery] = useState(false);
 
-  // 🟢 Ref ล็อคป้องกันการสั่งยิง API อัตโนมัติซ้ำซ้อน
   const isExecutingAutoStampRef = useRef(false);
 
   const user = loginService.getCurrentUser();
-  const role = user?.role || user?.user_type;
+
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  const statusLogsRef = useRef(statusLogs);
+  useEffect(() => {
+    statusLogsRef.current = statusLogs;
+  }, [statusLogs]);
 
   const rawStatus = String(data?.current_status || data?.status || "");
   const statusName = getStatusName(rawStatus, "customer");
   const statusId = String(getStatusId(rawStatus));
 
-  // 🟢 2. ค้นหา Log ล่าสุดของสถานะ Pending และ Delivered (เพื่อเช็คเฉพาะรอบปัจจุบัน)
   const lastPendingLog = statusLogs
-    .filter((l) => String(l.status || l.status_id) === "1" || String(l.status || l.status_id) === "5")
+    .filter((l) => ["1", "5"].includes(String(l.status || l.status_id)))
     .slice(-1)[0];
 
   const lastDeliveredLog = statusLogs
     .filter((l) => String(l.status || l.status_id) === "10")
     .slice(-1)[0];
-  
+
   const hasCustomerConfirmedSubmit = statusLogs.some(
     (log) =>
-      log.remark &&
-      log.remark.includes("ยืนยันการส่งเคลม") &&
+      log.remark?.includes("ยืนยันการส่งเคลม") &&
       (!lastPendingLog || (log.log_id || log.id) >= (lastPendingLog.log_id || lastPendingLog.id))
   );
 
   const hasCustomerConfirmedDelivery = statusLogs.some(
     (log) =>
-      log.remark &&
-      log.remark.includes("ลูกค้ายืนยันรับสินค้า") &&
+      log.remark?.includes("ลูกค้ายืนยันรับสินค้า") &&
       (!lastDeliveredLog || (log.log_id || log.id) >= (lastDeliveredLog.log_id || lastDeliveredLog.id))
   );
 
-  const isPendingStatus = 
+  const isPendingStatus =
     !hasCustomerConfirmedSubmit &&
-    (["1", "5"].includes(statusId) || 
-     ["1", "5", "pending", "รอพิจารณา", "รอตรวจสอบ"].includes(rawStatus.toLowerCase()) ||
-     statusName === "รอพิจารณา");
+    (["1", "5"].includes(statusId) ||
+      ["1", "5", "pending", "รอพิจารณา", "รอตรวจสอบ"].includes(rawStatus.toLowerCase()) ||
+      statusName === "รอพิจารณา");
 
-  const isDeliveredStatus = 
+  const isDeliveredStatus =
     !hasCustomerConfirmedDelivery &&
-    (statusId === "10" || 
-     ["10", "delivered", "จัดส่งสินค้าเคลมสำเร็จ"].includes(rawStatus.toLowerCase()) ||
-     statusName === "จัดส่งสินค้าเคลมสำเร็จ");
+    (statusId === "10" ||
+      ["10", "delivered", "จัดส่งสินค้าเคลมสำเร็จ"].includes(rawStatus.toLowerCase()) ||
+      statusName === "จัดส่งสินค้าเคลมสำเร็จ");
+
+  const isPendingStatusRef = useRef(isPendingStatus);
+  useEffect(() => {
+    isPendingStatusRef.current = isPendingStatus;
+  }, [isPendingStatus]);
+
+  const isDeliveredStatusRef = useRef(isDeliveredStatus);
+  useEffect(() => {
+    isDeliveredStatusRef.current = isDeliveredStatus;
+  }, [isDeliveredStatus]);
+
+  const fetchClaimDetail = useCallback(
+    async (showLoading = true) => {
+      const activeUser = userRef.current;
+      const activeRole = activeUser?.role || activeUser?.user_type;
+
+      if (activeRole === "staff" || activeRole === "admin") {
+        navigate("/staff", { replace: true });
+        return;
+      }
+
+      if (showLoading) setLoading(true);
+      try {
+        const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
+          claimService.getClaim().catch(() => ({ data: [] })),
+          itemService.getItems().catch(() => ({ data: [] })),
+          claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
+          claimService.getclaimapproves().catch(() => ({ data: [] })),
+          userService.getUsers().catch(() => ({ data: [] })),
+          agentService.getAgent().catch(() => ({ data: [] })),
+        ]);
+
+        const masterItemsMap = {};
+        const masterItemsData = Array.isArray(resMasterItems?.data)
+          ? resMasterItems.data
+          : Array.isArray(resMasterItems)
+          ? resMasterItems
+          : [];
+        masterItemsData.forEach((item) => {
+          const code = item.item_code || "";
+          const name = item.item_name || "";
+          const fullName = code && name ? `${code} - ${name}` : name || code;
+
+          if (item.item_id) masterItemsMap[String(item.item_id)] = { code, name, fullName };
+          if (code) masterItemsMap[String(code)] = { code, name, fullName };
+        });
+
+        const aMap = {};
+        const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+        if (Array.isArray(agentsData)) {
+          agentsData.forEach((agent) => {
+            const aId = String(agent.agent_id || agent.id);
+            const aCode = String(agent.agent_code || "");
+            if (aId) aMap[aId] = agent.agent_name || agent.name;
+            if (aCode) aMap[aCode] = agent.agent_name || agent.name;
+          });
+          setAgentsMap(aMap);
+        }
+
+        const usersData = resUsers?.data || resUsers || [];
+        const uMap = {};
+        if (Array.isArray(usersData)) {
+          setUsersList(usersData);
+          usersData.forEach((u) => {
+            const uId = String(u.user_id || u.id);
+            const name = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
+            uMap[uId] = name || `User ID: ${uId}`;
+          });
+          setUsersMap(uMap);
+        }
+
+        const currentUserIdStr = String(activeUser?.user_id || activeUser?.id || "");
+        const userAgentIdentifiers = [];
+
+        if (Array.isArray(activeUser?.agent_ids)) {
+          activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
+        }
+        if (activeUser?.agent_id) {
+          userAgentIdentifiers.push(String(activeUser.agent_id));
+        }
+
+        if (Array.isArray(agentsData)) {
+          agentsData.forEach((agent) => {
+            const aId = String(agent.agent_id || agent.id || "");
+            const aCode = String(agent.agent_code || agent.code || "");
+            if (userAgentIdentifiers.includes(aId) && aCode) {
+              userAgentIdentifiers.push(aCode);
+            }
+          });
+        }
+
+        const rawClaims = Array.isArray(resClaim?.data)
+          ? resClaim.data
+          : Array.isArray(resClaim)
+          ? resClaim
+          : [];
+
+        const allowedClaims = rawClaims.filter((claim) => {
+          const claimAgentIdStr = String(claim.agent_id || "");
+          const claimAgentCodeStr = String(claim.agent_code || "");
+          const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+
+          const isAgentMatch =
+            userAgentIdentifiers.length > 0 &&
+            (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
+          const isUserMatch = currentUserIdStr && claimCreatedByStr === currentUserIdStr;
+
+          return isAgentMatch || isUserMatch;
+        });
+
+        if (allowedClaims.length > 0) {
+          const targetId = String(claimId || "").trim();
+
+          const currentClaim = allowedClaims.find((item) => {
+            const itemClaimId = String(item.claim_id || "").trim();
+            const itemClaimNo = String(item.claim_no || "").trim();
+            return itemClaimId === targetId || itemClaimNo === targetId;
+          });
+
+          if (currentClaim) {
+            const logsData = resLogs?.data || resLogs || [];
+            const filteredLogs = Array.isArray(logsData)
+              ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
+              : [];
+            setStatusLogs(filteredLogs);
+
+            const extraLogData = parseExtraDataFromLogs(filteredLogs) || {};
+            const extraItemsMap = {};
+            if (Array.isArray(extraLogData.items)) {
+              extraLogData.items.forEach((eItem) => {
+                if (eItem.itemName) {
+                  extraItemsMap[eItem.itemName] = eItem;
+                }
+              });
+            }
+
+            let rawImages = [];
+            const currentHost = window.location.hostname;
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || `http://${currentHost}:5001`;
+
+            try {
+              const resImages = await claimService.getClaimImages(currentClaim.claim_id);
+              if (resImages?.data && Array.isArray(resImages.data)) {
+                rawImages = resImages.data.map((img) => {
+                  let formattedUrl = img.image_url || "";
+                  if (formattedUrl) {
+                    formattedUrl = formattedUrl.replace("localhost", currentHost);
+                  } else if (img.image_path) {
+                    let path = img.image_path.startsWith("/") ? img.image_path : `/${img.image_path}`;
+                    if (!path.startsWith("/uploads")) {
+                      path = `/uploads/claims${path}`;
+                    }
+                    formattedUrl = `${apiBaseUrl}${path}`;
+                  }
+
+                  return { ...img, formattedUrl };
+                });
+              }
+            } catch (imgErr) {
+              console.error("ดึงรูปภาพไม่สำเร็จ:", imgErr);
+            }
+            setAllImages(rawImages);
+
+            let itemsList = [];
+            try {
+              const resClaimItems = await claimService.getClaimItems(currentClaim.claim_id);
+              if (resClaimItems?.data && Array.isArray(resClaimItems.data)) {
+                itemsList = resClaimItems.data.map((ci, idx) => {
+                  let parsedItemData = {};
+                  if (ci.remark) {
+                    try {
+                      parsedItemData = JSON.parse(ci.remark);
+                    } catch {
+                      parsedItemData = { itemRemark: ci.remark };
+                    }
+                  }
+
+                  const itemInfo = masterItemsMap[String(ci.item_id)] || masterItemsMap[String(ci.item_code)] || {};
+                  const itemCode = ci.item_code || itemInfo.code || String(ci.item_id || "");
+                  const itemNameOnly = itemInfo.name || ci.item_name || "";
+
+                  const itemFullName = itemInfo.fullName
+                    ? itemInfo.fullName
+                    : itemCode && itemNameOnly
+                    ? `${itemCode} - ${itemNameOnly}`
+                    : itemNameOnly || itemCode || `สินค้า ID: ${ci.item_id}`;
+
+                  const itemImgs = rawImages.filter((img) => {
+                    const matchClaimItem =
+                      img.claim_item_id && ci.claim_item_id && String(img.claim_item_id) === String(ci.claim_item_id);
+                    const matchItem = img.item_id && ci.item_id && String(img.item_id) === String(ci.item_id);
+                    return matchClaimItem || matchItem;
+                  });
+
+                  const finalImages = itemImgs.length > 0 ? itemImgs : rawImages;
+
+                  return {
+                    key: ci.claim_item_id || idx,
+                    ...ci,
+                    item_code: itemCode,
+                    item_name: itemFullName,
+                    images: finalImages.map((i) => i.formattedUrl),
+                    qtyreceived: ci.qtyreceived ?? parsedItemData.receivedQty ?? ci.qty,
+                    qtychang: ci.qtychang ?? parsedItemData.returnedQty ?? ci.qty,
+                    received_qty: ci.qtyreceived ?? parsedItemData.receivedQty ?? ci.qty,
+                    returned_qty: ci.qtychang ?? parsedItemData.returnedQty ?? ci.qty,
+                    approved_qty: parsedItemData.approvedQty ?? ci.qty,
+                    item_remark:
+                      parsedItemData.itemRemark ||
+                      (typeof ci.remark === "string" && !ci.remark.startsWith("{") ? ci.remark : ""),
+                    withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
+                    lot_no_change: ci.lot_no_change || "",
+                    mfg_date_change: ci.mfg_date_change ? dayjs(ci.mfg_date_change) : null,
+                  };
+                });
+              }
+            } catch {
+              if (currentClaim.item_id) {
+                const itemInfo = masterItemsMap[String(currentClaim.item_id)] || {};
+                const fallbackItemName = itemInfo.fullName || `สินค้า ID: ${currentClaim.item_id}`;
+                const extraItem = extraItemsMap[fallbackItemName] || extraLogData.items?.[0] || {};
+
+                itemsList = [
+                  {
+                    key: 1,
+                    item_id: currentClaim.item_id,
+                    item_code: itemInfo.code || String(currentClaim.item_id),
+                    item_name: fallbackItemName,
+                    lot_no: currentClaim.lot_no || currentClaim.lot,
+                    mfg_date: currentClaim.mfg_date,
+                    expire_date: currentClaim.exp_date || currentClaim.expire_date,
+                    qty: currentClaim.qty,
+                    qtychang: currentClaim.qtychang,
+                    qtyreceived: currentClaim.qtyreceived,
+                    received_qty: extraItem.receivedQty ?? currentClaim.qty,
+                    approved_qty: extraItem.approvedQty ?? currentClaim.qty,
+                    returned_qty: extraItem.returnedQty ?? currentClaim.qty,
+                    withdraw_date: currentClaim.withdraw_date ? dayjs(currentClaim.withdraw_date) : null,
+                    lot_no_change: currentClaim.lot_no_change || "",
+                    mfg_date_change: currentClaim.mfg_date_change ? dayjs(currentClaim.mfg_date_change) : null,
+                    remark: currentClaim.remark || currentClaim.claim_reason || currentClaim.detail,
+                    images: rawImages.map((i) => i.formattedUrl),
+                  },
+                ];
+              }
+            }
+            setClaimItems(itemsList);
+
+            const msgs = filteredLogs
+              .filter((log) => log.remark?.startsWith("[MSG]"))
+              .map((log) => {
+                const cleanRemark = log.remark.replace("[MSG]", "").trim();
+                const senderRole = log.remark.includes("[STAFF]") ? "staff" : "customer";
+                return {
+                  id: log.log_id || log.id || Math.random(),
+                  senderRole,
+                  senderName:
+                    uMap[String(log.update_by || log.user_id)] ||
+                    (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
+                  message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
+                  time: log.update_date || log.created_at || log.created_date,
+                };
+              });
+            setChatMessages(msgs);
+
+            setData({
+              ...currentClaim,
+              images: rawImages.map((i) => i.formattedUrl),
+              driver_name: currentClaim.driver_name || extraLogData.driverName || extraLogData.driver_name || "",
+              truck_plate: currentClaim.truck_plate || extraLogData.truckPlate || extraLogData.truck_plate || "",
+              full_receive: currentClaim.full_receive || extraLogData.fullReceive || extraLogData.full_receive || "",
+              delivery_driver:
+                currentClaim.delivery_driver || extraLogData.deliveryDriver || extraLogData.delivery_driver || "",
+              delivery_plate:
+                currentClaim.delivery_plate || extraLogData.deliveryPlate || extraLogData.delivery_plate || "",
+              estimated_delivery_date:
+                currentClaim.estimated_delivery_date || extraLogData.estimatedDeliveryDate || null,
+            });
+
+            const approvesData = resApproves?.data || resApproves || [];
+            if (Array.isArray(approvesData)) {
+              setApproveLogs(approvesData.filter((app) => String(app.claim_id) === String(currentClaim.claim_id)));
+            }
+          } else {
+            if (showLoading) message.error(`ไม่พบข้อมูลรายการเคลมรหัส: ${claimId}`);
+          }
+        } else {
+          if (showLoading) message.error("ไม่พบข้อมูลรายการเคลมในระบบ");
+        }
+      } catch (error) {
+        if (showLoading) message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [claimId, navigate]
+  );
 
   useClaimRealtime({
-    claimId: claimId,
+    claimId,
     isStaff: false,
-    onStatusUpdated: () => {
-      fetchClaimDetail(false);
-    },
+    onStatusUpdated: () => fetchClaimDetail(false),
     onCommentCreated: (newLog) => {
-      if (!newLog || !newLog.remark) return;
+      if (!newLog?.remark?.startsWith("[MSG]")) return;
 
-      if (newLog.remark.startsWith("[MSG]")) {
-        const isStaff = newLog.remark.includes("[STAFF]");
-        const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
-        const senderRole = isStaff ? "staff" : "customer";
-        
-        const formattedMsg = {
-          id: newLog.log_id || newLog.id || Math.random(),
-          senderRole,
-          senderName: usersMap[String(newLog.update_by)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
-          message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
-          time: newLog.update_date || newLog.created_at || new Date(),
-        };
+      const isStaff = newLog.remark.includes("[STAFF]");
+      const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
+      const senderRole = isStaff ? "staff" : "customer";
 
-        setChatMessages((prevMsgs) => {
-          const isExist = prevMsgs.some((m) => String(m.id) === String(formattedMsg.id));
-          return isExist ? prevMsgs : [...prevMsgs, formattedMsg];
-        });
-      }
+      const formattedMsg = {
+        id: newLog.log_id || newLog.id || Math.random(),
+        senderRole,
+        senderName:
+          usersMap[String(newLog.update_by)] ||
+          (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
+        message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
+        time: newLog.update_date || newLog.created_at || new Date(),
+      };
+
+      setChatMessages((prev) =>
+        prev.some((m) => String(m.id) === String(formattedMsg.id)) ? prev : [...prev, formattedMsg]
+      );
     },
   });
 
@@ -207,408 +472,153 @@ const CustomerClaimDetail = () => {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [claimId]);
-
-  // 🟢🟢🟢 TIMER อัตโนมัติ 🟢🟢🟢
-  useEffect(() => {
-    if (!data || isExecutingAutoStampRef.current) return;
-
-    const timer = setInterval(() => {
-      checkAndTriggerAutoStamp();
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [data, statusLogs]);
-
-  const checkAndTriggerAutoStamp = async () => {
-    if (!data || isExecutingAutoStampRef.current) return;
-
-    const currentStatusIdStr = String(getStatusId(data.current_status || data.status));
-    const now = dayjs();
-
-    // --- CASE 1: สถานะ PENDING (รอส่งเคลม) เกินกำหนดเวลา ---
-    if (isPendingStatus) {
-      const createdDateRaw = data.created_at || data.claim_date;
-      const createdTime = parseDateSafely(createdDateRaw);
-      
-      if (createdTime) {
-        const diffSeconds = Math.abs(now.diff(createdTime, "second"));
-        if (diffSeconds >= AUTO_STAMP_DELAY_SECONDS) {
-          isExecutingAutoStampRef.current = true;
-          try {
-            await handleConfirmClaimSubmit(
-              `ลูกค้ากดยืนยันการส่งเคลมสินค้าเรียบร้อยแล้ว (ระบบ Stamp อัตโนมัติ ${AUTO_STAMP_DELAY_SECONDS} วินาที)`,
-              true
-            );
-          } catch (err) {
-            console.error("Auto stamp submit error:", err);
-          } finally {
-            isExecutingAutoStampRef.current = false;
-          }
-        }
-      }
-    }
-
-    // --- CASE 2: สถานะ DELIVERED (จัดส่งสำเร็จ) เกินกำหนดเวลา ---
-    if (isDeliveredStatus) {
-      const deliveredLogs = statusLogs.filter((l) => {
-        const st = String(l.status || l.status_id || "").toLowerCase();
-        const rm = String(l.remark || "").toLowerCase();
-        return (
-          st === "10" ||
-          st === "delivered" ||
-          rm.includes("delivered") ||
-          rm.includes("จัดส่งสินค้าเคลมสำเร็จ")
-        );
-      });
-
-      const lastDeliveredLog = deliveredLogs.length > 0 ? deliveredLogs[deliveredLogs.length - 1] : null;
-      const rawDate = lastDeliveredLog?.update_date || lastDeliveredLog?.created_at || lastDeliveredLog?.created_date || data.updated_at || data.receive_finish_date;
-      const deliveredTime = parseDateSafely(rawDate);
-
-      if (deliveredTime) {
-        const diffSeconds = Math.abs(now.diff(deliveredTime, "second"));
-        if (diffSeconds >= AUTO_STAMP_DELAY_SECONDS) {
-          isExecutingAutoStampRef.current = true;
-          try {
-            await handleConfirmDelivery(
-              `ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว (ระบบ Stamp อัตโนมัติ ${AUTO_STAMP_DELAY_SECONDS} วินาที)`,
-              true
-            );
-          } catch (err) {
-            console.error("Auto stamp delivery error:", err);
-          } finally {
-            isExecutingAutoStampRef.current = false;
-          }
-        }
-      }
-    }
-  };
-
-  const fetchClaimDetail = async (showLoading = true) => {
-    if (role === "staff" || role === "admin") {
-      navigate("/staff", { replace: true });
-      return;
-    }
-
-    if (showLoading) setLoading(true);
-    try {
-      const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
-        claimService.getClaim().catch((err) => {
-          console.error("getClaim error:", err);
-          return { data: [] };
-        }),
-        itemService.getItems().catch(() => ({ data: [] })),
-        claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
-        claimService.getclaimapproves().catch(() => ({ data: [] })),
-        userService.getUsers().catch(() => ({ data: [] })),
-        agentService.getAgent().catch(() => ({ data: [] })),
-      ]);
-
-      const masterItemsMap = {};
-      const masterItemsData = Array.isArray(resMasterItems?.data) ? resMasterItems.data : Array.isArray(resMasterItems) ? resMasterItems : [];
-      masterItemsData.forEach((item) => {
-        const code = item.item_code || "";
-        const name = item.item_name || "";
-        const fullName = code && name ? `${code} - ${name}` : name || code;
-
-        if (item.item_id) masterItemsMap[String(item.item_id)] = { code, name, fullName };
-        if (code) masterItemsMap[String(code)] = { code, name, fullName };
-      });
-
-      const aMap = {};
-      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id);
-          const aCode = String(agent.agent_code || "");
-          if (aId) aMap[aId] = agent.agent_name || agent.name;
-          if (aCode) aMap[aCode] = agent.agent_name || agent.name;
-        });
-        setAgentsMap(aMap);
-      }
-
-      const usersData = resUsers?.data || resUsers || [];
-      let uMap = {};
-      if (Array.isArray(usersData)) {
-        setUsersList(usersData);
-        usersData.forEach((u) => {
-          const uId = String(u.user_id || u.id);
-          const name = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim();
-          uMap[uId] = name || `User ID: ${uId}`;
-        });
-        setUsersMap(uMap);
-      }
-
-      const currentUserIdStr = String(user?.user_id || user?.id || "");
-      let userAgentIdentifiers = [];
-
-      if (Array.isArray(user?.agent_ids)) {
-        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
-      }
-      if (user?.agent_id) {
-        userAgentIdentifiers.push(String(user.agent_id));
-      }
-
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
-      const rawClaims = Array.isArray(resClaim?.data)
-        ? resClaim.data
-        : Array.isArray(resClaim)
-        ? resClaim
-        : [];
-
-      const allowedClaims = rawClaims.filter((claim) => {
-        const claimAgentIdStr = String(claim.agent_id || "");
-        const claimAgentCodeStr = String(claim.agent_code || "");
-        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
-
-        const isAgentMatch =
-          userAgentIdentifiers.length > 0 &&
-          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = currentUserIdStr && claimCreatedByStr === currentUserIdStr;
-
-        return isAgentMatch || isUserMatch;
-      });
-
-      if (allowedClaims.length > 0) {
-        const targetId = String(claimId || "").trim();
-
-        const currentClaim = allowedClaims.find((item) => {
-          const itemClaimId = String(item.claim_id || "").trim();
-          const itemClaimNo = String(item.claim_no || "").trim();
-          return itemClaimId === targetId || itemClaimNo === targetId;
-        });
-
-        if (currentClaim) {
-          const logsData = resLogs?.data || resLogs || [];
-          const filteredLogs = Array.isArray(logsData)
-            ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
-            : [];
-          setStatusLogs(filteredLogs);
-
-          const extraLogData = parseExtraDataFromLogs(filteredLogs) || {};
-          const extraItemsMap = {};
-          if (Array.isArray(extraLogData.items)) {
-            extraLogData.items.forEach((eItem) => {
-              if (eItem.itemName) {
-                extraItemsMap[eItem.itemName] = eItem;
-              }
-            });
-          }
-
-          let rawImages = [];
-          const currentHost = window.location.hostname;
-          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || `http://${currentHost}:5001`;
-
-          try {
-            const resImages = await claimService.getClaimImages(currentClaim.claim_id);
-            if (resImages?.data && Array.isArray(resImages.data)) {
-              rawImages = resImages.data.map((img) => {
-                let formattedUrl = img.image_url || "";
-                if (formattedUrl) {
-                  formattedUrl = formattedUrl.replace("localhost", currentHost);
-                } else if (img.image_path) {
-                  let path = img.image_path.startsWith("/") ? img.image_path : `/${img.image_path}`;
-                  if (!path.startsWith("/uploads")) {
-                    path = `/uploads/claims${path}`;
-                  }
-                  formattedUrl = `${apiBaseUrl}${path}`;
-                }
-
-                return {
-                  ...img,
-                  formattedUrl,
-                };
-              });
-            }
-          } catch (imgErr) {
-            console.error("ดึงรูปภาพไม่สำเร็จ:", imgErr);
-          }
-          setAllImages(rawImages);
-
-          let itemsList = [];
-          try {
-            const resClaimItems = await claimService.getClaimItems(currentClaim.claim_id);
-            if (resClaimItems?.data && Array.isArray(resClaimItems.data)) {
-              itemsList = resClaimItems.data.map((ci, idx) => {
-                let parsedItemData = {};
-                if (ci.remark) {
-                  try {
-                    parsedItemData = JSON.parse(ci.remark);
-                  } catch (e) {
-                    parsedItemData = { itemRemark: ci.remark };
-                  }
-                }
-
-                const itemInfo = masterItemsMap[String(ci.item_id)] || masterItemsMap[String(ci.item_code)] || {};
-                const itemCode = ci.item_code || itemInfo.code || String(ci.item_id || "");
-                const itemNameOnly = itemInfo.name || ci.item_name || "";
-
-                const itemFullName = itemInfo.fullName 
-                  ? itemInfo.fullName 
-                  : itemCode && itemNameOnly 
-                  ? `${itemCode} - ${itemNameOnly}` 
-                  : itemNameOnly || itemCode || `สินค้า ID: ${ci.item_id}`;
-
-                const itemImgs = rawImages.filter((img) => {
-                  const matchClaimItem = img.claim_item_id && ci.claim_item_id && String(img.claim_item_id) === String(ci.claim_item_id);
-                  const matchItem = img.item_id && ci.item_id && String(img.item_id) === String(ci.item_id);
-                  return matchClaimItem || matchItem;
-                });
-
-                const finalImages = itemImgs.length > 0 ? itemImgs : rawImages;
-
-                return {
-                  key: ci.claim_item_id || idx,
-                  ...ci,
-                  item_code: itemCode,
-                  item_name: itemFullName,
-                  images: finalImages.map((i) => i.formattedUrl),
-                  
-                  qtyreceived: ci.qtyreceived ?? parsedItemData.receivedQty ?? ci.qty,
-                  qtychang: ci.qtychang ?? parsedItemData.returnedQty ?? ci.qty,
-                  
-                  received_qty: ci.qtyreceived ?? parsedItemData.receivedQty ?? ci.qty,
-                  returned_qty: ci.qtychang ?? parsedItemData.returnedQty ?? ci.qty,
-                  approved_qty: parsedItemData.approvedQty ?? ci.qty,
-                  
-                  item_remark: parsedItemData.itemRemark || (typeof ci.remark === "string" && !ci.remark.startsWith("{") ? ci.remark : ""),
-                  withdraw_date: ci.withdraw_date ? dayjs(ci.withdraw_date) : null,
-                  lot_no_change: ci.lot_no_change || "",
-                  mfg_date_change: ci.mfg_date_change ? dayjs(ci.mfg_date_change) : null,
-                };
-              });
-            }
-          } catch (itemsErr) {
-            console.warn("ไม่สามารถดึงรายการสินค้าเคลมได้:", itemsErr);
-            if (currentClaim.item_id) {
-              const itemInfo = masterItemsMap[String(currentClaim.item_id)] || {};
-              const fallbackItemName = itemInfo.fullName || `สินค้า ID: ${currentClaim.item_id}`;
-              const extraItem = extraItemsMap[fallbackItemName] || extraLogData.items?.[0] || {};
-              const fallbackReceivedQty = extraItem.receivedQty ?? currentClaim.qty;
-              const fallbackReturnedQty = extraItem.returnedQty ?? currentClaim.qty;
-              const fallbackApprovedQty = extraItem.approvedQty ?? currentClaim.qty;
-
-              itemsList = [
-                {
-                  key: 1,
-                  item_id: currentClaim.item_id,
-                  item_code: itemInfo.code || String(currentClaim.item_id),
-                  item_name: fallbackItemName,
-                  lot_no: currentClaim.lot_no || currentClaim.lot,
-                  mfg_date: currentClaim.mfg_date,
-                  expire_date: currentClaim.exp_date || currentClaim.expire_date,
-                  qty: currentClaim.qty,
-                  qtychang: currentClaim.qtychang,
-                  qtyreceived: currentClaim.qtyreceived,
-                  received_qty: fallbackReceivedQty,
-                  approved_qty: fallbackApprovedQty,
-                  returned_qty: fallbackReturnedQty,
-                  withdraw_date: currentClaim.withdraw_date ? dayjs(currentClaim.withdraw_date) : null,
-                  lot_no_change: currentClaim.lot_no_change || "",
-                  mfg_date_change: currentClaim.mfg_date_change ? dayjs(currentClaim.mfg_date_change) : null,
-                  remark: currentClaim.remark || currentClaim.claim_reason || currentClaim.detail,
-                  images: rawImages.map((i) => i.formattedUrl),
-                },
-              ];
-            }
-          }
-          setClaimItems(itemsList);
-
-          const msgs = filteredLogs
-            .filter((log) => log.remark && log.remark.startsWith("[MSG]"))
-            .map((log) => {
-              const cleanRemark = log.remark.replace("[MSG]", "").trim();
-              const senderRole = log.remark.includes("[STAFF]") ? "staff" : "customer";
-              return {
-                id: log.log_id || log.id || Math.random(),
-                senderRole,
-                senderName: uMap[String(log.update_by || log.user_id)] || (senderRole === "staff" ? "เจ้าหน้าที่ (Staff)" : "ลูกค้า (Customer)"),
-                message: cleanRemark.replace("[STAFF]", "").replace("[CUSTOMER]", "").trim(),
-                time: log.update_date || log.created_at || log.created_date,
-              };
-            });
-          setChatMessages(msgs);
-
-          const mergedClaimData = {
-            ...currentClaim,
-            images: rawImages.map((i) => i.formattedUrl),
-            driver_name: currentClaim.driver_name || extraLogData.driverName || extraLogData.driver_name || "",
-            truck_plate: currentClaim.truck_plate || extraLogData.truckPlate || extraLogData.truck_plate || "",
-            full_receive: currentClaim.full_receive || extraLogData.fullReceive || extraLogData.full_receive || "",
-            delivery_driver: currentClaim.delivery_driver || extraLogData.deliveryDriver || extraLogData.delivery_driver || "",
-            delivery_plate: currentClaim.delivery_plate || extraLogData.deliveryPlate || extraLogData.delivery_plate || "",
-            estimated_delivery_date: currentClaim.estimated_delivery_date || extraLogData.estimatedDeliveryDate || null,
-          };
-          setData(mergedClaimData);
-
-          const approvesData = resApproves?.data || resApproves || [];
-          if (Array.isArray(approvesData)) {
-            const filteredApproves = approvesData.filter(
-              (app) => String(app.claim_id) === String(currentClaim.claim_id)
-            );
-            setApproveLogs(filteredApproves);
-          }
-        } else {
-          if (showLoading) message.error(`ไม่พบข้อมูลรายการเคลมรหัส: ${claimId}`);
-        }
-      } else {
-        if (showLoading) message.error("ไม่พบข้อมูลรายการเคลมในระบบ");
-      }
-    } catch (error) {
-      console.error("fetchClaimDetail error:", error);
-      if (showLoading) message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
+  }, [claimId, fetchClaimDetail]);
 
   const handleConfirmClaimSubmit = async (customRemark, isSilent = false) => {
     setSubmittingClaim(true);
     try {
-      const userId = user?.user_id || user?.id || "";
-      const remarkText = typeof customRemark === "string" ? customRemark : "ลูกค้ากดยืนยันการส่งเคลมสินค้าเรียบร้อยแล้ว";
+      const activeUser = userRef.current;
+      const activeData = dataRef.current;
+      const userId = activeUser?.user_id || activeUser?.id || "";
+      const remarkText =
+        typeof customRemark === "string" ? customRemark : "ลูกค้ากดยืนยันการส่งเคลมสินค้าเรียบร้อยแล้ว";
 
       await claimService.createClaimStatusLogs({
-        claim_id: String(data?.claim_id || claimId),
+        claim_id: String(activeData?.claim_id || claimId),
         status: "5",
         remark: remarkText,
         update_by: String(userId),
         user_id: String(userId),
       });
 
-      if (!isSilent) {
-        message.success("ยืนยันการส่งเคลมเรียบร้อยแล้ว");
-      }
+      if (!isSilent) message.success("ยืนยันการส่งเคลมเรียบร้อยแล้ว");
       await fetchClaimDetail(false);
     } catch (err) {
-      if (!isSilent) {
-        message.error("เกิดข้อผิดพลาดในการยืนยันรายการ: " + (err.message || ""));
-      }
+      if (!isSilent) message.error("เกิดข้อผิดพลาดในการยืนยันรายการ: " + (err.message || ""));
     } finally {
       setSubmittingClaim(false);
     }
   };
+
+  const handleConfirmDelivery = async (customRemark, isSilent = false) => {
+    setConfirmingDelivery(true);
+    try {
+      const activeUser = userRef.current;
+      const activeData = dataRef.current;
+      const userId = activeUser?.user_id || activeUser?.agent_id || activeData?.agent_id || "";
+      const currentTimestamp = new Date().toISOString();
+      const remarkText = typeof customRemark === "string" ? customRemark : "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว";
+
+      const { images, items, ...claimDataWithoutImages } = activeData || {};
+
+      const formattedItems =
+        Array.isArray(claimItems) && claimItems.length > 0 ? claimItems : Array.isArray(items) ? items : [];
+
+      const updatePayload = {
+        ...claimDataWithoutImages,
+        claim_id: String(activeData.claim_id),
+        claim_no: String(activeData.claim_no || ""),
+        agent_id: String(activeData.agent_id || activeUser?.agent_id || ""),
+        items: formattedItems,
+        current_status: "10",
+        status: "10",
+        status_name: "จัดส่งสินค้าเคลมสำเร็จ",
+        actionsname: "receive_finish_date",
+        receive_finish_date: currentTimestamp,
+        update_by: String(userId),
+      };
+
+      const resUpdate = await claimService.updateClaim(updatePayload);
+
+      if (resUpdate) {
+        await claimService.createClaimStatusLogs({
+          claim_id: String(activeData.claim_id),
+          status: "10",
+          remark: remarkText,
+          update_by: String(userId),
+          agent_id: String(activeData.agent_id || activeUser?.agent_id || ""),
+        });
+
+        if (!isSilent) message.success("ยืนยันรับสินค้าเคลมเรียบร้อยแล้ว");
+        await fetchClaimDetail(false);
+      }
+    } catch (error) {
+      if (!isSilent) message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+    } finally {
+      setConfirmingDelivery(false);
+    }
+  };
+
+  const checkAndTriggerAutoStamp = useCallback(async () => {
+    const activeData = dataRef.current;
+    const activeLogs = statusLogsRef.current;
+    const pendingState = isPendingStatusRef.current;
+    const deliveredState = isDeliveredStatusRef.current;
+
+    if (!activeData || isExecutingAutoStampRef.current) return;
+
+    const now = dayjs();
+
+    if (pendingState) {
+      const createdTime = parseDateSafely(activeData.created_at || activeData.claim_date);
+      if (createdTime && Math.abs(now.diff(createdTime, "second")) >= AUTO_STAMP_DELAY_SECONDS) {
+        isExecutingAutoStampRef.current = true;
+        try {
+          await handleConfirmClaimSubmit(
+            `ลูกค้ากดยืนยันการส่งเคลมสินค้าเรียบร้อยแล้ว (ระบบ Stamp อัตโนมัติ ${AUTO_STAMP_DELAY_SECONDS} วินาที)`,
+            true
+          );
+        } finally {
+          isExecutingAutoStampRef.current = false;
+        }
+      }
+    }
+
+    if (deliveredState) {
+      const deliveredLogs = activeLogs.filter((l) => {
+        const st = String(l.status || l.status_id || "").toLowerCase();
+        const rm = String(l.remark || "").toLowerCase();
+        return st === "10" || st === "delivered" || rm.includes("delivered") || rm.includes("จัดส่งสินค้าเคลมสำเร็จ");
+      });
+
+      const lastLog = deliveredLogs.length > 0 ? deliveredLogs[deliveredLogs.length - 1] : null;
+      const deliveredTime = parseDateSafely(
+        lastLog?.update_date || lastLog?.created_at || activeData.updated_at || activeData.receive_finish_date
+      );
+
+      if (deliveredTime && Math.abs(now.diff(deliveredTime, "second")) >= AUTO_STAMP_DELAY_SECONDS) {
+        isExecutingAutoStampRef.current = true;
+        try {
+          await handleConfirmDelivery(
+            `ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว (ระบบ Stamp อัตโนมัติ ${AUTO_STAMP_DELAY_SECONDS} วินาที)`,
+            true
+          );
+        } finally {
+          isExecutingAutoStampRef.current = false;
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      checkAndTriggerAutoStamp();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [checkAndTriggerAutoStamp]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
     const messageToSend = newMessage.trim();
     setSendingMsg(true);
     try {
-      const userId = user?.user_id || user?.id || user?.agent_id || "";
-      const realClaimId = data.claim_id;
+      const activeUser = userRef.current;
+      const activeData = dataRef.current;
+      const userId = activeUser?.user_id || activeUser?.id || activeUser?.agent_id || "";
+      const realClaimId = activeData.claim_id;
       const formattedRemark = `[MSG] [CUSTOMER] ${messageToSend}`;
 
-      const rawStatusVal = data?.current_status || data?.status || data?.status_id || "1";
+      const rawStatusVal = activeData?.current_status || activeData?.status || activeData?.status_id || "1";
       const targetStatusId = Number(getStatusId(rawStatusVal)) || Number(statusId) || 1;
 
       await claimService.createClaimStatusLogs({
@@ -625,60 +635,6 @@ const CustomerClaimDetail = () => {
       message.error("ส่งข้อความไม่สำเร็จ: " + (err.message || "เกิดข้อผิดพลาด"));
     } finally {
       setSendingMsg(false);
-    }
-  };
-
-  const handleConfirmDelivery = async (customRemark, isSilent = false) => {
-    setConfirmingDelivery(true);
-    try {
-      const userId = user?.user_id || user?.agent_id || data?.agent_id || "";
-      const currentTimestamp = new Date().toISOString();
-      const remarkText = typeof customRemark === "string" ? customRemark : "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว";
-
-      const { images, items, ...claimDataWithoutImages } = data || {};
-
-      const formattedItems = Array.isArray(claimItems) && claimItems.length > 0
-        ? claimItems
-        : Array.isArray(items)
-        ? items
-        : [];
-
-      const updatePayload = {
-        ...claimDataWithoutImages,
-        claim_id: String(data.claim_id),
-        claim_no: String(data.claim_no || ""),
-        agent_id: String(data.agent_id || user?.agent_id || ""),
-        items: formattedItems,
-        current_status: "10",
-        status: "10",
-        status_name: "จัดส่งสินค้าเคลมสำเร็จ",
-        actionsname: "receive_finish_date",
-        receive_finish_date: currentTimestamp,
-        update_by: String(userId),
-      };
-
-      const resUpdate = await claimService.updateClaim(updatePayload);
-
-      if (resUpdate?.status || resUpdate?.success || resUpdate) {
-        await claimService.createClaimStatusLogs({
-          claim_id: String(data.claim_id),
-          status: "10",
-          remark: remarkText,
-          update_by: String(userId),
-          agent_id: String(data.agent_id || user?.agent_id || ""),
-        });
-
-        if (!isSilent) {
-          message.success("ยืนยันรับสินค้าเคลมเรียบร้อยแล้ว");
-        }
-        await fetchClaimDetail(false);
-      }
-    } catch (error) {
-      if (!isSilent) {
-        message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
-      }
-    } finally {
-      setConfirmingDelivery(false);
     }
   };
 
@@ -699,20 +655,16 @@ const CustomerClaimDetail = () => {
     );
   }
 
-  // 🟢 1. ตรวจสอบการ Reject จากทั้ง Logs และ Approve History โดยตรง
-  const lastStatusLog = statusLogs
-    .filter((l) => l.remark && !l.remark.startsWith("[MSG]"))
-    .slice(-1)[0];
-
   const hasRejectInLogs = statusLogs.some(
     (log) => log.remark && (log.remark.includes("ปฏิเสธรายการเคลม") || String(log.status) === "2" || String(log.status) === "7")
   );
-  
+
   const hasRejectInApproves = approveLogs.some(
     (app) => String(app.approve_status) === "false" || String(app.approve_status) === "0"
   );
 
-  const rawStatusVal = data?.current_status || lastStatusLog?.status || "1";
+  const rawStatusVal =
+    data?.current_status || statusLogs.filter((l) => l.remark && !l.remark.startsWith("[MSG]")).slice(-1)[0]?.status || "1";
   const rawStatusIdStr = String(getStatusId(rawStatusVal));
 
   const isRejectedInDB =
@@ -726,17 +678,12 @@ const CustomerClaimDetail = () => {
 
   const getLogRawDateString = (statusTarget) => {
     const targetId = String(statusTarget);
-
     if (targetId === "1" || targetId === "5") return formatDateString(data?.created_at || data?.claim_date);
 
-    const matchingLogs = statusLogs.filter(
-      (item) => String(item.status || item.status_id) === targetId
-    );
-
+    const matchingLogs = statusLogs.filter((item) => String(item.status || item.status_id) === targetId);
     if (matchingLogs.length > 0) {
       const lastLog = matchingLogs[matchingLogs.length - 1];
-      const rawDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
-      return formatDateString(rawDate);
+      return formatDateString(lastLog.update_date || lastLog.created_at || lastLog.created_date);
     }
 
     if (targetId === "2" || targetId === "6") return formatDateString(data.approve_date || data.updated_at);
@@ -750,19 +697,14 @@ const CustomerClaimDetail = () => {
 
   const getLogDate = (statusTarget) => {
     const targetId = String(statusTarget);
-
     if (["1", "5", "Pending"].includes(targetId)) {
       return formatDate(data?.created_at || data?.claim_date);
     }
 
-    const matchingLogs = statusLogs.filter(
-      (item) => String(item.status || item.status_id) === targetId
-    );
-
+    const matchingLogs = statusLogs.filter((item) => String(item.status || item.status_id) === targetId);
     if (matchingLogs.length > 0) {
       const lastLog = matchingLogs[matchingLogs.length - 1];
-      const rawDate = lastLog.update_date || lastLog.created_at || lastLog.created_date;
-      return formatDate(rawDate);
+      return formatDate(lastLog.update_date || lastLog.created_at || lastLog.created_date);
     }
 
     if (targetId === "2" || targetId === "6") return formatDate(data.approve_date || data.updated_at);
@@ -778,27 +720,10 @@ const CustomerClaimDetail = () => {
     const statusIdStr = String(currentStatusId);
     const statusNameStr = String(currentStatusInDB).toLowerCase();
 
-    // 1. Pending
-    if (["1", "5", "pending", "รอพิจารณา", "รอตรวจสอบ"].includes(statusIdStr) || statusNameStr.includes("pending")) {
-      return 0;
-    }
-
-    // 4. Shipping (หากส่งสินค้าอยู่ ให้ไปแสดงที่ Step 3)
-    if (["9", "shipping", "กำลังจัดส่งสินค้าเคลม"].includes(statusIdStr) || statusNameStr.includes("shipping")) {
-      return 3;
-    }
-
-    // 5. Delivered
-    if (["10", "delivered", "จัดส่งสินค้าเคลมสำเร็จ"].includes(statusIdStr) || statusNameStr.includes("delivered")) {
-      return 4;
-    }
-
-    // 3. Processing (กรณีอนุมัติปกติแล้วดำเนินการ)
-    if (["8", "processing"].includes(statusIdStr) || statusNameStr.includes("processing")) {
-      return 2;
-    }
-
-    // 2. Rejected หรือ Approved
+    if (["1", "5", "pending", "รอพิจารณา", "รอตรวจสอบ"].includes(statusIdStr) || statusNameStr.includes("pending")) return 0;
+    if (["9", "shipping", "กำลังจัดส่งสินค้าเคลม"].includes(statusIdStr) || statusNameStr.includes("shipping")) return 3;
+    if (["10", "delivered", "จัดส่งสินค้าเคลมสำเร็จ"].includes(statusIdStr) || statusNameStr.includes("delivered")) return 4;
+    if (["8", "processing"].includes(statusIdStr) || statusNameStr.includes("processing")) return 2;
     return 1;
   };
 
@@ -809,29 +734,17 @@ const CustomerClaimDetail = () => {
     </div>
   );
 
-  // 🟢 ดึงข้อความเหตุผล Reject ล่าสุดจาก Log หรือ Approve Data
-  const getRejectReasonText = () => {
-    const rejectLog = statusLogs.slice().reverse().find((l) => l.remark && l.remark.includes("ปฏิเสธรายการเคลม:"));
-    if (rejectLog) {
-      const match = rejectLog.remark.match(/ปฏิเสธรายการเคลม:\s*([^|]+)/);
-      if (match && match[1]) return match[1].trim();
-    }
-    const latestApprove = approveLogs.slice().reverse().find((a) => String(a.approve_status) === "false" || String(a.approve_status) === "0");
-    if (latestApprove && latestApprove.approve_remark) return latestApprove.approve_remark;
-    return data?.reject_reason || data?.remark || "";
-  };
-
-  const rejectReasonDisplay = getRejectReasonText() || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม";
+  const rejectReasonDisplay = getRejectReasonText(statusLogs, approveLogs, data) || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม";
 
   const getStepItems = () => {
-    const currentRejectReason = getRejectReasonText();
+    const currentRejectReason = getRejectReasonText(statusLogs, approveLogs, data);
     const rejectDateDisplay = getLogDate(2) !== "-" ? getLogDate(2) : getLogDate(7);
 
     return [
-      { 
-        title: "1. Pending", 
-        description: getLogDate(5) !== "-" ? getLogDate(5) : getLogDate(1), 
-        icon: renderDotIcon(CheckCircleOutlined) 
+      {
+        title: "1. Pending",
+        description: getLogDate(5) !== "-" ? getLogDate(5) : getLogDate(1),
+        icon: renderDotIcon(CheckCircleOutlined),
       },
       {
         title: isRejectedInDB ? "2. Rejected" : "2. Approved",
@@ -839,28 +752,26 @@ const CustomerClaimDetail = () => {
           <div className="text-xs">
             <div>{isRejectedInDB ? rejectDateDisplay : getLogDate(currentStatusId)}</div>
             {isRejectedInDB && currentRejectReason && (
-              <div className="text-red-500 font-medium break-words mt-0.5">
-                {currentRejectReason}
-              </div>
+              <div className="text-red-500 font-medium break-words mt-0.5">{currentRejectReason}</div>
             )}
           </div>
         ),
         icon: renderDotIcon(isRejectedInDB ? CloseCircleOutlined : CheckCircleOutlined),
       },
-      { 
-        title: "3. Processing", 
-        description: (isRejectedInDB && getCurrentStep() < 2) ? "-" : getLogDate(8), 
-        icon: renderDotIcon(FileSearchOutlined) 
+      {
+        title: "3. Processing",
+        description: isRejectedInDB && getCurrentStep() < 2 ? "-" : getLogDate(8),
+        icon: renderDotIcon(FileSearchOutlined),
       },
-      { 
-        title: "4. Shipping", 
-        description: getLogDate(9), 
-        icon: renderDotIcon(CarOutlined) 
+      {
+        title: "4. Shipping",
+        description: getLogDate(9),
+        icon: renderDotIcon(CarOutlined),
       },
-      { 
-        title: "5. Delivered", 
-        description: getLogDate(10), 
-        icon: renderDotIcon(SmileOutlined) 
+      {
+        title: "5. Delivered",
+        description: getLogDate(10),
+        icon: renderDotIcon(SmileOutlined),
       },
     ];
   };
@@ -871,14 +782,15 @@ const CustomerClaimDetail = () => {
 
   const driverReceiveLogDateStr = getLogRawDateString("4");
 
-  const deliverySuccessLog = statusLogs.find(
-    (log) => String(log.status || log.status_id) === "10"
-  );
-  const deliverySuccessUserId = deliverySuccessLog ? String(deliverySuccessLog.update_by || deliverySuccessLog.user_id || "") : "";
+  const deliverySuccessLog = statusLogs.find((log) => String(log.status || log.status_id) === "10");
+  const deliverySuccessUserId = deliverySuccessLog
+    ? String(deliverySuccessLog.update_by || deliverySuccessLog.user_id || "")
+    : "";
   const deliverySuccessNameDisplay = usersMap[deliverySuccessUserId] || "-";
 
-  const matchedAgentName = agentsMap[claimAgentId] || agentsMap[claimAgentCode] || getAgentNameByUserId(creatorUserId, usersList, agentsMap);
-  const agentNameDisplay = matchedAgentName !== "-" && matchedAgentName ? matchedAgentName : (data?.agent_name || data?.agentName || "-");
+  const matchedAgentName =
+    agentsMap[claimAgentId] || agentsMap[claimAgentCode] || getAgentNameByUserId(creatorUserId, usersList, agentsMap);
+  const agentNameDisplay = matchedAgentName !== "-" && matchedAgentName ? matchedAgentName : data?.agent_name || data?.agentName || "-";
   const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || data?.reporter || "-";
 
   const itemColumns = [
@@ -897,7 +809,9 @@ const CustomerClaimDetail = () => {
         if (record.item_code && record.item_name && !record.item_name.includes(record.item_code)) {
           return (
             <div className="flex flex-col text-xs">
-              <span className="font-semibold text-slate-800">{record.item_code} - {record.item_name}</span>
+              <span className="font-semibold text-slate-800">
+                {record.item_code} - {record.item_name}
+              </span>
             </div>
           );
         }
@@ -960,7 +874,7 @@ const CustomerClaimDetail = () => {
 
   return (
     <div className="w-full flex flex-col gap-6 font-normal p-4 sm:p-6" style={{ boxSizing: "border-box" }}>
-      <Card className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" bodyStyle={{ padding: "24px" }}>
+      <Card styles={{ body: { padding: "24px" } }} className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
           <div className="flex flex-col gap-1 min-w-0">
             <h1 className="text-xl sm:text-2xl font-medium text-slate-800 m-0 truncate">รายละเอียดการเคลมสินค้า</h1>
@@ -992,37 +906,44 @@ const CustomerClaimDetail = () => {
                   data={{
                     ...data,
                     claimNo: data.claim_no,
-                    productName: claimItems.length > 0 ? claimItems.map(i => i.item_name).join(", ") : "-",
+                    productName: claimItems.length > 0 ? claimItems.map((i) => i.item_name).join(", ") : "-",
                     receiverName: "-",
                     approverName: "-",
                     receiveDate: (() => {
-                      const targetDate = driverReceiveLogDateStr !== "-" && driverReceiveLogDateStr 
-                        ? driverReceiveLogDateStr 
-                        : data?.claim_date;
+                      const targetDate =
+                        driverReceiveLogDateStr !== "-" && driverReceiveLogDateStr
+                          ? driverReceiveLogDateStr
+                          : data?.claim_date;
 
                       if (!targetDate || targetDate === "-") return "-";
-
                       const parsedDate = parseDateSafely(targetDate);
                       return parsedDate ? parsedDate.format("DD/MM/YY") : "-";
                     })(),
-                    createdDate: getLogRawDateString("1") !== "-" 
-                      ? getLogRawDateString("1") 
-                      : (data?.claim_date ? dayjs(data.claim_date).format("DD/MM/YYYY") : "-"),
-                    
-                    deliverySuccessDate: (data?.current_status === "10" || data?.receive_finish_date)
-                      ? (getLogRawDateString("10") !== "-" ? getLogRawDateString("10") : "-")
-                      : "-",
-                    deliverySuccessName: (data?.current_status === "10" || data?.receive_finish_date)
-                      ? (deliverySuccessNameDisplay !== "-" ? deliverySuccessNameDisplay : agentNameDisplay)
-                      : "-",
-                    estimated_delivery_date: data?.estimated_delivery_date 
-                      ? dayjs(data.estimated_delivery_date).format("DD/MM/YY") 
+                    createdDate:
+                      getLogRawDateString("1") !== "-"
+                        ? getLogRawDateString("1")
+                        : data?.claim_date
+                        ? dayjs(data.claim_date).format("DD/MM/YYYY")
+                        : "-",
+                    deliverySuccessDate:
+                      data?.current_status === "10" || data?.receive_finish_date
+                        ? getLogRawDateString("10") !== "-"
+                          ? getLogRawDateString("10")
+                          : "-"
+                        : "-",
+                    deliverySuccessName:
+                      data?.current_status === "10" || data?.receive_finish_date
+                        ? deliverySuccessNameDisplay !== "-"
+                          ? deliverySuccessNameDisplay
+                          : agentNameDisplay
+                        : "-",
+                    estimated_delivery_date: data?.estimated_delivery_date
+                      ? dayjs(data.estimated_delivery_date).format("DD/MM/YY")
                       : "-",
                     items: claimItems,
                     agentName: agentNameDisplay,
                     agent_name: agentNameDisplay,
                     reporter: reporterNameDisplay,
-                    
                     driverName: data.driver_name || "-",
                     claimType: data.claim_type || data.claim_reason || data.remark || data.detail || "",
                     withdrawDate: data.withdraw_date,
@@ -1049,7 +970,7 @@ const CustomerClaimDetail = () => {
       <Card
         title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>}
         className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden"
-        bodyStyle={{ padding: "20px 12px", overflow: "hidden" }}
+        styles={{ body: { padding: "20px 12px", overflow: "hidden" } }}
       >
         <ConfigProvider
           theme={{
@@ -1071,42 +992,11 @@ const CustomerClaimDetail = () => {
             },
           }}
         >
-          <style>{`
-            .custom-steps-rejected .ant-steps-item .ant-steps-item-container .ant-steps-item-tail::after,
-            .custom-steps-rejected .ant-steps-item .ant-steps-item-container .ant-steps-item-tail:after,
-            .custom-steps-rejected .ant-steps-item-tail::after,
-            .custom-steps-rejected .ant-steps-item-tail:after {
-              background-color: #ef4444 !important;
-              background: #ef4444 !important;
-              background-image: none !important;
-              opacity: 1 !important;
-            }
-            .custom-steps-rejected .ant-steps-item-tail {
-              background-color: #ef4444 !important;
-              border-color: #ef4444 !important;
-            }
-            .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-container .ant-steps-item-tail::after,
-            .custom-steps-rejected .ant-steps-item-process .ant-steps-item-container .ant-steps-item-tail::after,
-            .custom-steps-rejected .ant-steps-item-error .ant-steps-item-container .ant-steps-item-tail::after {
-              background-color: #ef4444 !important;
-              background: #ef4444 !important;
-            }
-            .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-tail::after,
-            .custom-steps-rejected .ant-steps-item-process .ant-steps-item-tail::after {
-              background-color: #ef4444 !important;
-              background: #ef4444 !important;
-            }
-            .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-icon {
-              border-color: #ef4444 !important;
-              background-color: #fef2f2 !important;
-            }
-            .custom-steps-rejected .ant-steps-item-finish .ant-steps-icon {
-              color: #ef4444 !important;
-            }
-          `}</style>
-          <div className={`custom-steps-compact w-full overflow-hidden pb-2 ${
-            isRejectedInDB ? "custom-steps-rejected" : "custom-steps-normal"
-          }`}>
+          <div
+            className={`custom-steps-compact w-full overflow-hidden pb-2 ${
+              isRejectedInDB ? "custom-steps-rejected" : "custom-steps-normal"
+            }`}
+          >
             <Steps
               responsive={true}
               current={getCurrentStep()}
@@ -1114,15 +1004,13 @@ const CustomerClaimDetail = () => {
               items={getStepItems().map((item, idx) => {
                 const currentIdx = getCurrentStep();
                 let itemStatus = "wait";
-                
+
                 if (isRejectedInDB && idx <= currentIdx) {
                   itemStatus = "error";
                 } else if (idx < currentIdx) {
                   itemStatus = "finish";
                 } else if (idx === currentIdx) {
                   itemStatus = "process";
-                } else {
-                  itemStatus = "wait";
                 }
 
                 return {
@@ -1137,28 +1025,19 @@ const CustomerClaimDetail = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
-          <Card 
-            title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>} 
-            className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" 
-            bodyStyle={{ padding: "16px sm:24px" }}
+          <Card
+            title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>}
+            className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden"
+            styles={{ body: { padding: "16px sm:24px" } }}
           >
-            <Descriptions 
-              column={1} 
-              bordered 
-              size="small" 
+            <Descriptions
+              column={1}
+              bordered
+              size="small"
               className="w-full table-fixed"
-              labelStyle={{ 
-                fontWeight: "500", 
-                color: "#475569", 
-                width: "110px", 
-                backgroundColor: "#f8fafc",
-                fontSize: "13px",
-                whiteSpace: "nowrap"
-              }}
-              contentStyle={{
-                color: "#1e293b",
-                fontSize: "13px",
-                wordBreak: "break-word" 
+              styles={{
+                label: { fontWeight: "500", color: "#475569", width: "110px", backgroundColor: "#f8fafc", fontSize: "13px", whiteSpace: "nowrap" },
+                content: { color: "#1e293b", fontSize: "13px", wordBreak: "break-word" }
               }}
             >
               <Descriptions.Item label="วันที่แจ้ง">
@@ -1188,15 +1067,15 @@ const CustomerClaimDetail = () => {
             </Descriptions>
           </Card>
 
-          <Card 
+          <Card
             title={
               <div className="flex justify-between items-center">
                 <span className="font-medium text-slate-800">รายการสินค้าที่ขอเคลม</span>
                 <Tag color="blue" className="rounded-full px-3">{claimItems.length} รายการ</Tag>
               </div>
-            } 
-            className="rounded-2xl shadow-sm border-gray-200 w-full" 
-            bodyStyle={{ padding: "16px" }}
+            }
+            className="rounded-2xl shadow-sm border-gray-200 w-full"
+            styles={{ body: { padding: "16px" } }}
           >
             <Table
               dataSource={claimItems}
@@ -1208,24 +1087,16 @@ const CustomerClaimDetail = () => {
             />
           </Card>
 
-          {(STATUS_PRIORITY[currentStatusInDB] >= 4) && (
-            <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions 
-                column={1} 
-                bordered 
-                size="middle" 
+          {STATUS_PRIORITY[currentStatusInDB] >= 4 && (
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการรับสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "24px" } }}>
+              <Descriptions
+                column={1}
+                bordered
+                size="middle"
                 className="w-full"
-                labelStyle={{ 
-                  fontWeight: "500", 
-                  color: "#475569", 
-                  width: "140px", 
-                  backgroundColor: "#f8fafc",
-                  verticalAlign: "top",
-                  whiteSpace: "nowrap"
-                }}
-                contentStyle={{
-                  color: "#1e293b",
-                  wordBreak: "break-word"
+                styles={{
+                  label: { fontWeight: "500", color: "#475569", width: "140px", backgroundColor: "#f8fafc", verticalAlign: "top", whiteSpace: "nowrap" },
+                  content: { color: "#1e293b", wordBreak: "break-word" }
                 }}
               >
                 <Descriptions.Item label="พนักงานขับรถ (พขร.)">
@@ -1241,14 +1112,16 @@ const CustomerClaimDetail = () => {
             </Card>
           )}
 
-          {(STATUS_PRIORITY[currentStatusInDB] >= 7) && (
-            <Card title={<span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "24px" }}>
-              <Descriptions 
-                column={1} 
-                bordered 
-                size="middle" 
-                labelStyle={{ fontWeight: "500", color: "#475569", width: "140px", backgroundColor: "#f8fafc", verticalAlign: "top" }}
-                contentStyle={{ color: "#1e293b", wordBreak: "break-word" }}
+          {STATUS_PRIORITY[currentStatusInDB] >= 7 && (
+            <Card title={<span className="font-medium text-slate-800">ข้อมูลการจัดส่งสินค้าเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "24px" } }}>
+              <Descriptions
+                column={1}
+                bordered
+                size="middle"
+                styles={{
+                  label: { fontWeight: "500", color: "#475569", width: "140px", backgroundColor: "#f8fafc", verticalAlign: "top" },
+                  content: { color: "#1e293b", wordBreak: "break-word" }
+                }}
               >
                 <Descriptions.Item label="พนักงานจัดส่ง"><span className="text-slate-800 break-words">{data.delivery_driver || "-"}</span></Descriptions.Item>
                 <Descriptions.Item label="ทะเบียนรถจัดส่ง"><span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs">{data.delivery_plate || "-"}</span></Descriptions.Item>
@@ -1265,27 +1138,27 @@ const CustomerClaimDetail = () => {
         </div>
 
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          <Card 
+          <Card
             title={
               <div className="flex justify-between items-center">
                 <span className="font-medium text-slate-800">รูปภาพหลักฐานทั้งหมด</span>
                 <span className="text-xs text-gray-500 font-normal">{allImages.length} รูป</span>
               </div>
-            } 
-            className="rounded-2xl shadow-sm border-gray-200 w-full" 
-            bodyStyle={{ padding: "24px" }}
+            }
+            className="rounded-2xl shadow-sm border-gray-200 w-full"
+            styles={{ body: { padding: "24px" } }}
           >
             {allImages && allImages.length > 0 ? (
               <Image.PreviewGroup>
                 <div className="grid grid-cols-2 gap-2">
                   {allImages.map((imgObj, index) => (
-                    <Image 
-                      key={index} 
-                      width="100%" 
-                      height={110} 
-                      style={{ objectFit: "cover" }} 
-                      className="rounded-lg border border-gray-200" 
-                      src={imgObj.formattedUrl} 
+                    <Image
+                      key={index}
+                      width="100%"
+                      height={110}
+                      style={{ objectFit: "cover" }}
+                      className="rounded-lg border border-gray-200"
+                      src={imgObj.formattedUrl}
                     />
                   ))}
                 </div>
@@ -1298,7 +1171,8 @@ const CustomerClaimDetail = () => {
             )}
           </Card>
 
-          <Card 
+          {/* ประวัติการบันทึกสถานะ (sidebar card) เรียกใช้งาน ClaimTimeline */}
+          <Card
             title={
               <div className="flex justify-between items-center w-full">
                 <span className="font-medium text-slate-800">ประวัติการบันทึกสถานะ</span>
@@ -1310,26 +1184,17 @@ const CustomerClaimDetail = () => {
                   title="ดูประวัติการบันทึก Log ทั้งหมด"
                 />
               </div>
-            } 
-            className="rounded-2xl shadow-sm border-gray-200 w-full" 
-            bodyStyle={{ padding: "16px 24px" }}
+            }
+            className="rounded-2xl shadow-sm border-gray-200 w-full"
+            styles={{ body: { padding: "16px 24px" } }}
           >
-            <Descriptions 
-              column={1} 
-              bordered 
-              size="small" 
-              labelStyle={{ 
-                fontWeight: "500", 
-                color: "#475569", 
-                width: "130px", 
-                backgroundColor: "#f8fafc", 
-                fontSize: "12px",
-                verticalAlign: "top"
-              }}
-              contentStyle={{
-                color: "#1e293b",
-                fontSize: "12px",
-                wordBreak: "break-word"
+            <Descriptions
+              column={1}
+              bordered
+              size="small"
+              styles={{
+                label: { fontWeight: "500", color: "#475569", width: "130px", backgroundColor: "#f8fafc", fontSize: "12px", verticalAlign: "top" },
+                content: { color: "#1e293b", fontSize: "12px", wordBreak: "break-word" }
               }}
             >
               <Descriptions.Item label="อัปเดตล่าสุด ณ เวลา">
@@ -1337,29 +1202,17 @@ const CustomerClaimDetail = () => {
               </Descriptions.Item>
             </Descriptions>
 
-            {statusLogs.filter(l => l.remark && !l.remark.startsWith("[MSG]")).length > 0 && (
-              <div className="mt-3 border-t border-slate-100 pt-3 flex flex-col gap-2">
-                {statusLogs
-                  .filter(l => l.remark && !l.remark.startsWith("[MSG]"))
-                  .slice(-2)
-                  .map((log, index) => (
-                    <div key={index} className="flex flex-col bg-slate-50 p-2 rounded-lg text-[11px] border border-slate-100">
-                      <div className="flex justify-between font-mono text-slate-400">
-                        <span>{getStatusName(log.status)}</span>
-                        <span>{formatDateString(log.update_date || log.created_at)}</span>
-                      </div>
-                      <span className="text-slate-700 font-medium mt-0.5">
-                        {log.remark.split("|")[0].trim()}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
+            <ClaimTimeline
+              statusLogs={statusLogs
+                .filter((l) => l.remark && !l.remark.startsWith("[MSG]"))
+                .slice(-2)}
+              usersMap={usersMap}
+            />
           </Card>
 
           <Card
             className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60"
-            bodyStyle={{ padding: "20px" }}
+            styles={{ body: { padding: "20px" } }}
           >
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
@@ -1464,7 +1317,7 @@ const CustomerClaimDetail = () => {
             </Popconfirm>
           )}
 
-          <Card className="rounded-2xl shadow-sm border-gray-200 w-full" bodyStyle={{ padding: "20px" }}>
+          <Card className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "20px" } }}>
             <Button
               size="large"
               icon={<ArrowLeftOutlined />}
@@ -1477,6 +1330,7 @@ const CustomerClaimDetail = () => {
         </div>
       </div>
 
+      {/* Modal ประวัติการบันทึกสถานะทั้งหมด เรียกใช้งาน ClaimTimeline */}
       <Modal
         title={
           <div className="flex items-center gap-2 text-slate-800 font-medium">
@@ -1494,35 +1348,10 @@ const CustomerClaimDetail = () => {
         width={650}
       >
         <div className="py-4 max-h-[500px] overflow-y-auto px-2">
-          {statusLogs && statusLogs.length > 0 ? (
-            <Timeline
-              items={statusLogs
-                .filter(log => log.remark && !log.remark.startsWith("[MSG]"))
-                .map((log, idx) => ({
-                  color: "blue",
-                  children: (
-                    <div className="flex flex-col gap-1 bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <Tag color="blue" className="rounded-md font-normal m-0">
-                          {getStatusName(log.status)}
-                        </Tag>
-                        <span className="font-mono text-slate-400 text-[11px]">
-                          {formatDateString(log.update_date || log.created_at || log.created_date)}
-                        </span>
-                      </div>
-                      <div className="text-slate-800 text-xs font-medium mt-1">
-                        {log.remark.split("|")[0].trim()}
-                      </div>
-                      <div className="text-[10px] text-slate-400 flex justify-between">
-                        <span>บันทึกโดย: {usersMap[String(log.update_by || log.user_id)] || log.update_by || "-"}</span>
-                      </div>
-                    </div>
-                  ),
-                }))}
-            />
-          ) : (
-            <div className="text-center py-8 text-slate-400 italic">ไม่มีประวัติการบันทึกสถานะ</div>
-          )}
+          <ClaimTimeline
+            statusLogs={statusLogs.filter((log) => log.remark && !log.remark.startsWith("[MSG]"))}
+            usersMap={usersMap}
+          />
         </div>
       </Modal>
     </div>

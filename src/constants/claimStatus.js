@@ -1,9 +1,5 @@
 /**
-รอพิจารณา ->  Pending 
-อนุมัติ / ไม่อนุมัติ -> Approved / Rejected 
-กำลังดำเนินการเปลี่ยนสินค้า -> Processing
-กำลังจัดส่งสินค้าเคลม -> Shipping 
-จัดส่งสินค้าเคลมสำเร็จ -> Delivered
+ * src/constants/claimStatus.js
  */
 
 export const CLAIM_STATUS_MAP = {
@@ -16,6 +12,7 @@ export const CLAIM_STATUS_MAP = {
   "10": { priority: 5, name: "Delivered", staffName: "Delivered", customerName: "Delivered", color: "green" },
 };
 
+// 🟢 เพิ่มส่วนที่ขาดหายไปเพื่อให้ StaffClaimList.jsx ใช้งานได้
 export const CUSTOMER_FILTER_TABS = [
   "ทั้งหมด",
   "รอพิจารณาสิทธิ์เคลม",
@@ -25,9 +22,8 @@ export const CUSTOMER_FILTER_TABS = [
   "ปฏิเสธ",
 ];
 
-// เพิ่มทั้ง ชื่อมาตรฐาน, ชื่อแสดงผล Customer และ ID เพื่อกันการ Mismatch
 export const CUSTOMER_STATUS_GROUPS = {
-  "รอพิจารณาสิทธิ์เคลม": ["สร้างรายการเคลม", "สร้างรายการเคลมใหม่", "รายการเคลมใหม่", "รอการพิจารณา", "1", "5", 1, 5],
+  "รอพิจารณาสิทธิ์เคลม": ["สร้างรายการเคลม", "สร้างรายการเคลมใหม่", "รายการเคลมใหม่", "รอการพิจารณา", "1", "5", 1, 5, "Pending"],
   "รอส่งสินค้าคืน": ["มีสิทธิ์เคลม", "2", 2],
   "กำลังดำเนินการ": [
     "รับสินค้าจริงแล้ว",
@@ -36,22 +32,22 @@ export const CUSTOMER_STATUS_GROUPS = {
     "กำลังดำเนินการเปลี่ยนสินค้า",
     "กำลังจัดส่งสินค้าเคลม",
     "4", "6", "8", "9",
-    4, 6, 8, 9
+    4, 6, 8, 9,
+    "Approved", "Processing", "Shipping"
   ],
-  "สำเร็จ": ["จัดส่งสินค้าเคลมสำเร็จ", "10", 10],
-  "ปฏิเสธ": ["ไม่มีสิทธิ์เคลม", "ไม่อนุมัติเคลมสินค้า", "ไม่อนุมัติการเคลมสินค้า", "3", "7", 3, 7],
+  "สำเร็จ": ["จัดส่งสินค้าเคลมสำเร็จ", "10", 10, "Delivered"],
+  "ปฏิเสธ": ["ไม่มีสิทธิ์เคลม", "ไม่อนุมัติเคลมสินค้า", "ไม่อนุมัติการเคลมสินค้า", "3", "7", 3, 7, "Rejected"],
 };
 
-// Helper ค้นหา Config Object รองรับทั้ง ID และ Text
-const getStatusConfig = (statusVal) => {
-  if (!statusVal) return null;
-  return CLAIM_STATUS_MAP[String(statusVal)] || 
-         Object.values(CLAIM_STATUS_MAP).find(item => 
-           [item.name, item.staffName, item.customerName].includes(statusVal)
-         );
+export const STATUS_PRIORITY = {
+  Pending: 1,
+  Approved: 2,
+  Processing: 3,
+  Shipping: 4,
+  Delivered: 5,
+  Rejected: 9,
 };
 
-// ฟังก์ชันแปลงชื่อภาษาอังกฤษกลับเป็น Status ID ตัวเลขดั้งเดิม เพื่อส่งให้ Backend
 export const getStatusId = (statusVal) => {
   if (!statusVal) return "5";
   const val = String(statusVal).trim();
@@ -88,15 +84,12 @@ export const getStatusColor = (statusVal) => {
   return targetObj?.color || "default";
 };
 
-// 2. STATUS_PRIORITY สำหรับรองรับโค้ดเดิมที่เรียกใช้ชื่อภาษาไทย
-export const STATUS_PRIORITY = {
-  Pending: 5,
-  Approved: 6,
-  Processing: 8,
-  Shipping: 9,
-  Delivered: 10,
-  Rejected: 7,
-};
-
-export const FILTER_OPTIONS = ["ทั้งหมด", "Pending", "Approved", "Processing", "Shipping", "Delivered", "Rejected"];
-
+export const FILTER_OPTIONS = [
+  "ทั้งหมด",
+  "Pending",
+  "Approved",
+  "Processing",
+  "Shipping",
+  "Delivered",
+  "Rejected",
+];

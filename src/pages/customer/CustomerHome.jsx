@@ -1,6 +1,6 @@
 // src/pages/customer/CustomerHome.jsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
 import { RightOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined } from "@ant-design/icons";
@@ -24,34 +24,24 @@ const CustomerHome = () => {
   const role = user?.role || user?.user_type;
   const currentUserId = user?.user_id || user?.id;
 
-  useClaimRealtime({
-    isStaff: false,
-    userId: currentUserId,
-    onCreated: () => fetchClaimsAndItems(false),
-    onStatusUpdated: () => fetchClaimsAndItems(false),
-  });
-  
-  // 🟢 1. ตั้งเวลาดึงข้อมูลเบื้องหลังนุ่มนวลทุกๆ 5 วินาที
+  const userRef = useRef(user);
   useEffect(() => {
-    fetchClaimsAndItems(true); // โหลดครั้งแรกขึ้น Spin ปกติ
+    userRef.current = user;
+  }, [user]);
 
-    const interval = setInterval(() => {
-      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังเงียบๆ ไม่ขึ้น Spin
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const getPriority = (item) => {
+  const getPriority = useCallback((item) => {
     if (!item) return 99;
     const statusVal = item?.current_status || item?.status;
     const statusName = getStatusName(statusVal, "customer");
     return STATUS_PRIORITY[statusVal] || STATUS_PRIORITY[statusName] || 99;
-  };
+  }, []);
 
-  // 🟢 2. ปรับฟังก์ชัน fetchClaimsAndItems ให้รับพารามิเตอร์ showLoading
-  const fetchClaimsAndItems = async (showLoading = true) => {
-    if (role === "staff" || role === "admin") {
+  const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
+    const activeUser = userRef.current;
+    const activeRole = activeUser?.role || activeUser?.user_type;
+    const activeUserId = activeUser?.user_id || activeUser?.id;
+
+    if (activeRole === "staff" || activeRole === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
@@ -64,7 +54,7 @@ const CustomerHome = () => {
         agentService.getAgent().catch(() => []),
       ]);
 
-      if (resItems && resItems.data) {
+      if (resItems?.data) {
         const map = {};
         resItems.data.forEach((item) => {
           map[String(item.item_id)] = item.item_name;
@@ -72,13 +62,12 @@ const CustomerHome = () => {
         setItemsMap(map);
       }
 
-      let userAgentIdentifiers = [];
-
-      if (Array.isArray(user?.agent_ids)) {
-        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
+      const userAgentIdentifiers = [];
+      if (Array.isArray(activeUser?.agent_ids)) {
+        activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
       }
-      if (user?.agent_id) {
-        userAgentIdentifiers.push(String(user.agent_id));
+      if (activeUser?.agent_id) {
+        userAgentIdentifiers.push(String(activeUser.agent_id));
       }
 
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
@@ -101,7 +90,7 @@ const CustomerHome = () => {
         const isAgentMatch =
           userAgentIdentifiers.length > 0 &&
           (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+        const isUserMatch = activeUserId && claimCreatedByStr === activeUserId;
 
         return isAgentMatch || isUserMatch;
       });
@@ -155,21 +144,32 @@ const CustomerHome = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
+  }, [getPriority, navigate]);
+
+  useClaimRealtime({
+    isStaff: false,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
+
+  useEffect(() => {
+    fetchClaimsAndItems(true);
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchClaimsAndItems]);
 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
 
     try {
       const response = await claimService.delClaim(claimId);
-      if (response.status) {
+      if (response?.status) {
         message.success("ลบรายการเคลมเรียบร้อยแล้ว");
-        setLatestClaims((prev) =>
-          prev.filter((item) => (item.claim_id || item.claim_no) !== claimId)
-        );
-        setAllClaims((prev) =>
-          prev.filter((item) => (item.claim_id || item.claim_no) !== claimId)
-        );
+        setLatestClaims((prev) => prev.filter((item) => (item.claim_id || item.claim_no) !== claimId));
+        setAllClaims((prev) => prev.filter((item) => (item.claim_id || item.claim_no) !== claimId));
       }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการลบรายการ");
@@ -177,12 +177,8 @@ const CustomerHome = () => {
   };
 
   return (
-    <div
-      className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6"
-      style={{ boxSizing: "border-box", width: "100%" }}
-    >
+    <div className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6" style={{ boxSizing: "border-box", width: "100%" }}>
       <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
-        {/* Header */}
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
             สวัสดี, คุณ{user?.full_name || user?.username || "-"}
@@ -192,7 +188,6 @@ const CustomerHome = () => {
           </p>
         </header>
 
-        {/* Dashboard Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
             <div className="flex flex-col gap-1">
@@ -257,7 +252,6 @@ const CustomerHome = () => {
           </div>
         </div>
 
-        {/* List Section */}
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">รายการเคลมล่าสุด</h2>

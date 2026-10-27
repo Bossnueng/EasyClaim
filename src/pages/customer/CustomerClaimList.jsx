@@ -1,13 +1,12 @@
 // src/pages/customer/CustomerClaimList.jsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input, Empty, message, DatePicker, Button, Spin, Select } from "antd";
 import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { 
-  STATUS_PRIORITY, 
   CUSTOMER_FILTER_TABS, 
   CUSTOMER_STATUS_GROUPS,
   getStatusName 
@@ -18,6 +17,7 @@ import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
 import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { parseExtraDataFromLogs } from "../../utils/logPaser";
 
 const CustomerClaimList = () => {
   const navigate = useNavigate();
@@ -36,26 +36,17 @@ const CustomerClaimList = () => {
   const role = user?.role || user?.user_type;
   const currentUserId = user?.user_id || user?.id;
 
-  useClaimRealtime({
-    isStaff: false,
-    userId: currentUserId,
-    onCreated: () => fetchClaimsAndItems(false),
-    onStatusUpdated: () => fetchClaimsAndItems(false),
-  });
-
+  const userRef = useRef(user);
   useEffect(() => {
-    fetchClaimsAndItems(true); // โหลดครั้งแรกขึ้น Spin ปกติ
+    userRef.current = user;
+  }, [user]);
 
-    const interval = setInterval(() => {
-      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังเงียบๆ ไม่ขึ้น Spin
-    }, 5000);
+  const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
+    const activeUser = userRef.current;
+    const activeRole = activeUser?.role || activeUser?.user_type;
+    const activeUserId = activeUser?.user_id || activeUser?.id;
 
-    return () => clearInterval(interval);
-  }, []);
-
-  // 🟢 1. ปรับฟังก์ชัน fetchClaimsAndItems ให้รับพารามิเตอร์ showLoading
-  const fetchClaimsAndItems = async (showLoading = true) => {
-    if (role === "staff" || role === "admin") {
+    if (activeRole === "staff" || activeRole === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
@@ -88,7 +79,7 @@ const CustomerClaimList = () => {
         setClaimLogsMap(lMap);
       }
 
-      if (resItems && resItems.data) {
+      if (resItems?.data) {
         const map = {};
         resItems.data.forEach((item) => {
           map[String(item.item_id)] = item.item_name;
@@ -96,13 +87,12 @@ const CustomerClaimList = () => {
         setItemsMap(map);
       }
 
-      let userAgentIdentifiers = [];
-
-      if (Array.isArray(user?.agent_ids)) {
-        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
+      const userAgentIdentifiers = [];
+      if (Array.isArray(activeUser?.agent_ids)) {
+        activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
       }
-      if (user?.agent_id) {
-        userAgentIdentifiers.push(String(user.agent_id));
+      if (activeUser?.agent_id) {
+        userAgentIdentifiers.push(String(activeUser.agent_id));
       }
 
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
@@ -125,7 +115,7 @@ const CustomerClaimList = () => {
         const isAgentMatch =
           userAgentIdentifiers.length > 0 &&
           (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+        const isUserMatch = activeUserId && claimCreatedByStr === activeUserId;
 
         return isAgentMatch || isUserMatch;
       });
@@ -159,18 +149,30 @@ const CustomerClaimList = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useClaimRealtime({
+    isStaff: false,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
+
+  useEffect(() => {
+    fetchClaimsAndItems(true);
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchClaimsAndItems]);
 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
-
     try {
       const response = await claimService.delClaim(claimId);
-      if (response.status) {
+      if (response?.status) {
         message.success("ลบรายการเคลมเรียบร้อยแล้ว");
-        setClaims((prevClaims) =>
-          prevClaims.filter((claim) => claim.claim_id !== claimId)
-        );
+        setClaims((prev) => prev.filter((claim) => claim.claim_id !== claimId));
       }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการลบรายการ");
@@ -194,78 +196,31 @@ const CustomerClaimList = () => {
       safeUsersList.forEach((u) => {
         if (!u) return;
         const uName = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.username || u.email;
-        
         const idKeys = [u.user_id, u.id, u.userId, u.user_code].filter(Boolean);
-        idKeys.forEach((key) => {
-          userMap[String(key)] = uName;
-        });
+        idKeys.forEach((key) => { userMap[String(key)] = uName; });
       });
 
       const currentUser = loginService.getCurrentUser() || {};
       const currentUserName = currentUser.full_name || currentUser.fullname || currentUser.name || currentUser.username || "-";
 
       const headers = [
-        "ลำดับ",
-        "เลขที่เอกสารเคลม",
-        "วันที่แจ้งเคลม",
-        "ผู้แจ้งเคลม",
-        "ชื่อสินค้า",
-        "รับจริง (ขวด/กระป๋อง)",
-        "แตกจริง (ขวด/กระป๋อง)",
-        "สาเหตุการแตก",
-        "ชื่อ พขร. ที่รับสินค้า",
-        "ทะเบียนรถรับสินค้า",
-        "วันที่ พขร. รับสินค้า",
-        "วันที่ คลังสินค้า รับสินค้า",
-        "วันที่ อนุมัติเคลม",
-        "วันที่ จัดส่งสินค้าเคลม",
-        "วันที่ จัดส่งสำเร็จ",
-        "ชื่อ พขร. ที่ส่งสินค้า",
-        "ทะเบียนรถส่งสินค้า",
-        "สถานะสินค้า",
+        "ลำดับ", "เลขที่เอกสารเคลม", "วันที่แจ้งเคลม", "ผู้แจ้งเคลม", "ชื่อสินค้า",
+        "รับจริง (ขวด/กระป๋อง)", "แตกจริง (ขวด/กระป๋อง)", "สาเหตุการแตก", "ชื่อ พขร. ที่รับสินค้า",
+        "ทะเบียนรถรับสินค้า", "วันที่ พขร. รับสินค้า", "วันที่ คลังสินค้า รับสินค้า", "วันที่ อนุมัติเคลม",
+        "วันที่ จัดส่งสินค้าเคลม", "วันที่ จัดส่งสำเร็จ", "ชื่อ พขร. ที่ส่งสินค้า", "ทะเบียนรถส่งสินค้า", "สถานะสินค้า"
       ];
 
       const csvRows = [headers.join(",")];
-
-      const cleanStr = (val) => {
-        if (val === null || val === undefined || val === "") return '"-"';
-        return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
-      };
-
-      const formatDate = (dateVal) => {
-        if (!dateVal) return "-";
-        const d = dayjs(dateVal);
-        return d.isValid() ? d.format("DD/MM/YYYY HH:mm") : "-";
-      };
+      const cleanStr = (val) => (val === null || val === undefined || val === "" ? '"-"' : `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`);
+      const formatDate = (dateVal) => (dateVal && dayjs(dateVal).isValid() ? dayjs(dateVal).format("DD/MM/YYYY HH:mm") : "-");
 
       const safeParseJson = (data) => {
         if (!data) return {};
         if (typeof data === "object") return data;
         if (typeof data === "string" && data.trim().startsWith("{")) {
-          try {
-            return JSON.parse(data);
-          } catch (e) {
-            return {};
-          }
+          try { return JSON.parse(data); } catch { return {}; }
         }
         return {};
-      };
-
-      const parseDataFromLogs = (logs) => {
-        if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
-        let result = {};
-        logs.forEach((log) => {
-          if (log && log.remark && typeof log.remark === "string") {
-            if (log.remark.includes("| DATA:")) {
-              try {
-                const jsonStr = log.remark.split("| DATA:")[1];
-                const parsed = JSON.parse(jsonStr);
-                result = { ...result, ...parsed };
-              } catch (e) {}
-            }
-          }
-        });
-        return result;
       };
 
       let rowNum = 1;
@@ -273,55 +228,16 @@ const CustomerClaimList = () => {
       filteredClaims.forEach((claim) => {
         const claimIdStr = String(claim.claim_id || claim.id || "");
         const logs = claimLogsMap ? (claimLogsMap[claimIdStr] || []) : [];
-        
-        let logData = {};
-        try { logData = parseDataFromLogs(logs) || {}; } catch (e) { logData = {}; }
+        const logData = parseExtraDataFromLogs(logs) || {};
 
         const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
-        
         const createdById = String(claim.created_by || claim.user_id || claim.createdBy || claim.userId || "");
-        const createdByName = 
-          userMap[createdById] || 
-          claim.created_by_name || 
-          claim.createdByName || 
-          claim.user_name || 
-          claim.userName || 
-          (createdById && createdById !== "undefined" ? currentUserName : "-");
+        const createdByName = userMap[createdById] || claim.created_by_name || claim.createdByName || claim.user_name || claim.userName || (createdById && createdById !== "undefined" ? currentUserName : "-");
 
-        const driverName = 
-          claim.driver_name || 
-          claim.driverName || 
-          claim.pickup_driver_name || 
-          logData.driver_name || 
-          logData.driverName || 
-          logData.pickupDriverName || 
-          "-";
-
-        const truckPlate = 
-          claim.truck_plate || 
-          claim.truckPlate || 
-          claim.license_plate || 
-          claim.licensePlate || 
-          logData.truck_plate || 
-          logData.truckPlate || 
-          logData.licensePlate || 
-          "-";
-
-        const deliveryDriver = 
-          claim.delivery_driver || 
-          claim.deliveryDriver || 
-          claim.shipping_driver_name || 
-          logData.delivery_driver || 
-          logData.deliveryDriver || 
-          "-";
-
-        const deliveryPlate = 
-          claim.delivery_plate || 
-          claim.deliveryPlate || 
-          claim.shipping_license_plate || 
-          logData.delivery_plate || 
-          logData.deliveryPlate || 
-          "-";
+        const driverName = claim.driver_name || claim.driverName || claim.pickup_driver_name || logData.driver_name || logData.driverName || logData.pickupDriverName || "-";
+        const truckPlate = claim.truck_plate || claim.truckPlate || claim.license_plate || claim.licensePlate || logData.truck_plate || logData.truckPlate || logData.licensePlate || "-";
+        const deliveryDriver = claim.delivery_driver || claim.deliveryDriver || claim.shipping_driver_name || logData.delivery_driver || logData.deliveryDriver || "-";
+        const deliveryPlate = claim.delivery_plate || claim.deliveryPlate || claim.shipping_license_plate || logData.delivery_plate || logData.deliveryPlate || "-";
 
         const claimDate = formatDate(claim.claim_date || claim.created_at);
         const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate || logData.driver_receive_date);
@@ -330,13 +246,8 @@ const CustomerClaimList = () => {
         const deliveryDate = formatDate(claim.delivery_date || logData.deliveryDate || logData.delivery_date);
         const receiveFinishDate = formatDate(claim.receive_finish_date || logData.receiveFinishDate || logData.receive_finish_date);
 
-        const displayStatusName = typeof getStatusName === "function" 
-          ? getStatusName(claim.current_status || claim.status, "customer")
-          : (claim.current_status || claim.status || "-");
-
-        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 
-          ? claim.items 
-          : [claim];
+        const displayStatusName = getStatusName(claim.current_status || claim.status, "customer");
+        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 ? claim.items : [claim];
 
         claimItemsList.forEach((item) => {
           const itemIdStr = String(item.item_id || "");
@@ -345,26 +256,10 @@ const CustomerClaimList = () => {
           const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
           const parsedLogData = safeParseJson(logData);
 
-          const receivedQty = 
-            parsedRemark.receivedQty ?? 
-            item.receivedQty ?? 
-            parsedLogData.receivedQty ?? 
-            logData.receivedQty ?? 
-            claim.receivedQty ?? 
-            item.qty ?? 
-            0;
-
-          const approvedQty = 
-            parsedRemark.approvedQty ?? 
-            item.approvedQty ?? 
-            parsedLogData.approvedQty ?? 
-            logData.approvedQty ?? 
-            claim.approvedQty ?? 
-            item.qtychang ?? 
-            0;
+          const receivedQty = parsedRemark.receivedQty ?? item.receivedQty ?? parsedLogData.receivedQty ?? logData.receivedQty ?? claim.receivedQty ?? item.qty ?? 0;
+          const approvedQty = parsedRemark.approvedQty ?? item.approvedQty ?? parsedLogData.approvedQty ?? logData.approvedQty ?? claim.approvedQty ?? item.qtychang ?? 0;
 
           let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
-          
           if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {
             const innerJson = safeParseJson(rawReason);
             rawReason = innerJson.itemRemark || innerJson.remark || "-";
@@ -476,22 +371,15 @@ const CustomerClaimList = () => {
     .sort((a, b) => {
       const dateA = dayjs(a.claim_date || a.created_at);
       const dateB = dayjs(b.claim_date || b.created_at);
-
       const timeA = dateA.isValid() ? dateA.valueOf() : 0;
       const timeB = dateB.isValid() ? dateB.valueOf() : 0;
 
-      if (sortOrder === "oldest") {
-        return timeA - timeB; // 🕒 วันที่น้อยสุด (เก่าสุด) ขึ้นก่อน
-      } else {
-        return timeB - timeA; // 🆕 วันที่มากสุด (ใหม่สุด) ขึ้นก่อน
-      }
+      return sortOrder === "oldest" ? timeA - timeB : timeB - timeA;
     });
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-2.5 sm:p-4 md:p-6 w-full max-w-full overflow-hidden box-border">
       <div className="w-full flex flex-col gap-4 sm:gap-6">
-        
-        {/* Header */}
         <header className="flex flex-row justify-between items-center gap-2 w-full">
           <div>
             <h1 className="text-lg sm:text-2xl font-bold text-slate-800 m-0">
@@ -512,7 +400,6 @@ const CustomerClaimList = () => {
           </Button>
         </header>
 
-        {/* Filter Section */}
         <div className="flex flex-col lg:flex-row gap-2 w-full">
           <div className="flex-1 min-w-0">
             <Input
@@ -571,16 +458,10 @@ const CustomerClaimList = () => {
                 </div>
               }
               labelRender={({ value }) => {
-                const count =
-                  value === "ทั้งหมด"
-                    ? claims.length
-                    : tabCounts[value] ?? 0;
+                const count = value === "ทั้งหมด" ? claims.length : tabCounts[value] ?? 0;
                 return (
                   <div className="flex justify-between items-center w-full pr-1">
-                    <span 
-                      className="text-xs font-medium text-slate-700"
-                      style={{ paddingLeft: "4px" }}
-                    >
+                    <span className="text-xs font-medium text-slate-700" style={{ paddingLeft: "4px" }}>
                       {value}
                     </span>
                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
@@ -590,10 +471,7 @@ const CustomerClaimList = () => {
                 );
               }}
               options={CUSTOMER_FILTER_TABS.map((tab) => {
-                const count =
-                  tab === "ทั้งหมด"
-                    ? claims.length
-                    : tabCounts[tab] ?? 0;
+                const count = tab === "ทั้งหมด" ? claims.length : tabCounts[tab] ?? 0;
                 return {
                   value: tab,
                   label: (
@@ -610,10 +488,9 @@ const CustomerClaimList = () => {
           </div>
         </div>
 
-        {/* Claim Cards List */}
         {loading ? (
           <div className="bg-white rounded-2xl p-12 text-center w-full shadow-sm">
-            <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+            <Spin size="large" description="กำลังโหลดข้อมูล..." />
           </div>
         ) : filteredClaims.length > 0 ? (
           <div className="flex flex-col gap-2.5 sm:gap-3 w-full">

@@ -132,13 +132,28 @@ const CustomerClaimDetail = () => {
   const rawStatus = String(data?.current_status || data?.status || "");
   const statusName = getStatusName(rawStatus, "customer");
   const statusId = String(getStatusId(rawStatus));
+
+  // 🟢 2. ค้นหา Log ล่าสุดของสถานะ Pending และ Delivered (เพื่อเช็คเฉพาะรอบปัจจุบัน)
+  const lastPendingLog = statusLogs
+    .filter((l) => String(l.status || l.status_id) === "1" || String(l.status || l.status_id) === "5")
+    .slice(-1)[0];
+
+  const lastDeliveredLog = statusLogs
+    .filter((l) => String(l.status || l.status_id) === "10")
+    .slice(-1)[0];
   
   const hasCustomerConfirmedSubmit = statusLogs.some(
-    (log) => log.remark && log.remark.includes("ยืนยันการส่งเคลม")
+    (log) =>
+      log.remark &&
+      log.remark.includes("ยืนยันการส่งเคลม") &&
+      (!lastPendingLog || (log.log_id || log.id) >= (lastPendingLog.log_id || lastPendingLog.id))
   );
 
   const hasCustomerConfirmedDelivery = statusLogs.some(
-    (log) => log.remark && log.remark.includes("ลูกค้ายืนยันรับสินค้า")
+    (log) =>
+      log.remark &&
+      log.remark.includes("ลูกค้ายืนยันรับสินค้า") &&
+      (!lastDeliveredLog || (log.log_id || log.id) >= (lastDeliveredLog.log_id || lastDeliveredLog.id))
   );
 
   const isPendingStatus = 
@@ -194,7 +209,7 @@ const CustomerClaimDetail = () => {
     return () => clearInterval(interval);
   }, [claimId]);
 
-  // 🟢🟢🟢 TIMER อัตโนมัติ (นับเวลาเรียลไทม์ทุก 1 วินาทีเพื่อสั่ง Auto Stamp) 🟢🟢🟢
+  // 🟢🟢🟢 TIMER อัตโนมัติ 🟢🟢🟢
   useEffect(() => {
     if (!data || isExecutingAutoStampRef.current) return;
 
@@ -622,7 +637,6 @@ const CustomerClaimDetail = () => {
 
       const { images, items, ...claimDataWithoutImages } = data || {};
 
-      // 🟢 แปลงรายการสินค้าให้เป็น Array เสมอ ป้องกัน Error "items ต้องเป็น Array"
       const formattedItems = Array.isArray(claimItems) && claimItems.length > 0
         ? claimItems
         : Array.isArray(items)
@@ -685,13 +699,30 @@ const CustomerClaimDetail = () => {
     );
   }
 
+  // 🟢 1. ตรวจสอบการ Reject จากทั้ง Logs และ Approve History โดยตรง
+  const lastStatusLog = statusLogs
+    .filter((l) => l.remark && !l.remark.startsWith("[MSG]"))
+    .slice(-1)[0];
+
+  const hasRejectInLogs = statusLogs.some(
+    (log) => log.remark && (log.remark.includes("ปฏิเสธรายการเคลม") || String(log.status) === "2" || String(log.status) === "7")
+  );
+  
+  const hasRejectInApproves = approveLogs.some(
+    (app) => String(app.approve_status) === "false" || String(app.approve_status) === "0"
+  );
+
+  const rawStatusVal = data?.current_status || lastStatusLog?.status || "1";
+  const rawStatusIdStr = String(getStatusId(rawStatusVal));
+
+  const isRejectedInDB =
+    hasRejectInLogs ||
+    hasRejectInApproves ||
+    ["2", "3", "7", "rejected", "ไม่อนุมัติเคลมสินค้า", "ไม่มีสิทธิ์เคลม"].includes(String(rawStatusVal).toLowerCase()) ||
+    ["2", "3", "7"].includes(rawStatusIdStr);
+
   const currentStatusInDB = getStatusName(data.current_status || "สร้างรายการเคลม");
   const currentStatusId = String(getStatusId(data.current_status));
-  const isRejectedInDB =
-    currentStatusId === "3" ||
-    currentStatusId === "7" ||
-    currentStatusInDB === "ไม่อนุมัติเคลมสินค้า" ||
-    currentStatusInDB === "ไม่มีสิทธิ์เคลม";
 
   const getLogRawDateString = (statusTarget) => {
     const targetId = String(statusTarget);
@@ -724,13 +755,6 @@ const CustomerClaimDetail = () => {
       return formatDate(data?.created_at || data?.claim_date);
     }
 
-    const currentPriority = CLAIM_STATUS_MAP[String(currentStatusId)]?.priority || 0;
-    const targetPriority = CLAIM_STATUS_MAP[targetId]?.priority || 0;
-
-    if (!isRejectedInDB && targetPriority > currentPriority) {
-      return "-";
-    }
-
     const matchingLogs = statusLogs.filter(
       (item) => String(item.status || item.status_id) === targetId
     );
@@ -751,16 +775,31 @@ const CustomerClaimDetail = () => {
   };
 
   const getCurrentStep = () => {
-    if (isRejectedInDB) return 1;
-
     const statusIdStr = String(currentStatusId);
-    if (["1", "5"].includes(statusIdStr)) return 0; // Pending
-    if (["2", "4", "6"].includes(statusIdStr)) return 1; // Approved
-    if (["8"].includes(statusIdStr)) return 2; // Processing
-    if (["9"].includes(statusIdStr)) return 3; // Shipping
-    if (["10"].includes(statusIdStr)) return 4; // Delivered
+    const statusNameStr = String(currentStatusInDB).toLowerCase();
 
-    return 0;
+    // 1. Pending
+    if (["1", "5", "pending", "รอพิจารณา", "รอตรวจสอบ"].includes(statusIdStr) || statusNameStr.includes("pending")) {
+      return 0;
+    }
+
+    // 4. Shipping (หากส่งสินค้าอยู่ ให้ไปแสดงที่ Step 3)
+    if (["9", "shipping", "กำลังจัดส่งสินค้าเคลม"].includes(statusIdStr) || statusNameStr.includes("shipping")) {
+      return 3;
+    }
+
+    // 5. Delivered
+    if (["10", "delivered", "จัดส่งสินค้าเคลมสำเร็จ"].includes(statusIdStr) || statusNameStr.includes("delivered")) {
+      return 4;
+    }
+
+    // 3. Processing (กรณีอนุมัติปกติแล้วดำเนินการ)
+    if (["8", "processing"].includes(statusIdStr) || statusNameStr.includes("processing")) {
+      return 2;
+    }
+
+    // 2. Rejected หรือ Approved
+    return 1;
   };
 
   const renderDotIcon = (IconComponent) => (
@@ -770,39 +809,59 @@ const CustomerClaimDetail = () => {
     </div>
   );
 
-  const latestRejectApprove = approveLogs.length > 0 
-    ? [...approveLogs].reverse().find((app) => 
-        app.approve_status === false || 
-        app.approve_status === "false" || 
-        app.approve_status === "0"
-      )
-    : null;
+  // 🟢 ดึงข้อความเหตุผล Reject ล่าสุดจาก Log หรือ Approve Data
+  const getRejectReasonText = () => {
+    const rejectLog = statusLogs.slice().reverse().find((l) => l.remark && l.remark.includes("ปฏิเสธรายการเคลม:"));
+    if (rejectLog) {
+      const match = rejectLog.remark.match(/ปฏิเสธรายการเคลม:\s*([^|]+)/);
+      if (match && match[1]) return match[1].trim();
+    }
+    const latestApprove = approveLogs.slice().reverse().find((a) => String(a.approve_status) === "false" || String(a.approve_status) === "0");
+    if (latestApprove && latestApprove.approve_remark) return latestApprove.approve_remark;
+    return data?.reject_reason || data?.remark || "";
+  };
 
-  const rejectReason = latestRejectApprove?.approve_remark || data?.reject_reason || data?.remark || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม";
+  const rejectReasonDisplay = getRejectReasonText() || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม";
 
   const getStepItems = () => {
-    if (isRejectedInDB) {
-      return [
-        { title: "Pending", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
-        {
-          title: "Rejected",
-          description: (
-            <div className="text-xs">
-              <div>{getLogDate(currentStatusId)}</div>
-              {rejectReason && <div className="text-red-500 font-medium break-words">{rejectReason}</div>}
-            </div>
-          ),
-          icon: renderDotIcon(CloseCircleOutlined),
-        },
-      ];
-    }
+    const currentRejectReason = getRejectReasonText();
+    const rejectDateDisplay = getLogDate(2) !== "-" ? getLogDate(2) : getLogDate(7);
 
     return [
-      { title: "Pending", description: getLogDate(1), icon: renderDotIcon(CheckCircleOutlined) },
-      { title: "Approved", description: getLogDate(2) !== "-" ? getLogDate(2) : getLogDate(6), icon: renderDotIcon(CheckCircleOutlined) },
-      { title: "Processing", description: getLogDate(8), icon: renderDotIcon(FileSearchOutlined) },
-      { title: "Shipping", description: getLogDate(9), icon: renderDotIcon(CarOutlined) },
-      { title: "Delivered", description: getLogDate(10), icon: renderDotIcon(SmileOutlined) },
+      { 
+        title: "1. Pending", 
+        description: getLogDate(5) !== "-" ? getLogDate(5) : getLogDate(1), 
+        icon: renderDotIcon(CheckCircleOutlined) 
+      },
+      {
+        title: isRejectedInDB ? "2. Rejected" : "2. Approved",
+        description: (
+          <div className="text-xs">
+            <div>{isRejectedInDB ? rejectDateDisplay : getLogDate(currentStatusId)}</div>
+            {isRejectedInDB && currentRejectReason && (
+              <div className="text-red-500 font-medium break-words mt-0.5">
+                {currentRejectReason}
+              </div>
+            )}
+          </div>
+        ),
+        icon: renderDotIcon(isRejectedInDB ? CloseCircleOutlined : CheckCircleOutlined),
+      },
+      { 
+        title: "3. Processing", 
+        description: (isRejectedInDB && getCurrentStep() < 2) ? "-" : getLogDate(8), 
+        icon: renderDotIcon(FileSearchOutlined) 
+      },
+      { 
+        title: "4. Shipping", 
+        description: getLogDate(9), 
+        icon: renderDotIcon(CarOutlined) 
+      },
+      { 
+        title: "5. Delivered", 
+        description: getLogDate(10), 
+        icon: renderDotIcon(SmileOutlined) 
+      },
     ];
   };
 
@@ -860,11 +919,10 @@ const CustomerClaimDetail = () => {
       width: 110,
       align: "right",
       render: (retQty, record) => {
-        const isChangeStep = STATUS_PRIORITY[currentStatusInDB] >= 9;
-        if (!isChangeStep) return <span className="text-slate-400 font-normal">-</span>;
-        
         const val = retQty ?? record.returned_qty;
-        return <span className="font-semibold text-amber-600">{val !== undefined && val !== null ? val : "-"}</span>;
+        if (val === 0 || val === "0") return <span className="text-slate-500 font-medium">0</span>;
+        if (!val || val === "-") return <span className="text-slate-400 font-normal">-</span>;
+        return <span className="font-semibold text-amber-600">{val}</span>;
       },
     },
     {
@@ -981,7 +1039,7 @@ const CustomerClaimDetail = () => {
       {isRejectedInDB && (
         <Alert
           title="คำร้องขอเคลมสินค้าถูกปฏิเสธ"
-          description={`เหตุผล: ${rejectReason}`}
+          description={`เหตุผล: ${rejectReasonDisplay}`}
           type="error"
           showIcon
           className="rounded-2xl border-red-200 break-words"
@@ -997,7 +1055,10 @@ const CustomerClaimDetail = () => {
           theme={{
             token: {
               colorPrimary: isRejectedInDB ? "#ef4444" : "#059669",
-              fontWeightStrong: 400,
+              colorError: "#ef4444",
+              colorSuccess: isRejectedInDB ? "#ef4444" : "#059669",
+              colorSuccessBorder: isRejectedInDB ? "#ef4444" : "#059669",
+              colorSuccessBg: isRejectedInDB ? "#fef2f2" : "#ecfdf5",
             },
             components: {
               Steps: {
@@ -1010,12 +1071,65 @@ const CustomerClaimDetail = () => {
             },
           }}
         >
-          <div className="custom-steps-compact w-full overflow-hidden pb-2">
+          <style>{`
+            .custom-steps-rejected .ant-steps-item .ant-steps-item-container .ant-steps-item-tail::after,
+            .custom-steps-rejected .ant-steps-item .ant-steps-item-container .ant-steps-item-tail:after,
+            .custom-steps-rejected .ant-steps-item-tail::after,
+            .custom-steps-rejected .ant-steps-item-tail:after {
+              background-color: #ef4444 !important;
+              background: #ef4444 !important;
+              background-image: none !important;
+              opacity: 1 !important;
+            }
+            .custom-steps-rejected .ant-steps-item-tail {
+              background-color: #ef4444 !important;
+              border-color: #ef4444 !important;
+            }
+            .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-container .ant-steps-item-tail::after,
+            .custom-steps-rejected .ant-steps-item-process .ant-steps-item-container .ant-steps-item-tail::after,
+            .custom-steps-rejected .ant-steps-item-error .ant-steps-item-container .ant-steps-item-tail::after {
+              background-color: #ef4444 !important;
+              background: #ef4444 !important;
+            }
+            .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-tail::after,
+            .custom-steps-rejected .ant-steps-item-process .ant-steps-item-tail::after {
+              background-color: #ef4444 !important;
+              background: #ef4444 !important;
+            }
+            .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-icon {
+              border-color: #ef4444 !important;
+              background-color: #fef2f2 !important;
+            }
+            .custom-steps-rejected .ant-steps-item-finish .ant-steps-icon {
+              color: #ef4444 !important;
+            }
+          `}</style>
+          <div className={`custom-steps-compact w-full overflow-hidden pb-2 ${
+            isRejectedInDB ? "custom-steps-rejected" : "custom-steps-normal"
+          }`}>
             <Steps
               responsive={true}
               current={getCurrentStep()}
               status={isRejectedInDB ? "error" : "process"}
-              items={getStepItems()}
+              items={getStepItems().map((item, idx) => {
+                const currentIdx = getCurrentStep();
+                let itemStatus = "wait";
+                
+                if (isRejectedInDB && idx <= currentIdx) {
+                  itemStatus = "error";
+                } else if (idx < currentIdx) {
+                  itemStatus = "finish";
+                } else if (idx === currentIdx) {
+                  itemStatus = "process";
+                } else {
+                  itemStatus = "wait";
+                }
+
+                return {
+                  ...item,
+                  status: itemStatus,
+                };
+              })}
             />
           </div>
         </ConfigProvider>

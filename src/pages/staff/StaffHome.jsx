@@ -168,26 +168,15 @@ const StaffHome = () => {
       setAllClaims(claimWithDetails);
 
       if (claimWithDetails.length > 0) {
-        const pendingClaims = claimWithDetails.filter((item) => {
-          const priority = getPriority(item);
-          return priority !== 8 && priority !== 9 && priority !== 10;
-        });
-
-        const sortedClaims = pendingClaims.sort((a, b) => {
-          const priorityA = getPriority(a);
-          const priorityB = getPriority(b);
-
-          if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-          }
-
+        // นำรายการทั้งหมดมาจัดเรียงตามวันที่แจ้งเคลมล่าสุดได้เลย โดยไม่ต้อง filter ออก
+        const sortedClaims = [...claimWithDetails].sort((a, b) => {
           const parsedA = dayjs(a.claim_date || a.created_at || a.createdDate);
           const parsedB = dayjs(b.claim_date || b.created_at || b.createdDate);
           
           const timeA = parsedA.isValid() ? parsedA.valueOf() : 0;
           const timeB = parsedB.isValid() ? parsedB.valueOf() : 0;
 
-          return timeA - timeB; 
+          return timeB - timeA; // เรียงจากใหม่ไปเก่า
         });
 
         setLatestClaims(sortedClaims.slice(0, 8));

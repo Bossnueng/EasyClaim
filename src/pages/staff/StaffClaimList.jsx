@@ -11,6 +11,7 @@ import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 
 
 const parseDataFromLogs = (logs) => {
@@ -35,6 +36,7 @@ const StaffClaimList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("ทั้งหมด");
   const [claims, setClaims] = useState([]);
+  const [sortOrder, setSortOrder] = useState("oldest");
   const [loading, setLoading] = useState(false);
   const [itemsMap, setItemsMap] = useState({});
   const [startDate, setStartDate] = useState(null);
@@ -44,12 +46,30 @@ const StaffClaimList = () => {
   const [claimLogsMap, setClaimLogsMap] = useState({});
   const [agentsRawList, setAgentsRawList] = useState([]);
 
+  // 🟢 ประกาศไว้ด้านบนสุดเพื่อให้ JSX และทุกฟังก์ชันเรียกใช้ได้โดยไม่ติด Error
+  const currentUser = loginService.getCurrentUser();
+  const userRoleId = Number(currentUser?.role_id);
+  const currentUserId = currentUser?.user_id || currentUser?.id;
+
+  useClaimRealtime({
+    isStaff: true,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
+
   useEffect(() => {
-    fetchClaimsAndItems();
+    fetchClaimsAndItems(true);
+
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchClaimsAndItems = async () => {
-    setLoading(true);
+  const fetchClaimsAndItems = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [resClaim, resItems, resAgents, resUsers, resLogs] = await Promise.all([
         claimService.getClaim(),
@@ -62,14 +82,11 @@ const StaffClaimList = () => {
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       if (Array.isArray(agentsData)) {
-        setAgentsRawList(agentsData); // เก็บข้อมูล Array ดั้งเดิมเอาไว้ใช้ Map รหัส
-        
+        setAgentsRawList(agentsData);
         agentsData.forEach((agent) => {
           const aId = String(agent.agent_id || agent.id || "");
           const aCode = String(agent.agent_code || agent.code || "");
           const name = agent.agent_name || agent.name;
-          
-          // เก็บชื่อ และ Object ข้อมูล Agent
           if (aId) aMap[aId] = name;
           if (aCode) aMap[aCode] = name;
         });
@@ -102,24 +119,45 @@ const StaffClaimList = () => {
 
       const rawClaims = resClaim && resClaim.status ? resClaim.data : [];
 
-      // 2. ดึงข้อมูล User ปัจจุบัน
-      const currentUser = loginService.getCurrentUser();
-      const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
-      const userRoleId = Number(currentUser?.role_id);
+      // 🟢 รวบรวมสิทธิ์ Agent ทั้ง ID และ Code
+      let userAgentIdentifiers = [];
 
-      // 3. กรองเฉพาะเคลมที่ agent_id ตรงกับ agent_ids ของ user (ยกเว้น Admin role_id === 1)
-      const allowedClaims = (userRoleId === 1 || userAgentIds.length === 0 && userRoleId === 1)
-        ? rawClaims
-        : rawClaims.filter((claim) => userAgentIds.includes(String(claim.agent_id || "")));
+      if (Array.isArray(currentUser?.agent_ids)) {
+        currentUser.agent_ids.forEach((id) => {
+          userAgentIdentifiers.push(String(id));
+        });
+      } else if (currentUser?.agent_id) {
+        userAgentIdentifiers.push(String(currentUser.agent_id));
+      }
 
-      // ดึงรายละเอียด Item แต่ละรายการเพิ่ม เพื่อให้ Card แสดงผลได้ครบ
+      // ค้นหา agent_code ที่เกี่ยวข้องเพิ่มจาก agentsData
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      // 🟢 กรองรายการเคลม
+      const allowedClaims = (userAgentIdentifiers.length > 0)
+        ? rawClaims.filter((claim) => {
+            const claimAgentIdStr = String(claim.agent_id || "");
+            const claimAgentCodeStr = String(claim.agent_code || "");
+            return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
+          })
+        : rawClaims;
+
+      // ดึงรายละเอียด Item แต่ละรายการเพิ่ม
       const claimsWithItems = await Promise.all(
         allowedClaims.map(async (claim) => {
           try {
             const itemRes = await claimService.getClaimItems(claim.claim_id);
             const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
             const itemDetails = rawItems[0] || {};
-            
             const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
 
             return {
@@ -141,7 +179,7 @@ const StaffClaimList = () => {
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -467,9 +505,6 @@ const StaffClaimList = () => {
     message.success("ดาวน์โหลด Export Log เรียบร้อยแล้ว");
   };
 
-  const currentUser = loginService.getCurrentUser();
-  const userRoleId = Number(currentUser?.role_id);
-
   const tabCounts = claims.reduce((acc, claim) => {
     const rawStatus = claim.current_status || claim.status;
     const status = getStatusName(rawStatus);
@@ -535,19 +570,18 @@ const StaffClaimList = () => {
       return matchesStatus && (matchesProduct || matchesId || matchesAgent) && matchesDate;
     })
     .sort((a, b) => {
-      const statusA = getStatusName(a.current_status || a.status);
-      const statusB = getStatusName(b.current_status || b.status);
-      const priorityA = STATUS_PRIORITY[statusA] || 99;
-      const priorityB = STATUS_PRIORITY[statusB] || 99;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
       const dateA = dayjs(a.claim_date || a.created_at || a.createdDate);
       const dateB = dayjs(b.claim_date || b.created_at || b.createdDate);
-      return dateB.valueOf() - dateA.valueOf();
-    });
+
+      const timeA = dateA.isValid() ? dateA.valueOf() : 0;
+      const timeB = dateB.isValid() ? dateB.valueOf() : 0;
+
+      if (sortOrder === "oldest") {
+        return timeA - timeB; // เก่าสุดไปใหม่สุด (อายุมากสุดขึ้นก่อน)
+      } else {
+        return timeB - timeA; // ใหม่สุดไปเก่าสุด
+      }
+    })
 
   const filterTabs = CUSTOMER_FILTER_TABS || FILTER_OPTIONS;
 
@@ -592,87 +626,106 @@ const StaffClaimList = () => {
         </header>
 
         {/* Filter Section */}
-        <div className="flex flex-col lg:flex-row gap-2 w-full">
-          <div className="flex-1 min-w-0">
-            <Input
-              placeholder="ค้นหาตามชื่อสินค้า, Claim ID หรือชื่อ Agent..."
-              prefix={<SearchOutlined className="text-gray-400 mr-1 text-xs sm:text-sm" />}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              allowClear
-              className="w-full rounded-lg border-gray-200 bg-white hover:border-emerald-500 focus:border-emerald-500 text-xs sm:text-sm h-9 sm:h-10 shadow-sm px-3"
-            />
-          </div>
+        <div className="flex flex-col gap-2 w-full">
+  {/* แถวที่ 1: ช่องค้นหา (กว้างเต็ม 100% อยู่บนสุดเสมอ ไม่ถูกบีบหาย) */}
+  <div className="w-full">
+    <Input
+      placeholder="ค้นหาตามชื่อสินค้า, Claim ID หรือชื่อ Agent..."
+      prefix={<SearchOutlined className="text-gray-400 mr-1 text-xs sm:text-sm" />}
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+      allowClear
+      className="w-full rounded-lg border-gray-200 bg-white hover:border-emerald-500 focus:border-emerald-500 text-xs sm:text-sm h-9 sm:h-10 shadow-sm px-3"
+    />
+  </div>
 
-          <div className="flex gap-2 lg:w-80 shrink-0">
-            <DatePicker
-              placeholder="เริ่มวันไหน"
-              suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
-              format="DD/MM/YYYY"
-              value={startDate}
-              onChange={(date) => setStartDate(date)}
-              disabledDate={(current) => endDate && current && current.isAfter(endDate, "day")}
-              style={{ paddingLeft: "8px", paddingRight: "8px" }}
-              className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
-            />
-            <DatePicker
-              placeholder="ถึงวันไหน"
-              suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
-              format="DD/MM/YYYY"
-              value={endDate}
-              onChange={(date) => setEndDate(date)}
-              disabledDate={(current) => startDate && current && current.isBefore(startDate, "day")}
-              style={{ paddingLeft: "8px", paddingRight: "8px" }}
-              className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
-            />
-          </div>
+  {/* แถวที่ 2: เครื่องมือกรอง (ช่วงวันที่, ปุ่มสลับเรียงลำดับ, และเลือกสถานะ) */}
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 w-full">
+    {/* ช่วงวันที่ (บนจอคอมกิน 5 คอลัมน์ / จอมือถือแบ่งคนละซีก) */}
+    <div className="sm:col-span-2 lg:col-span-5 flex gap-2">
+      <DatePicker
+        placeholder="เริ่มวันไหน"
+        suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
+        format="DD/MM/YYYY"
+        value={startDate}
+        onChange={(date) => setStartDate(date)}
+        disabledDate={(current) => endDate && current && current.isAfter(endDate, "day")}
+        style={{ paddingLeft: "8px", paddingRight: "8px" }}
+        className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
+      />
+      <DatePicker
+        placeholder="ถึงวันไหน"
+        suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
+        format="DD/MM/YYYY"
+        value={endDate}
+        onChange={(date) => setEndDate(date)}
+        disabledDate={(current) => startDate && current && current.isBefore(startDate, "day")}
+        style={{ paddingLeft: "8px", paddingRight: "8px" }}
+        className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
+      />
+    </div>
 
-          <div className="lg:w-56 shrink-0">
-            <Select
-              value={selectedStatus}
-              onChange={(val) => setSelectedStatus(val)}
-              className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
-              suffixIcon={
-                <div style={{ paddingRight: "4px" }}>
-                  <FilterOutlined className="text-gray-400 text-xs" />
-                </div>
-              }
-              labelRender={({ value }) => {
-                const count =
-                  value === "ทั้งหมด"
-                    ? claims.length
-                    : tabCounts[value] ?? statusCounts[value] ?? 0;
-                return (
-                  <div className="flex justify-between items-center w-full pr-1">
-                    <span className="text-xs font-medium text-slate-700" style={{ paddingLeft: "4px" }}>
-                      {value}
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
-                      {count} รายการ
-                    </span>
-                  </div>
-                );
-              }}
-              options={filterTabs.map((tab) => {
-                const count =
-                  tab === "ทั้งหมด"
-                    ? claims.length
-                    : tabCounts[tab] ?? statusCounts[tab] ?? 0;
-                return {
-                  value: tab,
-                  label: (
-                    <div className="flex justify-between items-center w-full px-0.5">
-                      <span className="text-xs font-medium text-slate-700">{tab}</span>
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                        {count} รายการ
-                      </span>
-                    </div>
-                  ),
-                };
-              })}
-            />
+    {/* ปุ่มเรียงลำดับ (บนจอคอมกิน 3 คอลัมน์) */}
+    <div className="sm:col-span-1 lg:col-span-3">
+      <Select
+        value={sortOrder}
+        onChange={(val) => setSortOrder(val)}
+        className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
+        options={[
+          { value: "oldest", label: "🕒 เก่าสุด ➔ ใหม่สุด" },
+          { value: "newest", label: "🆕 ใหม่สุด ➔ เก่าสุด" },
+        ]}
+      />
+    </div>
+
+    {/* ปุ่มสถานะ (บนจอคอมกิน 4 คอลัมน์) */}
+    <div className="sm:col-span-1 lg:col-span-4">
+      <Select
+        value={selectedStatus}
+        onChange={(val) => setSelectedStatus(val)}
+        className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
+        suffixIcon={
+          <div style={{ paddingRight: "4px" }}>
+            <FilterOutlined className="text-gray-400 text-xs" />
           </div>
-        </div>
+        }
+        labelRender={({ value }) => {
+          const count =
+            value === "ทั้งหมด"
+              ? claims.length
+              : tabCounts[value] ?? statusCounts[value] ?? 0;
+          return (
+            <div className="flex justify-between items-center w-full pr-1">
+              <span className="text-xs font-medium text-slate-700" style={{ paddingLeft: "4px" }}>
+                {value}
+              </span>
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
+                {count} รายการ
+              </span>
+            </div>
+          );
+        }}
+        options={filterTabs.map((tab) => {
+          const count =
+            tab === "ทั้งหมด"
+              ? claims.length
+              : tabCounts[tab] ?? statusCounts[tab] ?? 0;
+          return {
+            value: tab,
+            label: (
+              <div className="flex justify-between items-center w-full px-0.5">
+                <span className="text-xs font-medium text-slate-700">{tab}</span>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {count} รายการ
+                </span>
+              </div>
+            ),
+          };
+        })}
+      />
+    </div>
+  </div>
+</div>
 
         {/* Claim Cards List */}
         {loading ? (

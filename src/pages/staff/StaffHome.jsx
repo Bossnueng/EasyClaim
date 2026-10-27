@@ -12,10 +12,14 @@ import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime"; // 🟢 1. Import Hook
 
 const StaffHome = () => {
   const navigate = useNavigate();
-  const user = loginService.getCurrentUser();
+  const currentUser = loginService.getCurrentUser();
+  const userRoleId = Number(currentUser?.role_id);
+  const currentUserId = currentUser?.user_id || currentUser?.id;
+
   const [allClaims, setAllClaims] = useState([]);
   const [latestClaims, setLatestClaims] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -23,8 +27,22 @@ const StaffHome = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
 
+  // 🟢 2. เรียกใช้ Realtime Hook เพื่ออัปเดตหน้า Home ทันทีที่มีการสร้าง/เปลี่ยนสถานะ
+  useClaimRealtime({
+    isStaff: true,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
+
   useEffect(() => {
-    fetchClaimsAndItems();
+    fetchClaimsAndItems(true); // ครั้งแรกโชว์ Spin ตามปกติ
+
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังนุ่มนวล ไม่โชว์ Spin
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const getPriority = (item) => {
@@ -49,10 +67,13 @@ const StaffHome = () => {
     return statusVal || "ไม่ระบุสถานะ";
   };
 
-  const fetchClaimsAndItems = async () => {
-    setLoading(true);
+  // 🟢 3. ปรับรองรับ showLoading
+  const fetchClaimsAndItems = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
 
     try {
+      let userAgentIdentifiers = [];
+      
       const [resClaim, resItems, resAgents, resUsers] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
@@ -78,7 +99,6 @@ const StaffHome = () => {
         setUsersList(usersData);
       }
 
-      // 🟢 แก้ไข: แปลง item_id เป็น String เสมอเพื่อป้องกัน Mismatch Type
       const itemsData = resItems?.data || resItems || [];
       const map = {};
       if (Array.isArray(itemsData)) {
@@ -94,14 +114,32 @@ const StaffHome = () => {
         ? resClaim
         : resClaim?.data || [];
 
-        // 1. ดึงข้อมูล user และก๊อปปี้กรอง agent_id
-        const currentUser = loginService.getCurrentUser();
-        const userAgentIds = (currentUser?.agent_ids || []).map((id) => String(id));
-        const userRoleId = Number(currentUser?.role_id);
+      if (Array.isArray(currentUser?.agent_ids)) {
+        currentUser.agent_ids.forEach((id) => {
+          userAgentIdentifiers.push(String(id));
+        });
+      } else if (currentUser?.agent_id) {
+        userAgentIdentifiers.push(String(currentUser.agent_id));
+      }
 
-        const allowedClaims = (userRoleId === 1)
-          ? claimData
-          : claimData.filter((claim) => userAgentIds.includes(String(claim.agent_id || "")));
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      const allowedClaims = (userRoleId === 1 || userAgentIdentifiers.length === 0)
+        ? claimData
+        : claimData.filter((claim) => {
+            const claimAgentIdStr = String(claim.agent_id || "");
+            const claimAgentCodeStr = String(claim.agent_code || "");
+            return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
+          });
 
       const claimWithDetails = await Promise.all(
         allowedClaims.map(async (claim) => {
@@ -149,7 +187,7 @@ const StaffHome = () => {
           const timeA = parsedA.isValid() ? parsedA.valueOf() : 0;
           const timeB = parsedB.isValid() ? parsedB.valueOf() : 0;
 
-          return timeB - timeA;
+          return timeA - timeB; 
         });
 
         setLatestClaims(sortedClaims.slice(0, 8));
@@ -162,7 +200,7 @@ const StaffHome = () => {
           (error?.message || "เกิดข้อผิดพลาด")
       );
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -177,7 +215,7 @@ const StaffHome = () => {
       >
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
-            สวัสดี, คุณ{user?.full_name || user?.name || "-"}
+            สวัสดี, คุณ{currentUser?.full_name || currentUser?.name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
             ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่
@@ -353,25 +391,25 @@ const StaffHome = () => {
 
                 // 🟢 แก้ไข: ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
                 // ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
-const getDisplayProductName = () => {
-  if (Array.isArray(claim.items) && claim.items.length > 0) {
-    const names = claim.items
-      .map((i) => {
-        const idStr = String(i.item_id || "");
-        return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
-      })
-      .filter(Boolean);
+                  const getDisplayProductName = () => {
+                    if (Array.isArray(claim.items) && claim.items.length > 0) {
+                      const names = claim.items
+                        .map((i) => {
+                          const idStr = String(i.item_id || "");
+                          return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
+                        })
+                        .filter(Boolean);
 
-    if (names.length > 0) return names.join(" + ");
-  }
+                      if (names.length > 0) return names.join(" + ");
+                    }
 
-  const singleIdStr = String(claim.item_id || "");
-  return (
-    itemsMap[singleIdStr] ||
-    claim.item_name ||
-    (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
-  );
-};
+                    const singleIdStr = String(claim.item_id || "");
+                    return (
+                      itemsMap[singleIdStr] ||
+                      claim.item_name ||
+                      (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
+                    );
+                  };
 
                 return (
                   <StaffClaimCard

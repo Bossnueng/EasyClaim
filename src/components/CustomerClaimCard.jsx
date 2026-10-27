@@ -94,6 +94,12 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
           </h4>
           
           <div className="flex flex-col gap-1 text-[11px] sm:text-xs text-gray-500 font-mono mt-1">
+            {/* 🟢 เพิ่มบรรทัดนี้เพื่อให้แสดง Agent */}
+            {claim?.agent_name && claim.agent_name !== "-" && (
+              <div className="text-emerald-700 font-semibold break-words">
+                Agent: {claim.agent_name}
+              </div>
+            )}
             <div>ID: {claim_no}</div>
             <div className="break-words">ประเภทการเคลม : {claimType}</div>
             <div>

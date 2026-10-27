@@ -131,7 +131,7 @@ exports.updateUser = async (req, res) => {
             }
         }
 
-        // 🟢 เพิ่ม: ส่ง Socket Event เมื่อทำการอัปเดตข้อมูลสำเร็จ
+        //ส่ง Socket Event เมื่อทำการอัปเดตข้อมูลสำเร็จ
         const io = req.app.get("io");
         if (io) {
             // ส่งแจ้งเตือนไปยัง Room ของ User คนดังกล่าว (หรือ broadcast ถ้าใช้ room เดียวกัน)
@@ -172,7 +172,7 @@ exports.deleteuser = async (req, res) => {
         // อัปเดต status เป็น 0 เพื่อปิดใช้งาน โดยไม่ต้องลบข้อมูลออกจาก Database
         await pool.request()
             .input("user_id", sql.Int, user_id)
-            .input("agent_id", sql.Int, agent_id)
+            //.input("agent_id", sql.Int, agent_id)
             .query(`
                 UPDATE [EasyClaim_Dev].[dbo].[users] 
                 SET status = 0, updated_at = GETDATE() 

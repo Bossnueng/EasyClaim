@@ -13,6 +13,7 @@ router.get("/getclaimapproves", ClaimController.getclaimapproves);
 router.get("/getClaimImages/:claim_id", ClaimController.getClaimImages);
 router.get("/getClaimByAgent/:agent_id", ClaimController.getClaimByAgent);
 
+
 // POST
 router.post("/Claim", upload.any(), ClaimController.creartClaim);
 router.post("/ClaimStatusLogs", ClaimController.createClaimStatusLogs);
@@ -21,6 +22,7 @@ router.post("/Claimimage", upload.single("file"), ClaimController.createClaimima
 router.post("/updateClaim", ClaimController.updateclaim);
 router.post("/getClaimreturn",ClaimController.getClaimreturn);
 router.post("/updateClaimDate",ClaimController.updateClaimDate);
+
 
 // DELETE
 router.delete("/delClaim", ClaimController.delClaim);

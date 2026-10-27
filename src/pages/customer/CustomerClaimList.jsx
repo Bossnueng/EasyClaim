@@ -16,6 +16,8 @@ import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
 import userService from "../../services/userService";
+import agentService from "../../services/agentService";
+import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 
 const CustomerClaimList = () => {
   const navigate = useNavigate();
@@ -28,45 +30,51 @@ const CustomerClaimList = () => {
   const [endDate, setEndDate] = useState(null);
   const [usersList, setUsersList] = useState([]);
   const [claimLogsMap, setClaimLogsMap] = useState({});
+  const [sortOrder, setSortOrder] = useState("oldest");
+
+  const user = loginService.getCurrentUser();
+  const role = user?.role || user?.user_type;
+  const currentUserId = user?.user_id || user?.id;
+
+  useClaimRealtime({
+    isStaff: false,
+    userId: currentUserId,
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+  });
 
   useEffect(() => {
-    fetchClaimsAndItems();
+    fetchClaimsAndItems(true); // โหลดครั้งแรกขึ้น Spin ปกติ
+
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังเงียบๆ ไม่ขึ้น Spin
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchClaimsAndItems = async () => {
-    const user = loginService.getCurrentUser();
-    const role = user?.role || user?.user_type;
-
+  // 🟢 1. ปรับฟังก์ชัน fetchClaimsAndItems ให้รับพารามิเตอร์ showLoading
+  const fetchClaimsAndItems = async (showLoading = true) => {
     if (role === "staff" || role === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
 
-    const agentId = user?.agent_id || (Array.isArray(user?.agent_ids) && user.agent_ids.length > 0 ? user.agent_ids[0] : null);
-
-    if (!agentId) {
-      loginService.logout();
-      navigate("/login", { replace: true });
-      return;
-    }
-
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
-      // ดึงข้อมูล Master และ Logs
-      const [resClaim, resItems, resUsers, resLogs] = await Promise.all([
-        claimService.getClaimByAgent(agentId),
-        itemService.getItems(),
-        userService.getUsers().catch(() => []), // ดึงข้อมูล Users
-        claimService.getClaimStatusLogs().catch(() => []), // ดึง Status Logs
+      const [resClaim, resItems, resUsers, resLogs, resAgents] = await Promise.all([
+        claimService.getClaim().catch(() => ({ data: [] })),
+        itemService.getItems().catch(() => ({ data: [] })),
+        userService.getUsers().catch(() => []),
+        claimService.getClaimStatusLogs().catch(() => []),
+        agentService.getAgent().catch(() => []),
       ]);
 
-      // 1. เก็บ Users List
       const usersData = resUsers?.data || resUsers || [];
       if (Array.isArray(usersData)) {
         setUsersList(usersData);
       }
 
-      // 2. เก็บ Logs Map
       const logsData = resLogs?.data || resLogs || [];
       if (Array.isArray(logsData)) {
         const lMap = {};
@@ -80,46 +88,76 @@ const CustomerClaimList = () => {
         setClaimLogsMap(lMap);
       }
 
-      // 3. Map รายการสินค้า
       if (resItems && resItems.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[item.item_id] = item.item_name;
+          map[String(item.item_id)] = item.item_name;
         });
         setItemsMap(map);
       }
 
-      // 4. Map ข้อมูล Claim Items
-      if (resClaim.status && Array.isArray(resClaim.data)) {
-        const claimsWithItems = await Promise.all(
-          resClaim.data.map(async (claim) => {
-            try {
-              const resItems = await claimService.getClaimItems(claim.claim_id);
-              const rawItems = Array.isArray(resItems) ? resItems : (resItems?.data || []);
-              if (rawItems.length > 0) {
-                const firstItem = rawItems[0];
-                return {
-                  ...claim,
-                  item_id: firstItem.item_id,
-                  qty: firstItem.qty,
-                  remark: firstItem.remark,
-                  lot_no: firstItem.lot_no,
-                  items: rawItems
-                };
-              }
-            } catch (err) {
-              console.error(`Error fetching items for claim ${claim.claim_id}`, err);
-            }
-            return claim;
-          })
-        );
+      let userAgentIdentifiers = [];
 
-        setClaims(claimsWithItems);
+      if (Array.isArray(user?.agent_ids)) {
+        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
       }
+      if (user?.agent_id) {
+        userAgentIdentifiers.push(String(user.agent_id));
+      }
+
+      const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      if (Array.isArray(agentsData)) {
+        agentsData.forEach((agent) => {
+          const aId = String(agent.agent_id || agent.id || "");
+          const aCode = String(agent.agent_code || agent.code || "");
+          if (userAgentIdentifiers.includes(aId) && aCode) {
+            userAgentIdentifiers.push(aCode);
+          }
+        });
+      }
+
+      const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
+      const allowedClaims = rawClaims.filter((claim) => {
+        const claimAgentIdStr = String(claim.agent_id || "");
+        const claimAgentCodeStr = String(claim.agent_code || "");
+        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+
+        const isAgentMatch =
+          userAgentIdentifiers.length > 0 &&
+          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
+        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+
+        return isAgentMatch || isUserMatch;
+      });
+
+      const claimsWithItems = await Promise.all(
+        allowedClaims.map(async (claim) => {
+          try {
+            const resItems = await claimService.getClaimItems(claim.claim_id);
+            const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
+            if (rawItems.length > 0) {
+              const firstItem = rawItems[0];
+              return {
+                ...claim,
+                item_id: firstItem.item_id,
+                qty: firstItem.qty,
+                remark: firstItem.remark,
+                lot_no: firstItem.lot_no,
+                items: rawItems,
+              };
+            }
+          } catch (err) {
+            console.error(`Error fetching items for claim ${claim.claim_id}`, err);
+          }
+          return claim;
+        })
+      );
+
+      setClaims(claimsWithItems);
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -151,7 +189,6 @@ const CustomerClaimList = () => {
         dateStr = `${dayjs(startDate).format("YYYYMMDD")}_to_${dayjs(endDate).format("YYYYMMDD")}`;
       }
 
-      // 1. Map ผู้ใช้งานสำหรับหาชื่อผู้แจ้งเคลม (สร้าง Key ค้นหาจากทั้ง ID, Username, Email)
       const userMap = {};
       const safeUsersList = Array.isArray(usersList) ? usersList : (usersList?.data || []);
       safeUsersList.forEach((u) => {
@@ -164,11 +201,9 @@ const CustomerClaimList = () => {
         });
       });
 
-      // ดึง User ปัจจุบันมารองรับเผื่อกรณีเป็นผู้แจ้งเคลมเอง
       const currentUser = loginService.getCurrentUser() || {};
       const currentUserName = currentUser.full_name || currentUser.fullname || currentUser.name || currentUser.username || "-";
 
-      // กำหนด Headers
       const headers = [
         "ลำดับ",
         "เลขที่เอกสารเคลม",
@@ -216,7 +251,6 @@ const CustomerClaimList = () => {
         return {};
       };
 
-      // ฟังก์ชันช่วยแกะข้อมูล Log DATA
       const parseDataFromLogs = (logs) => {
         if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
         let result = {};
@@ -243,10 +277,8 @@ const CustomerClaimList = () => {
         let logData = {};
         try { logData = parseDataFromLogs(logs) || {}; } catch (e) { logData = {}; }
 
-        // ข้อมูลทั่วไปของเคลม
         const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
         
-        // ค้นหาชื่อผู้แจ้งเคลม
         const createdById = String(claim.created_by || claim.user_id || claim.createdBy || claim.userId || "");
         const createdByName = 
           userMap[createdById] || 
@@ -256,7 +288,6 @@ const CustomerClaimList = () => {
           claim.userName || 
           (createdById && createdById !== "undefined" ? currentUserName : "-");
 
-        // ข้อมูล พขร. รับสินค้า และ ทะเบียนรถรับ
         const driverName = 
           claim.driver_name || 
           claim.driverName || 
@@ -276,7 +307,6 @@ const CustomerClaimList = () => {
           logData.licensePlate || 
           "-";
 
-        // ข้อมูล พขร. จัดส่งสินค้า และ ทะเบียนรถส่ง
         const deliveryDriver = 
           claim.delivery_driver || 
           claim.deliveryDriver || 
@@ -293,7 +323,6 @@ const CustomerClaimList = () => {
           logData.deliveryPlate || 
           "-";
 
-        // ข้อมูลวันที่สถานะ Timeline
         const claimDate = formatDate(claim.claim_date || claim.created_at);
         const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate || logData.driver_receive_date);
         const warehouseReceiveDate = formatDate(claim.warehouse_receive_date || logData.warehouseReceiveDate || logData.warehouse_receive_date);
@@ -305,7 +334,6 @@ const CustomerClaimList = () => {
           ? getStatusName(claim.current_status || claim.status, "customer")
           : (claim.current_status || claim.status || "-");
 
-        // ตรวจสอบรายการสินค้า
         const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 
           ? claim.items 
           : [claim];
@@ -446,18 +474,17 @@ const CustomerClaimList = () => {
       return matchesStatus && (matchesProduct || matchesId) && matchesDate;
     })
     .sort((a, b) => {
-      const statusA = a.current_status || a.status;
-      const statusB = b.current_status || b.status;
-      const priorityA = STATUS_PRIORITY[statusA] || STATUS_PRIORITY[getStatusName(statusA, "customer")] || 99;
-      const priorityB = STATUS_PRIORITY[statusB] || STATUS_PRIORITY[getStatusName(statusB, "customer")] || 99;
-
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-
       const dateA = dayjs(a.claim_date || a.created_at);
       const dateB = dayjs(b.claim_date || b.created_at);
-      return dateB.valueOf() - dateA.valueOf();
+
+      const timeA = dateA.isValid() ? dateA.valueOf() : 0;
+      const timeB = dateB.isValid() ? dateB.valueOf() : 0;
+
+      if (sortOrder === "oldest") {
+        return timeA - timeB; // 🕒 วันที่น้อยสุด (เก่าสุด) ขึ้นก่อน
+      } else {
+        return timeB - timeA; // 🆕 วันที่มากสุด (ใหม่สุด) ขึ้นก่อน
+      }
     });
 
   return (
@@ -521,6 +548,18 @@ const CustomerClaimList = () => {
             />
           </div>
 
+          <div className="sm:col-span-1 lg:col-span-3">
+            <Select
+              value={sortOrder}
+              onChange={(val) => setSortOrder(val)}
+              className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
+              options={[
+                { value: "oldest", label: "🕒 เก่าสุด ➔ ใหม่สุด" },
+                { value: "newest", label: "🆕 ใหม่สุด ➔ เก่าสุด" },
+              ]}
+            />
+          </div>
+
           <div className="lg:w-56 shrink-0">
             <Select
               value={selectedStatus}
@@ -578,38 +617,36 @@ const CustomerClaimList = () => {
           </div>
         ) : filteredClaims.length > 0 ? (
           <div className="flex flex-col gap-2.5 sm:gap-3 w-full">
-            
-{filteredClaims.map((claim) => {
-  // ฟังก์ชันหาชื่อสินค้าเดี่ยวหรือรวมชื่อหลายรายการจาก itemsMap
-  const getDisplayProductName = () => {
-    if (Array.isArray(claim.items) && claim.items.length > 0) {
-      return claim.items
-        .map((i) => itemsMap[i.item_id] || i.item_name || i.name || `สินค้า ID: ${i.item_id}`)
-        .join(" + ");
-    }
-    return (
-      itemsMap[claim.item_id] ||
-      claim.item_name ||
-      (claim.item_id ? `สินค้า ID: ${claim.item_id}` : "ไม่พบข้อมูลสินค้า")
-    );
-  };
+            {filteredClaims.map((claim) => {
+              const getDisplayProductName = () => {
+                if (Array.isArray(claim.items) && claim.items.length > 0) {
+                  return claim.items
+                    .map((i) => itemsMap[i.item_id] || i.item_name || i.name || `สินค้า ID: ${i.item_id}`)
+                    .join(" + ");
+                }
+                return (
+                  itemsMap[claim.item_id] ||
+                  claim.item_name ||
+                  (claim.item_id ? `สินค้า ID: ${claim.item_id}` : "ไม่พบข้อมูลสินค้า")
+                );
+              };
 
-  return (
-    <CustomerClaimCard
-      key={claim.claim_id || claim.claim_no}
-      claim={{
-        ...claim,
-        current_status: claim.current_status || claim.status,
-        agent_name: claim.agent_name || claim.agent_id || "-",
-        item_name: getDisplayProductName(),
-        created_at_formatted: dayjs(claim.claim_date || claim.created_at).format("DD/MM/YY HH:mm"),
-      }}
-      onDelete={handleDeleteClaim}
-      hideDeleteWhenDisabled={true}
-      layout="horizontal"
-    />
-  );
-})}
+              return (
+                <CustomerClaimCard
+                  key={claim.claim_id || claim.claim_no}
+                  claim={{
+                    ...claim,
+                    current_status: claim.current_status || claim.status,
+                    agent_name: claim.agent_name || claim.agent_id || "-",
+                    item_name: getDisplayProductName(),
+                    created_at_formatted: dayjs(claim.claim_date || claim.created_at).format("DD/MM/YY HH:mm"),
+                  }}
+                  onDelete={handleDeleteClaim}
+                  hideDeleteWhenDisabled={true}
+                  layout="horizontal"
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 sm:p-12 text-center my-2 w-full">

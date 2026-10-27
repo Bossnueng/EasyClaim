@@ -112,14 +112,15 @@ function AppRouter() {
           <Route path="/staff/users" element={<UserManagement />} />
           <Route path="/staff/agents" element={<AgentManagement />} />
           <Route path="/staff/roles" element={<RoleManagement />} />
+          <Route path="/staff/new-claim" element={<CustomerNewClaim />} />
+          <Route path="/staff/new-claim/processing/:claimId" element={<CustomerClaimProcessing />} />
         </Route>
 
         <Route element={<CustomerRoute />}>
           <Route path="/customer" element={<CustomerHome />} />
           <Route path="/customer/list-claim" element={<CustomerClaimList />} />
           <Route path="/customer/detail-claim/:claimId" element={<CustomerClaimDatail />} />
-          <Route path="/customer/new-claim" element={<CustomerNewClaim />} />
-          <Route path="/customer/new-claim/processing/:claimId" element={<CustomerClaimProcessing />} />
+         
           <Route path="/customer/chat/:claimId?" element={<CustomerChat />} />
           <Route path="/customer/setting" element={<UserSettings />} />
         </Route>

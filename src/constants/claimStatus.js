@@ -1,16 +1,19 @@
-// src/constants/claimStatus.js
+/**
+รอพิจารณา ->  Pending 
+อนุมัติ / ไม่อนุมัติ -> Approved / Rejected 
+กำลังดำเนินการเปลี่ยนสินค้า -> Processing
+กำลังจัดส่งสินค้าเคลม -> Shipping 
+จัดส่งสินค้าเคลมสำเร็จ -> Delivered
+ */
 
 export const CLAIM_STATUS_MAP = {
-  "1": { priority: 1, name: "สร้างรายการเคลม", staffName: "รายการเคลมใหม่", customerName: "สร้างรายการเคลมใหม่", color: "default" },
-  "5": { priority: 2, name: "รอการพิจารณา", staffName: "รอการพิจารณา", customerName: "รอการพิจารณา", color: "processing" },
-  "2": { priority: 3, name: "มีสิทธิ์เคลม", staffName: "มีสิทธิ์เคลม", customerName: "มีสิทธิ์เคลม", color: "cyan" },
-  "3": { priority: 9, name: "ไม่มีสิทธิ์เคลม", staffName: "ไม่มีสิทธิ์เคลม", customerName: "ไม่มีสิทธิ์เคลม", color: "error" },
-  "4": { priority: 4, name: "รับสินค้าจริงแล้ว", staffName: "รับสินค้าจริงแล้ว", customerName: "รับสินค้าจริงแล้ว", color: "purple" },
-  "6": { priority: 5, name: "อนุมัติเคลมสินค้า", staffName: "อนุมัติการเคลมสินค้า", customerName: "อนุมัติการเคลมสินค้า", color: "success" },
-  "7": { priority: 10, name: "ไม่อนุมัติเคลมสินค้า", staffName: "ไม่อนุมัติการเคลมสินค้า", customerName: "ไม่อนุมัติการเคลมสินค้า", color: "error" },
-  "8": { priority: 6, name: "กำลังดำเนินการเปลี่ยนสินค้า", staffName: "กำลังดำเนินการเปลี่ยนสินค้า", customerName: "กำลังดำเนินการเปลี่ยนสินค้า", color: "blue" },
-  "9": { priority: 7, name: "กำลังจัดส่งสินค้าเคลม", staffName: "กำลังจัดส่งสินค้าเคลม", customerName: "กำลังจัดส่งสินค้าเคลม", color: "warning" },
-  "10": { priority: 8, name: "จัดส่งสินค้าเคลมสำเร็จ", staffName: "จัดส่งสินค้าเคลมสำเร็จ", customerName: "จัดส่งสินค้าเคลมสำเร็จ", color: "green" },
+  "1": { priority: 1, name: "Pending", staffName: "Pending", customerName: "Pending", color: "processing" },
+  "5": { priority: 1, name: "Pending", staffName: "Pending", customerName: "Pending", color: "processing" },
+  "6": { priority: 2, name: "Approved", staffName: "Approved", customerName: "Approved", color: "success" },
+  "7": { priority: 9, name: "Rejected", staffName: "Rejected", customerName: "Rejected", color: "error" },
+  "8": { priority: 3, name: "Processing", staffName: "Processing", customerName: "Processing", color: "blue" },
+  "9": { priority: 4, name: "Shipping", staffName: "Shipping", customerName: "Shipping", color: "warning" },
+  "10": { priority: 5, name: "Delivered", staffName: "Delivered", customerName: "Delivered", color: "green" },
 };
 
 export const CUSTOMER_FILTER_TABS = [
@@ -48,71 +51,52 @@ const getStatusConfig = (statusVal) => {
          );
 };
 
-// ฟังก์ชันสำหรับหา status_id จากข้อความภาษาไทย
+// ฟังก์ชันแปลงชื่อภาษาอังกฤษกลับเป็น Status ID ตัวเลขดั้งเดิม เพื่อส่งให้ Backend
 export const getStatusId = (statusVal) => {
-  if (!statusVal) return null;
-  // ถ้าเป็น ID ตัวเลขอยู่แล้วให้ส่งกลับได้เลย
-  if (CLAIM_STATUS_MAP[String(statusVal)]) return String(statusVal);
+  if (!statusVal) return "5";
+  const val = String(statusVal).trim();
 
-  // ถ้าเป็นข้อความ ให้หา ID จาก key
-  const foundKey = Object.keys(CLAIM_STATUS_MAP).find((key) => {
-    const item = CLAIM_STATUS_MAP[key];
-    return item.name === statusVal || item.staffName === statusVal || item.customerName === statusVal;
-  });
+  if (val === "Pending" || val === "รอการพิจารณา") return "5";
+  if (val === "Approved" || val === "อนุมัติเคลมสินค้า") return "6";
+  if (val === "Rejected" || val === "ไม่อนุมัติเคลมสินค้า") return "7";
+  if (val === "Processing" || val === "กำลังดำเนินการเปลี่ยนสินค้า") return "8";
+  if (val === "Shipping" || val === "กำลังจัดส่งสินค้าเคลม") return "9";
+  if (val === "Delivered" || val === "จัดส่งสินค้าเคลมสำเร็จ") return "10";
 
-  return foundKey || statusVal;
+  return val;
 };
 
-// 2. Helper Functions ดึงชื่อสถานะตาม Role และแปลงค่า fallback
-export const getStatusName = (statusVal, role = "default") => {
-  if (!statusVal) return "ไม่ระบุสถานะ";
+export const getStatusName = (statusVal) => {
+  if (!statusVal) return "Pending";
+  const val = String(statusVal).trim();
 
-  // ค้นหาจาก status_id ตัวเลข (เช่น 1, 2, "1")
-  const targetObj = CLAIM_STATUS_MAP[String(statusVal)];
-  if (targetObj) {
-    if (role === "staff") return targetObj.staffName;
-    if (role === "customer") return targetObj.customerName;
-    return targetObj.name;
-  }
+  if (["5", "1", "รอการพิจารณา", "สร้างรายการเคลม", "pending"].includes(val.toLowerCase())) return "Pending";
+  if (["6", "2", "4", "อนุมัติเคลมสินค้า", "มีสิทธิ์เคลม", "รับสินค้าจริงแล้ว", "approved"].includes(val.toLowerCase())) return "Approved";
+  if (["7", "3", "ไม่อนุมัติเคลมสินค้า", "ไม่มีสิทธิ์เคลม", "rejected"].includes(val.toLowerCase())) return "Rejected";
+  if (["8", "กำลังดำเนินการเปลี่ยนสินค้า", "processing"].includes(val.toLowerCase())) return "Processing";
+  if (["9", "กำลังจัดส่งสินค้าเคลม", "shipping"].includes(val.toLowerCase())) return "Shipping";
+  if (["10", "จัดส่งสินค้าเคลมสำเร็จ", "delivered"].includes(val.toLowerCase())) return "Delivered";
 
-  // หาก DB บันทึกมาเป็นข้อความภาษาไทยเดิม ค้นหาผ่านข้อความเดิมแล้วแมปเป็นชื่อของ role นั้นๆ
-  const foundEntry = Object.values(CLAIM_STATUS_MAP).find(
-    (item) => item.name === statusVal || item.staffName === statusVal || item.customerName === statusVal
-  );
-
-  if (foundEntry) {
-    if (role === "staff") return foundEntry.staffName;
-    if (role === "customer") return foundEntry.customerName;
-    return foundEntry.name;
-  }
-
-  return String(statusVal);
+  return val;
 };
 
 export const getStatusColor = (statusVal) => {
-  const targetObj = CLAIM_STATUS_MAP[String(statusVal)];
-  if (targetObj) return targetObj.color;
-
-  const foundEntry = Object.values(CLAIM_STATUS_MAP).find(
-    (item) => item.name === statusVal || item.staffName === statusVal || item.customerName === statusVal
+  const statusName = getStatusName(statusVal);
+  const targetObj = Object.values(CLAIM_STATUS_MAP).find(
+    (item) => item.name === statusName
   );
-  return foundEntry?.color || "default";
+  return targetObj?.color || "default";
 };
 
 // 2. STATUS_PRIORITY สำหรับรองรับโค้ดเดิมที่เรียกใช้ชื่อภาษาไทย
 export const STATUS_PRIORITY = {
-  สร้างรายการเคลม: 1,
-  รอการพิจารณา: 2,
-  มีสิทธิ์เคลม: 3,
-  รับสินค้าจริงแล้ว: 4,
-  อนุมัติเคลมสินค้า: 5,
-  กำลังดำเนินการเปลี่ยนสินค้า: 6,
-  กำลังจัดส่งสินค้าเคลม: 7,
-  จัดส่งสินค้าเคลมสำเร็จ: 8,
-  ไม่มีสิทธิ์เคลม: 9,
-  ไม่อนุมัติเคลมสินค้า: 10,
+  Pending: 5,
+  Approved: 6,
+  Processing: 8,
+  Shipping: 9,
+  Delivered: 10,
+  Rejected: 7,
 };
 
-// 4. FILTER_OPTIONS สำหรับตัวกรองหน้า StaffClaimList
-export const FILTER_OPTIONS = ["ทั้งหมด"].concat(Object.keys(STATUS_PRIORITY));
+export const FILTER_OPTIONS = ["ทั้งหมด", "Pending", "Approved", "Processing", "Shipping", "Delivered", "Rejected"];
 

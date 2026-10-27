@@ -448,26 +448,38 @@ exports.getClaimByAgent = async (req, res) => {
   try {
     const { agent_id } = req.params;
     const pool = await connectDB();
+    
+    // 🟢 ใช้ตาราง user_agents (มี s) เพื่อไม่ให้เกิด Error
     const result = await pool.request().input("agent_id", sql.Int, agent_id)
       .query(`
-                SELECT [claim_id]
-                      ,[claim_no]
-                      ,[agent_id]
-                      ,[claim_date]
-                      ,[current_status]
-                      ,[driver_receive_date]
-                      ,[warehouse_receive_date]
-                      ,[approve_date]
-                      ,[delivery_date]
-                      ,[receive_finish_date]
-                      ,[created_by]
-                      ,[created_at]
-                      ,[updated_at]
-                      ,[warehouse]
-                FROM [EasyClaim_Dev].[dbo].[claims] WITH(NOLOCK)
-                WHERE agent_id = @agent_id
-                ORDER BY [claim_id] DESC
-            `);
+        SELECT DISTINCT 
+            c.[claim_id]
+           ,c.[claim_no]
+           ,c.[agent_id]
+           ,c.[claim_date]
+           ,c.[current_status]
+           ,c.[driver_receive_date]
+           ,c.[warehouse_receive_date]
+           ,c.[approve_date]
+           ,c.[delivery_date]
+           ,c.[receive_finish_date]
+           ,c.[created_by]
+           ,c.[created_at]
+           ,c.[updated_at]
+           ,c.[warehouse]
+           ,a.[agent_name]
+           ,a.[agent_code]
+        FROM [EasyClaim_Dev].[dbo].[claims] c WITH(NOLOCK)
+        LEFT JOIN [EasyClaim_Dev].[dbo].[agents] a WITH(NOLOCK)
+          ON CAST(c.agent_id AS VARCHAR) = CAST(a.agent_id AS VARCHAR)
+          OR CAST(c.agent_id AS VARCHAR) = CAST(a.agent_code AS VARCHAR)
+        LEFT JOIN [EasyClaim_Dev].[dbo].[user_agents] ua WITH(NOLOCK)
+          ON a.agent_id = ua.agent_id
+        WHERE a.agent_id = @agent_id 
+           OR ua.agent_id = @agent_id
+           OR c.agent_id = @agent_id
+        ORDER BY c.[claim_id] DESC
+      `);
 
     res.json({
       status: true,
@@ -489,17 +501,27 @@ exports.getClaim = async (req, res) => {
     const role_id = user.role_id;
     const agent_ids = user.agent_ids || [];
 
-    let query = `SELECT * FROM [EasyClaim_Dev].[dbo].[claims]`;
+    let query = `
+      SELECT 
+        c.*, 
+        a.agent_name, 
+        a.agent_code 
+      FROM [EasyClaim_Dev].[dbo].[claims] c WITH(NOLOCK)
+      LEFT JOIN [EasyClaim_Dev].[dbo].[agents] a WITH(NOLOCK) 
+        ON CAST(c.agent_id AS VARCHAR) = CAST(a.agent_id AS VARCHAR)
+        OR CAST(c.agent_id AS VARCHAR) = CAST(a.agent_code AS VARCHAR)
+    `;
+
     const request = pool.request();
 
     if (role_id && Number(role_id) !== 1) {
       if (agent_ids.length === 0) {
         return res.json({ status: true, data: [] });
       }
-      query += ` WHERE agent_id IN (${agent_ids.join(',')})`;
+      query += ` WHERE c.agent_id IN (${agent_ids.join(',')})`;
     }
 
-    query += ` ORDER BY created_at DESC`;
+    query += ` ORDER BY c.created_at DESC`;
 
     const result = await request.query(query);
     res.json({ status: true, data: result.recordset });

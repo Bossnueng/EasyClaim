@@ -17,7 +17,8 @@ import {
   Row,
   Col,
 } from "antd";
-import {CheckCircleOutlined,
+import {
+  CheckCircleOutlined,
   UserAddOutlined,
   EditOutlined,
   SearchOutlined,
@@ -26,10 +27,9 @@ import {CheckCircleOutlined,
   MailOutlined,
   PhoneOutlined,
   LockOutlined,
-  PlusOutlined,
   ShopOutlined,
   IdcardOutlined,
-  StopOutlined,
+  StopOutlined,DownOutlined
 } from "@ant-design/icons";
 
 import userService from "../../services/userService";
@@ -109,7 +109,7 @@ export default function UserManagement() {
             onClick={() => confirm()}
             icon={<SearchOutlined />}
             size="small"
-            style={{ width: 90 }}
+            style={{ paddingLeft: 16, paddingRight: 16 }}
           >
             ค้นหา
           </Button>
@@ -119,7 +119,7 @@ export default function UserManagement() {
               confirm();
             }}
             size="small"
-            style={{ width: 90 }}
+            style={{ paddingLeft: 16, paddingRight: 16 }}
           >
             ล้างค่า
           </Button>
@@ -309,6 +309,15 @@ export default function UserManagement() {
       title: "เอเย่นต์ที่เกี่ยวข้อง",
       key: "agents",
       render: (_, record) => {
+
+        if (Number(record.role_id) === 1) {
+          return (
+            <Tag color="purple" style={{ fontSize: 11, fontWeight: 500 }}>
+              all Agent
+            </Tag>
+          );
+        } 
+
         let userAgentIds = [];
         if (Array.isArray(record.agent_ids)) {
           userAgentIds = record.agent_ids;
@@ -328,7 +337,7 @@ export default function UserManagement() {
                   key={id}
                   style={{ fontSize: 11 }}
                 >
-                  {matched.agent_name}{/*({matched.agent_code})*/}
+                  {matched.agent_name}
                 </Tag>
               ) : null;
             })}
@@ -346,9 +355,8 @@ export default function UserManagement() {
         !isUserInactive(status) ? (
           <Tag color="success" icon={<CheckCircleOutlined />}>เปิดใช้งาน</Tag>
         ) : (
-         <Tag color="default" icon={<StopOutlined />}>ปิดใช้งาน</Tag>
+          <Tag color="default" icon={<StopOutlined />}>ปิดใช้งาน</Tag>
         ),
-        
     },
     {
       title: "จัดการ",
@@ -361,7 +369,7 @@ export default function UserManagement() {
         if (inactive) {
           return (
             <Space size="small">
-              <Button type="text" size="small" disabled icon={<EditOutlined />}>
+              <Button type="text" size="small" disabled icon={<EditOutlined />} style={{ paddingLeft: 12, paddingRight: 12 }}>
                 <span style={{ fontSize: 12 }}>แก้ไข</span>
               </Button>
               <Button
@@ -369,12 +377,10 @@ export default function UserManagement() {
                 danger
                 ghost
                 size="small"
-                /* 🟢 เพิ่ม padding ข้างในปุ่มตรงนี้ */
-                style={{ fontSize: 11, paddingLeft: 12, paddingRight: 12 }} 
+                style={{ fontSize: 11, paddingLeft: 16, paddingRight: 16 }}
                 icon={<StopOutlined />}
                 disabled
               >
-                {/* 🟢 หรือจะเพิ่ม padding/margin ที่ตัว span ข้อความโดยเฉพาะก็ได้ครับ */}
                 <span style={{ paddingLeft: 4 }}>ปิดใช้งาน</span>
               </Button>
             </Space>
@@ -388,6 +394,7 @@ export default function UserManagement() {
               size="small"
               icon={<EditOutlined style={{ color: "#faad14" }} />}
               onClick={() => handleOpenModal(record)}
+              style={{ paddingLeft: 12, paddingRight: 12 }}
             >
               <span style={{ fontSize: 12 }}>แก้ไข</span>
             </Button>
@@ -398,18 +405,18 @@ export default function UserManagement() {
               onConfirm={() => handleToggleStatus(record)}
               okText="ยืนยัน"
               cancelText="ยกเลิก"
-              okButtonProps={{ danger: true }}
+              /* 🟢 เพิ่ม padding ปุ่มยืนยัน/ยกเลิก ใน Modal ยืนยัน Popconfirm */
+              okButtonProps={{ danger: true, style: { paddingLeft: 20, paddingRight: 20 } }}
+              cancelButtonProps={{ style: { paddingLeft: 20, paddingRight: 20 } }}
             >
               <Button
                 type="primary"
                 danger
                 ghost
                 size="small"
-                /* 🟢 เพิ่ม padding ข้างในปุ่มตรงนี้ */
-                style={{ fontSize: 11, paddingLeft: 12, paddingRight: 12 }} 
+                style={{ fontSize: 11, paddingLeft: 16, paddingRight: 16 }}
                 icon={<StopOutlined />}
               >
-                {/* 🟢 หรือจะเพิ่ม padding/margin ที่ตัว span ข้อความโดยเฉพาะก็ได้ครับ */}
                 <span style={{ paddingLeft: 4 }}>ปิดใช้งาน</span>
               </Button>
             </Popconfirm>
@@ -473,30 +480,16 @@ export default function UserManagement() {
                 icon={<ReloadOutlined />}
                 onClick={fetchData}
                 loading={loading}
-                style={{ padding: "0 16px" }}
+                style={{ paddingLeft: 20, paddingRight: 20 }}
               >
                 รีเฟรช
               </Button>
-
-              {/**
-               <Button
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  agentForm.resetFields();
-                  setIsAgentModalOpen(true);
-                }}
-                style={{ padding: "0 16px", borderColor: "#52c41a", color: "#52c41a" }}
-              >
-                ลงทะเบียน Agent ใหม่
-              </Button>
-               */}
-              
 
               <Button
                 type="primary"
                 icon={<UserAddOutlined />}
                 onClick={() => handleOpenModal()}
-                style={{ padding: "0 20px" }}
+                style={{ paddingLeft: 24, paddingRight: 24 }}
               >
                 เพิ่มผู้ใช้ใหม่
               </Button>
@@ -551,13 +544,17 @@ export default function UserManagement() {
               pageSize: pageSize,
               showSizeChanger: true,
               pageSizeOptions: ["5", "10", "20", "50", "100"],
+              locale: {
+                items_per_page: "แถว",
+              },
               onShowSizeChange: (current, size) => setPageSize(size),
+
             }}
             scroll={{ x: true }}
           />
         </Card>
 
-        {/* Modal เพิ่ม/แก้ไข User (Responsive Grid Layout) */}
+        {/* Modal เพิ่ม/แก้ไข User */}
         <Modal
           title={editingUser ? "แก้ไขข้อมูลผู้ใช้งาน" : "เพิ่มผู้ใช้งานใหม่"}
           open={isModalOpen}
@@ -614,7 +611,6 @@ export default function UserManagement() {
                 </Form.Item>
               </Col>
 
-              {/* สิทธิ์การใช้งาน (Role) */}
               <Col xs={24}>
                 <Form.Item
                   name="role_id"
@@ -624,12 +620,8 @@ export default function UserManagement() {
                   <Select
                     placeholder="-- เลือก Role --"
                     allowClear
-                    style={{
-                      width: "100%",
-                      borderRadius: "8px", // กำหนดความโค้งมนให้เท่ากัน
-                    }}
-                    // บังคับสไตล์ตัว Selector ด้านใน
-                    controlHeight={40} 
+                    style={{ width: "100%", height: 32, borderRadius: "8px" }}
+                    suffixIcon={<DownOutlined style={{ marginRight: 8, color: "#bfbfbf" }} />}
                   >
                     {roles.map((r) => (
                       <Select.Option key={r.role_id} value={Number(r.role_id)}>
@@ -640,34 +632,46 @@ export default function UserManagement() {
                 </Form.Item>
               </Col>
 
-              {/* สังกัด/เอเย่นต์ที่เกี่ยวข้อง */}
               <Col xs={24}>
-                <Form.Item name="agent_ids" label="สังกัด/เอเย่นต์ที่เกี่ยวข้อง (เลือกได้หลายตัว)">
-                  <Select
-                    mode="multiple"
-                    placeholder="-- เลือก Agent --"
-                    allowClear
-                    style={{
-                      width: "100%",
-                      borderRadius: "8px", // กำหนดความโค้งมนเท่ากัน
-                    }}
-                    maxTagCount="responsive"
-                  >
-                    {agents.map((a) => (
-                      <Select.Option key={a.agent_id} value={Number(a.agent_id)}>
-                        {a.agent_name} ({a.agent_code})
-                      </Select.Option>
-                    ))}
-                  </Select>
+                <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.role_id !== currentValues.role_id}>
+                  {({ getFieldValue }) => {
+                    const selectedRoleId = Number(getFieldValue("role_id"));
+                    const isAdmin = selectedRoleId === 1; // 🟢 role_id 1 คือ Admin
+
+                    return (
+                      <Form.Item 
+                        name="agent_ids" 
+                        label="สังกัด/เอเย่นต์ที่เกี่ยวข้อง (เลือกได้หลายตัว)"
+                        //extra={isAdmin ? "ผู้ใช้งานสิทธิ์ Admin จะสามารถเข้าถึงและดูรายการเคลมของทุก Agent ในระบบได้โดยอัตโนมัติ" : null}
+                      >
+                        <Select
+                          mode="multiple"
+                          placeholder={isAdmin ? "all Agent" : "-- เลือก Agent --"}
+                          disabled={isAdmin}
+                          allowClear
+                          style={{ width: "100%", borderRadius: "8px" }}
+                          maxTagCount="responsive"
+                          suffixIcon={<DownOutlined style={{ marginRight: 8, color: "#bfbfbf" }} />}
+                        >
+                          {agents.map((a) => (
+                            <Select.Option key={a.agent_id} value={Number(a.agent_id)}>
+                              {a.agent_name} ({a.agent_code})
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+                    );
+                  }}
                 </Form.Item>
               </Col>
             </Row>
 
             <Form.Item style={{ marginBottom: 0, marginTop: 8, textAlign: "right" }}>
               <Space size="middle">
+                {/* 🟢 เพิ่ม padding ปุ่มยกเลิก/บันทึก */}
                 <Button 
                   onClick={() => setIsModalOpen(false)}
-                  style={{ padding: "0 20px" }}
+                  style={{ paddingLeft: 20, paddingRight: 20 }}
                 >
                   ยกเลิก
                 </Button>
@@ -675,7 +679,7 @@ export default function UserManagement() {
                   type="primary" 
                   htmlType="submit" 
                   loading={submitting}
-                  style={{ padding: "0 20px" }}
+                  style={{ paddingLeft: 24, paddingRight: 24 }}
                 >
                   {editingUser ? "บันทึกการแก้ไข" : "สร้างผู้ใช้งาน"}
                 </Button>
@@ -684,65 +688,7 @@ export default function UserManagement() {
           </Form>
         </Modal>
 
-        {/* Modal สำหรับลงทะเบียน Agent ใหม่ */}
-        <Modal
-          title="ลงทะเบียน Agent ใหม่"
-          open={isAgentModalOpen}
-          onCancel={() => setIsAgentModalOpen(false)}
-          footer={null}
-          destroyOnClose
-        >
-          <Form
-            form={agentForm}
-            layout="vertical"
-            onFinish={handleAgentSubmit}
-            style={{ marginTop: 16 }}
-          >
-            <Form.Item
-              name="agent_code"
-              label="รหัสเอเย่นต์ (Agent Code)"
-              rules={[{ required: true, message: "กรุณากรอก Agent Code" }]}
-            >
-              <Input prefix={<IdcardOutlined style={{ color: "#bfbfbf" }} />} placeholder="เช่น 101, AG001" />
-            </Form.Item>
-
-            <Form.Item
-              name="agent_name"
-              label="ชื่อเอเย่นต์ (Agent Name)"
-              rules={[{ required: true, message: "กรุณากรอก Agent Name" }]}
-            >
-              <Input prefix={<ShopOutlined style={{ color: "#bfbfbf" }} />} placeholder="เช่น บริษัท เอเจ้นท์ จำกัด" />
-            </Form.Item>
-
-            {/* 🟢 เพิ่มช่องกรอก Webhook URL ตรงนี้ */}
-            <Form.Item
-              name="teams_webhook_url"
-              label="Microsoft Teams Webhook URL (ถ้ามี)"
-              rules={[{ type: "url", message: "รูปแบบ Webhook URL ไม่ถูกต้อง" }]}
-            >
-              <Input placeholder="https://outlook.office.com/webhook/..." />
-            </Form.Item>
-
-            <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>
-              <Space size="middle">
-                <Button
-                  onClick={() => setIsAgentModalOpen(false)}
-                  style={{ padding: "0 20px" }}
-                >
-                  ยกเลิก
-                </Button>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  loading={agentSubmitting}
-                  style={{ padding: "0 20px", backgroundColor: "#52c41a", borderColor: "#52c41a" }}
-                >
-                  บันทึก Agent
-                </Button>
-              </Space>
-            </Form.Item>
-          </Form>
-        </Modal>
+        
       </Space>
     </div>
   );

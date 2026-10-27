@@ -104,14 +104,14 @@ export default function RoleManagement() {
       render: (id) => <Text type="secondary">#{id}</Text>,
     },
     {
-      title: "ชื่อสิทธิ์ (Role Name)",
+      title: "ชื่อสิทธิ์",
       dataIndex: "role_name",
       key: "role_name",
       width: 200,
-      render: (text) => <Text style={{ fontWeight: 600, color: "#1677ff" }}>{text}</Text>,
+      render: (text) => <Text style={{ fontWeight: 600, color: "#1e293b" }}>{text}</Text>,
     },
     {
-      title: "รายละเอียด / ขอบเขตการใช้งาน",
+      title: "รายละเอียด",
       dataIndex: "description",
       key: "description",
       render: (text) => text || <Text type="disabled">- ไม่ระบุ -</Text>,
@@ -120,7 +120,7 @@ export default function RoleManagement() {
       title: "จัดการ",
       key: "action",
       align: "center",
-      width: 160,
+      width: 180,
       render: (_, record) => (
         <Space size="small">
           <Button
@@ -130,7 +130,7 @@ export default function RoleManagement() {
             onClick={() => handleOpenModal(record)}
             style={{ paddingLeft: 12, paddingRight: 12 }}
           >
-            แก้ไข
+            <span style={{ fontSize: 12 }}>แก้ไข</span>
           </Button>
 
           <Popconfirm
@@ -139,17 +139,19 @@ export default function RoleManagement() {
             onConfirm={() => handleDeleteRole(record.role_id)}
             okText="ยืนยัน"
             cancelText="ยกเลิก"
-            okButtonProps={{ danger: true, style: { paddingLeft: 16, paddingRight: 16 } }}
-            cancelButtonProps={{ style: { paddingLeft: 16, paddingRight: 16 } }}
+            okButtonProps={{ danger: true, style: { paddingLeft: 20, paddingRight: 20 } }}
+            cancelButtonProps={{ style: { paddingLeft: 20, paddingRight: 20 } }}
           >
+            {/* 🟢 ใช้สไตล์ปุ่มทรงกล่อง Ghost Danger + Padding เดียวกับ UserManagement */}
             <Button
-              type="text"
+              type="primary"
               danger
+              ghost
               size="small"
+              style={{ fontSize: 11, paddingLeft: 16, paddingRight: 16 }}
               icon={<DeleteOutlined />}
-              style={{ paddingLeft: 12, paddingRight: 12 }}
             >
-              ลบ
+              <span style={{ paddingLeft: 4 }}>ลบ</span>
             </Button>
           </Popconfirm>
         </Space>

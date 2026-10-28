@@ -1,12 +1,11 @@
 // src/pages/customer/CustomerHome.jsx
-
+import dayjs from "dayjs";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
 import { RightOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
-import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
+import CustomerClaimCard from "../../components/CustomerClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";

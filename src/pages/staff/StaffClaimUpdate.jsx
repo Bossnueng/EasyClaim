@@ -14,14 +14,9 @@ import {
   message,
   Spin,
   Table,
-  Tag,
+  InputNumber,
 } from "antd";
 import {
-  CheckCircleOutlined,
-  FileSearchOutlined,
-  CloseCircleOutlined,
-  CarOutlined,
-  SmileOutlined,
   SaveOutlined,
   PrinterOutlined,
   UndoOutlined,
@@ -30,7 +25,6 @@ import {
   EllipsisOutlined,
   HistoryOutlined,
   PlusOutlined,
-  MinusCircleOutlined,
   ArrowLeftOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
@@ -50,6 +44,26 @@ import { userService } from "../../services/userService";
 import deliveryService from "../../services/deliveryService";
 import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { parseDateSafely } from "../../utils/dateUtils";
+
+function convertstatusClaim(staus) {
+  switch (String(staus)) {
+    case "5":
+      return "Pending";
+    case "6":
+      return "Approved";
+    case "7":
+      return "Rejected";
+    case "8":
+      return "Processing";
+    case "9":
+      return "Shipping";
+    case "10":
+      return "Delivered";
+    default:
+      return staus;
+  }
+}
 
 const formatDateString = (date) => {
   if (!date) return "-";
@@ -59,9 +73,8 @@ const formatDateString = (date) => {
 };
 
 const formatDate = (date) => {
-  if (!date) return "-";
-  const parsed = dayjs(date);
-  if (!parsed.isValid()) return "-";
+  const parsed = parseDateSafely(date);
+  if (!parsed) return "-";
 
   return (
     <div className="flex flex-col text-[10px] leading-tight text-slate-500 font-mono">
@@ -162,15 +175,22 @@ const StaffClaimUpdate = () => {
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
-    if (field === "status" && (value === "Processing" || value === "กำลังดำเนินการเปลี่ยนสินค้า")) {
-      setClaimItems((prevItems) =>
-        prevItems.map((item) => ({
-          ...item,
-          approved_qty: item.approved_qty ?? item.qtychang ?? item.qty,
-        }))
-      );
-    }
+  // 🟢 อัปเดตจำนวน qty ของแต่ละรายการสินค้าใน Modal
+  const handleItemQtyChange = (key, val) => {
+    setClaimItems((prevItems) =>
+      prevItems.map((item) => {
+        if (item.key === key || item.claim_item_id === key) {
+          return {
+            ...item,
+            qty: val,
+            approved_qty: val,
+          };
+        }
+        return item;
+      })
+    );
   };
 
   const fetchClaimDetail = useCallback(async (showLoading = true) => {
@@ -370,6 +390,42 @@ const StaffClaimUpdate = () => {
     }
   }, [claimId]);
 
+  // 🟢 ปรับปรุงให้สถานะ Rejected สามารถเลือกเปลี่ยนสถานะไปยัง Shipping หรือเปลี่ยนสถานะถัดไปได้อีก
+  const getNextStatusOptions = (currentStatus) => {
+    const normalized = getStatusName(currentStatus);
+
+    switch (normalized) {
+      case "Pending":
+        return [
+          { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
+          { value: "Rejected", label: "2. Rejected (ปฏิเสธ)" },
+        ];
+      case "Approved":
+        return [
+          { value: "Processing", label: "3. Processing (กำลังดำเนินการ)" },
+          { value: "Rejected", label: "2. Rejected (ปฏิเสธ)" },
+        ];
+      case "Processing":
+        return [
+          { value: "Shipping", label: "4. Shipping (กำลังจัดส่ง)" },
+          { value: "Rejected", label: "2. Rejected (ปฏิเสธ)" },
+        ];
+      case "Rejected": // 🟢 เมื่อสถานะเป็น Rejected จะสามารถสลับเปลี่ยนไป Shipping (ส่งคืนสินค้าปฏิเสธ) หรือ Processing ได้อีก
+        return [
+          { value: "Shipping", label: "4. Shipping (กำลังจัดส่งคืนสินค้า)" },
+          { value: "Processing", label: "3. Processing (กำลังดำเนินการ)" },
+          { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
+        ];
+      case "Shipping":
+        return [
+          { value: "Delivered", label: "5. Delivered (จัดส่งสำเร็จ)" },
+          { value: "Rejected", label: "2. Rejected (ปฏิเสธ)" },
+        ];
+      default:
+        return [];
+    }
+  };
+
   useClaimRealtime({
     claimId: claimId,
     isStaff: true,
@@ -521,6 +577,7 @@ const StaffClaimUpdate = () => {
     }
   };
 
+  // 🟢 ฟังก์ชันหลักในการอัปเดตสถานะ
   const handleSaveStatus = async () => {
     const isRejectedStatus = ["Rejected", "2", "7", "ปฏิเสธ/ไม่อนุมัติเคลม", "ไม่อนุมัติเคลมสินค้า"].includes(formData.status);
     if (isRejectedStatus && !formData.rejectReason.trim()) {
@@ -532,7 +589,7 @@ const StaffClaimUpdate = () => {
     try {
       const realClaimId = data.claim_id;
       const targetStatusName = formData.status;
-      const statusId = String(getStatusId(targetStatusName));
+      const statusId = String(getStatusId(targetStatusName)); // เช่น "7", "8", "9", "10"
 
       const extraData = {
         driverName: formData.driverName,
@@ -546,22 +603,90 @@ const StaffClaimUpdate = () => {
         ? `ปฏิเสธรายการเคลม: ${formData.rejectReason} | DATA:${JSON.stringify(extraData)}`
         : `เปลี่ยนสถานะเป็น ${targetStatusName} | DATA:${JSON.stringify(extraData)}`;
 
-      await claimService.updateClaim({
-        ...data,
-        claim_id: realClaimId,
-        current_status: statusId,
-        update_by: currentUserId,
+      // 🟢 1. อัปเดตรายการสินค้า: ถ้าเปน Rejected ให้ปรับ qty = 0 และ approved_qty = 0 ทั้งหมดอัตโนมัติ
+      const updatedClaimItems = claimItems.map((ci) => {
+        if (isRejectedStatus) {
+          return { ...ci, qty: 0, approved_qty: 0 };
+        }
+        return { ...ci, qty: ci.qty ?? ci.approved_qty ?? 0 };
       });
 
+      await claimService.updateClaim({
+        claim_id: realClaimId,
+        items: updatedClaimItems,
+      });
+
+      // 🟢 2. กำหนดคอลัมน์วันที่ตาม allowedColumns ใน Backend (claimController.js)
+      let targetColumn = "approve_date";
+      if (["Processing", "8"].includes(statusId) || targetStatusName === "Processing") {
+        targetColumn = "warehouse_receive_date";
+      }
+      if (["Shipping", "9"].includes(statusId) || targetStatusName === "Shipping") {
+        targetColumn = "delivery_date";
+      }
+      if (["Delivered", "10"].includes(statusId) || targetStatusName === "Delivered") {
+        targetColumn = "receive_finish_date";
+      }
+
+      // 🟢 3. กรณีเลือกเป็น Rejected (ID: 7): ให้ยิง Auto-Stamp ขั้นตอน Processing (ID: 8) อัตโนมัติด้วย
+      if (isRejectedStatus) {
+        try {
+          // Stamp Log ของ Processing (ID 8) เบื้องหลังทันที
+          await claimService.createClaimStatusLogs({
+            claim_id: String(realClaimId),
+            status: "8",
+            remark: `Auto-Stamp สถานะ Processing เนื่องจากการปฏิเสธรายการเคลม`,
+            update_by: String(currentUserId),
+            user_id: String(currentUserId),
+          });
+
+          // อัปเดตคอลัมน์ warehouse_receive_date
+          if (claimService.updateClaimDate) {
+            await claimService.updateClaimDate({
+              claim_id: realClaimId,
+              status: "Processing",
+              columnname: "warehouse_receive_date",
+            });
+          }
+        } catch (autoErr) {
+          console.warn("Auto-stamp Processing log failed:", autoErr);
+        }
+      }
+
+      // 🟢 4. บันทึก Delivery ก่อน (กรณีเปลี่ยนเป็น Shipping / 9)
+      if (targetStatusName === "Shipping" || statusId === "9") {
+        try {
+          await deliveryService.createDelivery({
+            claim_id: String(realClaimId),
+            driver_id: String(formData.driverName || formData.deliveryDriver || data.delivery_driver || "70079126"),
+            delivery_status: "9", // ส่งเป็น 9 เพื่อไม่ให้ Backend เขียนทับกลับเป็น 8 (Processing)
+            truck_plate: String(formData.truckPlate || formData.deliveryPlate || data.delivery_plate || "-"),
+          });
+        } catch (deliveryErr) {
+          console.error("Error creating delivery on Shipping status:", deliveryErr);
+        }
+      }
+
+      // 🟢 5. อัปเดตสถานะหลักผ่าน updateClaimDate เป็นลำดับสุดท้าย
+      if (claimService.updateClaimDate) {
+        await claimService.updateClaimDate({
+          claim_id: realClaimId,
+          status: targetStatusName,
+          columnname: targetColumn,
+        });
+      }
+
+      // 🟢 6. บันทึก Log การเปลี่ยนสถานะหลัก
       await claimService.createClaimStatusLogs({
         claim_id: String(realClaimId),
         status: statusId,
         remark: fullRemark,
-        update_by: currentUserId,
-        user_id: currentUserId,
+        update_by: String(currentUserId),
+        user_id: String(currentUserId),
       });
 
-      if (isRejectedStatus || targetStatusName === "Approved") {
+      // 🟢 7. บันทึกประวัติอนุมัติ/ปฏิเสธ
+      if (isRejectedStatus || targetStatusName === "Approved" || targetStatusName === "Processing") {
         await claimService.createClaimapproves({
           claim_id: String(realClaimId),
           approve_by: String(currentUserId),
@@ -570,11 +695,12 @@ const StaffClaimUpdate = () => {
         });
       }
 
-      message.success("อัปเดตสถานะเรียบร้อยแล้ว");
+      message.success(`อัปเดตสถานะเป็น ${targetStatusName} เรียบร้อยแล้ว`);
       setIsModalOpen(false);
       await fetchClaimDetail(false);
     } catch (error) {
-      message.error(error.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ");
+      console.error("Save Status Error:", error);
+      message.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + (error.message || "โปรดตรวจสอบการเชื่อมต่อ Backend"));
     } finally {
       setIsSubmitting(false);
     }
@@ -597,76 +723,103 @@ const StaffClaimUpdate = () => {
     );
   }
 
-  const rawStatus = data?.current_status || "1";
-  const currentStatusInDB = getStatusName(rawStatus);
-  const currentStatusId = String(getStatusId(rawStatus));
+  const rawStatusVal = String(data?.current_status || data?.status || data?.status_id || "");
+  const currentStatusInDB = convertstatusClaim(rawStatusVal);
 
   const hasRejectInLogs = statusLogs.some(
-    (log) => log.remark && (log.remark.includes("ปฏิเสธรายการเคลม") || String(log.status) === "2" || String(log.status) === "7")
+    (log) => log.remark && (log.remark.includes("ปฏิเสธรายการเคลม") || String(log.status) === "7")
   );
-  const isRejectedInDB = hasRejectInLogs || ["2", "3", "7", "rejected", "ไม่อนุมัติเคลมสินค้า"].includes(String(rawStatus).toLowerCase());
+
+  const hasRejectInApproves = approveLogs.some(
+    (app) => String(app.approve_status) === "false" || String(app.approve_status) === "0"
+  );
+
+  const isRejectedInDB =
+    hasRejectInLogs ||
+    hasRejectInApproves ||
+    ["7", "rejected", "ไม่อนุมัติเคลมสินค้า"].includes(rawStatusVal.toLowerCase());
 
   const isFinalStatus = currentStatusInDB === "Delivered" || currentStatusInDB === "จัดส่งสินค้าเคลมสำเร็จ";
   const previousStatusName = getPreviousStatusName(currentStatusInDB);
 
-  const getCurrentStep = () => {
-    if (["1", "5", "Pending"].includes(currentStatusId) || currentStatusInDB === "Pending") return 0;
-    if (["9", "Shipping"].includes(currentStatusId) || currentStatusInDB === "Shipping") return 3;
-    if (["10", "Delivered"].includes(currentStatusId) || currentStatusInDB === "Delivered") return 4;
-    if (["8", "Processing"].includes(currentStatusId) || currentStatusInDB === "Processing") return 2;
-    return 1;
-  };
-
   const getLogDate = (targetStatusId) => {
-    const matchingLogs = statusLogs.filter((log) => String(log.status || log.status_id) === String(targetStatusId));
+    const targetId = String(targetStatusId);
+    if (["1", "5", "Pending"].includes(targetId)) {
+      return formatDate(data?.created_at || data?.created_date || data?.claim_date);
+    }
+
+    const matchingLogs = statusLogs.filter((log) => String(log.status || log.status_id) === targetId);
     if (matchingLogs.length > 0) {
       const lastLog = matchingLogs[matchingLogs.length - 1];
-      return formatDate(lastLog.update_date || lastLog.created_at);
+      return formatDate(lastLog.update_date || lastLog.created_at || lastLog.created_date);
     }
+
+    if (targetId === "6" || targetId === "7") return formatDate(data.approve_date || data.updated_at);
+    if (targetId === "8") return formatDate(data.withdraw_date);
+    if (targetId === "9") return formatDate(data.delivery_date);
+    if (targetId === "10") return formatDate(data.receive_finish_date);
+
     return "-";
   };
 
-  const renderDotIcon = (IconComponent) => (
-    <div className="relative flex items-center justify-center w-full h-full">
-      <IconComponent className="text-lg relative z-10" />
-    </div>
-  );
+  // 🟢 คำนวณ currentStepIndex รองรับเคสที่ผ่านการ Rejected แต่เดินทางต่อเข้าสู่ Shipping / Delivered
+  const getCurrentStepIndex = () => {
+    const statusStr = rawStatusVal.trim().toLowerCase();
+    const statusNameStr = String(currentStatusInDB || "").trim().toLowerCase();
 
-  const getStepItems = () => {
-    const currentStepIdx = getCurrentStep();
-    return [
-      {
-        title: "1. Pending",
-        description: getLogDate(5) !== "-" ? getLogDate(5) : getLogDate(1),
-        icon: renderDotIcon(CheckCircleOutlined),
-        status: isRejectedInDB && currentStepIdx >= 0 ? "error" : undefined,
-      },
-      {
-        title: isRejectedInDB ? "2. Rejected" : "2. Approved",
-        description: getLogDate(6) !== "-" ? getLogDate(6) : getLogDate(2),
-        icon: renderDotIcon(isRejectedInDB ? CloseCircleOutlined : CheckCircleOutlined),
-        status: isRejectedInDB && currentStepIdx >= 1 ? "error" : undefined,
-      },
-      {
-        title: "3. Processing",
-        description: isRejectedInDB ? "N/A" : getLogDate(8),
-        icon: renderDotIcon(isRejectedInDB ? MinusCircleOutlined : FileSearchOutlined),
-        status: isRejectedInDB && currentStepIdx >= 2 ? "error" : undefined,
-      },
-      {
-        title: "4. Shipping",
-        description: getLogDate(9),
-        icon: renderDotIcon(CarOutlined),
-        status: isRejectedInDB && currentStepIdx >= 3 ? "error" : undefined,
-      },
-      {
-        title: "5. Delivered",
-        description: getLogDate(10),
-        icon: renderDotIcon(SmileOutlined),
-        status: isRejectedInDB && currentStepIdx >= 4 ? "error" : undefined,
-      },
-    ];
+    const hasApprovedLog = statusLogs.some((l) => ["6", "7"].includes(String(l.status || l.status_id)));
+    const hasProcessingLog = statusLogs.some((l) => String(l.status || l.status_id) === "8");
+    const hasShippingLog = statusLogs.some((l) => String(l.status || l.status_id) === "9");
+    const hasDeliveredLog = statusLogs.some((l) => String(l.status || l.status_id) === "10");
+
+    if (["10", "delivered", "จัดส่งสำเร็จ"].includes(statusStr) || statusNameStr.includes("delivered") || hasDeliveredLog) {
+      return 4;
+    }
+
+    if (["9", "shipping", "กำลังจัดส่ง"].includes(statusStr) || statusNameStr.includes("shipping") || hasShippingLog) {
+      return 3;
+    }
+
+    if (["8", "processing", "กำลังดำเนินการ"].includes(statusStr) || statusNameStr.includes("processing") || hasProcessingLog) {
+      return 2;
+    }
+
+    if (
+      ["6", "7", "approved", "rejected", "อนุมัติ", "ปฏิเสธ"].includes(statusStr) ||
+      statusNameStr.includes("approved") ||
+      statusNameStr.includes("rejected") ||
+      hasApprovedLog
+    ) {
+      return 1;
+    }
+
+    return 0;
   };
+
+  const currentStep = getCurrentStepIndex();
+
+  const stepItems = [
+    {
+      title: "1. Pending",
+      description: formatDate(data?.created_at || data?.created_date || data?.claim_date),
+    },
+    {
+      title: isRejectedInDB ? "2. Rejected" : "2. Approved",
+      description: getLogDate(6) !== "-" ? getLogDate(6) : getLogDate(7),
+    },
+    {
+      title: "3. Processing",
+      description: getLogDate(8),
+    },
+    {
+      title: "4. Shipping",
+      description: getLogDate(9),
+    },
+    {
+      title: "5. Delivered",
+      description: getLogDate(10),
+    },
+  ];
 
   const creatorUserId = String(data.user_id || data.created_by || "");
   const matchedAgentName = agentsMap[String(data.agent_id)] || agentsMap[String(data.agent_code)] || getAgentNameByUserId(creatorUserId, usersList, agentsMap);
@@ -678,7 +831,7 @@ const StaffClaimUpdate = () => {
     { title: "ลำดับ", key: "index", width: 60, align: "center", render: (_, __, index) => index + 1 },
     { title: "ชื่อสินค้า", dataIndex: "item_name", key: "item_name", render: (text) => <span className="font-medium text-slate-800 break-words">{text}</span> },
     { title: "จำนวนรับคืน", dataIndex: "qtychang", key: "qtychang", width: 110, align: "right", render: (qty) => <span className="font-semibold text-slate-700">{qty ?? "-"}</span> },
-    { title: "จำนวนแตก", dataIndex: "qty", key: "qty", width: 120, align: "right", render: (appQty, record) => <span className="font-semibold text-emerald-600">{appQty ?? record.approved_qty ?? "-"}</span> },
+    { title: "จำนวนแตก/อนุมัติ", dataIndex: "qty", key: "qty", width: 120, align: "right", render: (appQty, record) => <span className="font-semibold text-emerald-600">{appQty ?? record.approved_qty ?? "-"}</span> },
     { title: "จำนวนส่งคืน", dataIndex: "qtyreceived", key: "qtyreceived", width: 110, align: "right", render: (retQty, record) => <span className="font-semibold text-amber-600">{retQty ?? record.returned_qty ?? "-"}</span> },
     {
       title: "สาเหตุ",
@@ -690,28 +843,6 @@ const StaffClaimUpdate = () => {
 
   return (
     <div className="w-full flex flex-col gap-6 font-normal p-4 sm:p-6" style={{ boxSizing: "border-box" }}>
-      {/* Dynamic CSS Overrides เพื่อบังคับเส้นให้เป็นสีแดงทั้งหมดเมื่อเกิด Reject */}
-      <style>{`
-        .custom-steps-rejected .ant-steps-item-tail::after,
-        .custom-steps-rejected .ant-steps-item-tail:after,
-        .custom-steps-rejected .ant-steps-item-container .ant-steps-item-tail::after,
-        .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-container .ant-steps-item-tail::after,
-        .custom-steps-rejected .ant-steps-item-process .ant-steps-item-container .ant-steps-item-tail::after,
-        .custom-steps-rejected .ant-steps-item-wait .ant-steps-item-container .ant-steps-item-tail::after {
-          background-color: #ef4444 !important;
-          background: #ef4444 !important;
-        }
-        .custom-steps-rejected .ant-steps-item-finish .ant-steps-item-icon,
-        .custom-steps-rejected .ant-steps-item-process .ant-steps-item-icon {
-          border-color: #ef4444 !important;
-          background-color: #fef2f2 !important;
-        }
-        .custom-steps-rejected .ant-steps-item-finish .ant-steps-icon,
-        .custom-steps-rejected .ant-steps-item-process .ant-steps-icon {
-          color: #ef4444 !important;
-        }
-      `}</style>
-
       {/* Header Card */}
       <Card className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" styles={{ body: { padding: "24px" } }}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 w-full">
@@ -773,8 +904,8 @@ const StaffClaimUpdate = () => {
         </div>
       </Card>
 
-      {/* Steps Timeline Card */}
-      <Card title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "20px 12px" } }}>
+      {/* 🟢 Steps Timeline Card */}
+      <Card title={<span className="font-medium text-slate-800">มุมมองไทม์ไลน์สถานะ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full overflow-hidden" styles={{ body: { padding: "20px 12px" } }}>
         <ConfigProvider
           theme={{
             token: {
@@ -783,19 +914,16 @@ const StaffClaimUpdate = () => {
             },
           }}
         >
-          <div className={isRejectedInDB ? "custom-steps-rejected" : "custom-steps-normal"}>
-            <Steps
-              responsive={true}
-              current={getCurrentStep()}
-              status={isRejectedInDB ? "error" : "process"}
-              items={getStepItems()}
-            />
-          </div>
+          <Steps
+            responsive={true}
+            current={currentStep}
+            status={isRejectedInDB && currentStep === 1 ? "error" : "process"}
+            items={stepItems}
+          />
         </ConfigProvider>
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 w-full">
-        {/* Left / Main Section */}
         <div className="xl:col-span-2 flex flex-col gap-6 w-full">
           <Card title={<span className="font-medium text-slate-800">ข้อมูลคำร้องขอเคลม</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "24px" } }}>
             <Descriptions column={1} bordered size="small">
@@ -829,9 +957,7 @@ const StaffClaimUpdate = () => {
           </Card>
         </div>
 
-        {/* Right Sidebar Section */}
         <div className="xl:col-span-1 flex flex-col gap-6 w-full">
-          {/* Images */}
           <Card title={<span className="font-medium text-slate-800">รูปภาพหลักฐานทั้งหมด ({allImages.length})</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "24px" } }}>
             {allImages.length > 0 ? (
               <Image.PreviewGroup>
@@ -846,7 +972,6 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          {/* Approve Logs */}
           <Card title={<span className="font-medium text-slate-800">ประวัติการพิจารณาอนุมัติ</span>} className="rounded-2xl shadow-sm border-gray-200 w-full" styles={{ body: { padding: "16px" } }}>
             {approveLogs.length > 0 ? (
               <div className="flex flex-col gap-2">
@@ -865,7 +990,6 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          {/* Status Logs Timeline (เรียกใช้ ClaimTimeline) */}
           <Card
             title={
               <div className="flex justify-between items-center w-full">
@@ -877,12 +1001,11 @@ const StaffClaimUpdate = () => {
             styles={{ body: { padding: "16px" } }}
           >
             <ClaimTimeline
-              statusLogs={statusLogs.filter((l) => l.remark && !l.remark.startsWith("[MSG]")).slice(-4)}
+              statusLogs={statusLogs.filter((l) => l.remark && !l.remark.startsWith("[MSG]"))}
               usersMap={usersMap}
             />
           </Card>
 
-          {/* Private Comments / Chat */}
           <Card className="rounded-2xl shadow-sm border border-slate-300 w-full bg-[#f0f4f9]/60" styles={{ body: { padding: "20px" } }}>
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
@@ -929,7 +1052,6 @@ const StaffClaimUpdate = () => {
         </div>
       </div>
 
-      {/* Delivery Modal (เรียกใช้ DeliveryModal Component) */}
       <DeliveryModal
         open={isDeliveryModalOpen}
         onCancel={() => !submittingDelivery && setIsDeliveryModalOpen(false)}
@@ -940,9 +1062,9 @@ const StaffClaimUpdate = () => {
         claimId={data?.claim_id || claimId}
       />
 
-      {/* Status Update Modal */}
+      {/* 🟢 Modal อัปเดตสถานะ */}
       <Modal
-        width={600}
+        width={650}
         title="อัปเดตสถานะการเคลมสินค้า"
         open={isModalOpen}
         onOk={handleSaveStatus}
@@ -958,15 +1080,44 @@ const StaffClaimUpdate = () => {
               className="w-full"
               value={formData.status}
               onChange={(val) => handleInputChange("status", val)}
-              options={[
-                { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
-                { value: "Processing", label: "3. Processing (กำลังดำเนินการ)" },
-                { value: "Shipping", label: "4. Shipping (กำลังจัดส่ง)" },
-                { value: "Delivered", label: "5. Delivered (จัดส่งสำเร็จ)" },
-                { value: "Rejected", label: "2. Rejected (ปฏิเสธ)" },
-              ]}
+              options={getNextStatusOptions(currentStatusInDB)}
+              notFoundContent="ไม่มีสถานะถัดไปให้ดำเนินการ"
             />
           </div>
+
+          {/* 🟢 ส่วนกรอกจำนวนสินค้าเมื่อเลือกเป็น Processing */}
+          {["Processing", "กำลังดำเนินการ"].includes(formData.status) && (
+            <div className="border border-slate-200 rounded-xl p-3 bg-slate-50">
+              <label className="block text-sm font-medium text-slate-800 mb-2">
+                ระบุจำนวนสินค้าที่อนุมัติเปลี่ยนเคลมจริง (Processing Qty):
+              </label>
+              <Table
+                dataSource={claimItems}
+                pagination={false}
+                size="small"
+                columns={[
+                  { title: "ชื่อสินค้า", dataIndex: "item_name", key: "item_name" },
+                  { title: "จำนวนแจ้งเคลม", dataIndex: "qtychang", key: "qtychang", width: 110, align: "right" },
+                  {
+                    title: "จำนวนอนุมัติเปลี่ยน",
+                    key: "approved_qty",
+                    width: 140,
+                    align: "center",
+                    render: (_, record) => (
+                      <InputNumber
+                        min={0}
+                        max={record.qtychang || 9999}
+                        value={record.qty ?? record.approved_qty}
+                        onChange={(val) => handleItemQtyChange(record.key || record.claim_item_id, val)}
+                        className="w-24 text-center font-semibold"
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          )}
+
           {["Rejected", "2", "7"].includes(formData.status) && (
             <div>
               <label className="block text-sm font-medium text-red-700 mb-1">เหตุผลการปฏิเสธ <span className="text-red-500">*</span>:</label>
@@ -981,7 +1132,6 @@ const StaffClaimUpdate = () => {
         </div>
       </Modal>
 
-      {/* Full Log History Modal (เรียกใช้ ClaimTimeline Component) */}
       <Modal
         title={
           <div className="flex items-center gap-2 text-slate-800 font-medium">

@@ -115,6 +115,7 @@ const getPreviousStatusName = (currentStatus) => {
 
 const StaffClaimUpdate = () => {
   const navigate = useNavigate();
+  
   const { claimId } = useParams();
 
   const [loading, setLoading] = useState(true);
@@ -826,13 +827,58 @@ const StaffClaimUpdate = () => {
   const agentNameDisplay = (matchedAgentName && matchedAgentName !== "-") ? matchedAgentName : (data.agent_name || data.agentName || "-");
   const reporterNameDisplay = usersMap[creatorUserId] || data.created_by || data.reporter || "-";
   const latestDelivery = deliveryDataList.length > 0 ? deliveryDataList[deliveryDataList.length - 1] : null;
+  const statusIdNum = Number(getStatusId(data?.current_status || data?.status));
+  const isProcessingOrHigher = currentStep >= 2 || [8, 9, 10].includes(statusIdNum);
+  const isShippingOrHigher = currentStep >= 3 || [9, 10].includes(statusIdNum);
 
   const itemColumns = [
-    { title: "ลำดับ", key: "index", width: 60, align: "center", render: (_, __, index) => index + 1 },
-    { title: "ชื่อสินค้า", dataIndex: "item_name", key: "item_name", render: (text) => <span className="font-medium text-slate-800 break-words">{text}</span> },
-    { title: "จำนวนรับคืน", dataIndex: "qtychang", key: "qtychang", width: 110, align: "right", render: (qty) => <span className="font-semibold text-slate-700">{qty ?? "-"}</span> },
-    { title: "จำนวนแตก/อนุมัติ", dataIndex: "qty", key: "qty", width: 120, align: "right", render: (appQty, record) => <span className="font-semibold text-emerald-600">{appQty ?? record.approved_qty ?? "-"}</span> },
-    { title: "จำนวนส่งคืน", dataIndex: "qtyreceived", key: "qtyreceived", width: 110, align: "right", render: (retQty, record) => <span className="font-semibold text-amber-600">{retQty ?? record.returned_qty ?? "-"}</span> },
+    { 
+      title: "ลำดับ", 
+      key: "index", 
+      width: 60, 
+      align: "center", 
+      render: (_, __, index) => index + 1 
+    },
+    { 
+      title: "ชื่อสินค้า", 
+      dataIndex: "item_name", 
+      key: "item_name", 
+      render: (text) => <span className="font-medium text-slate-800 break-words">{text}</span> 
+    },
+    { 
+      title: "จำนวนรับคืน", 
+      dataIndex: "qtychang", 
+      key: "qtychang", 
+      width: 110, 
+      align: "right", 
+      render: (qty) => <span className="font-semibold text-slate-700">{qty ?? "-"}</span> 
+    },
+    { 
+      title: "จำนวนเปลี่ยน", 
+      dataIndex: "qty", 
+      key: "qty", 
+      width: 120, 
+      align: "right", 
+      render: (appQty, record) => {
+        // 🟢 แสดงเมื่อถึง Processing แล้วเท่านั้น
+        if (!isProcessingOrHigher) return "-";
+        const val = appQty ?? record.approved_qty;
+        return <span className="font-semibold text-emerald-600">{val ?? "-"}</span>;
+      }
+    },
+    { 
+      title: "จำนวนส่งคืน", 
+      dataIndex: "qtyreceived", 
+      key: "qtyreceived", 
+      width: 110, 
+      align: "right", 
+      render: (retQty, record) => {
+        // 🟢 แสดงเมื่อถึง Shipping แล้วเท่านั้น
+        if (!isShippingOrHigher) return "-";
+        const val = retQty ?? record.returned_qty;
+        return <span className="font-semibold text-amber-600">{val ?? "-"}</span>;
+      }
+    },
     {
       title: "สาเหตุ",
       dataIndex: "item_remark",
@@ -990,7 +1036,7 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          <Card
+         <Card
             title={
               <div className="flex justify-between items-center w-full">
                 <span className="font-medium text-slate-800">ประวัติการบันทึกสถานะ</span>
@@ -998,10 +1044,9 @@ const StaffClaimUpdate = () => {
               </div>
             }
             className="rounded-2xl shadow-sm border-gray-200 w-full"
-            styles={{ body: { padding: "16px" } }}
           >
             <ClaimTimeline
-              statusLogs={statusLogs.filter((l) => l.remark && !l.remark.startsWith("[MSG]"))}
+              statusLogs={statusLogs.filter((l) => l.remark && !l.remark.startsWith("[MSG]")).slice(-4)}
               usersMap={usersMap}
             />
           </Card>

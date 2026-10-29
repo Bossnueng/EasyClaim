@@ -560,6 +560,9 @@ const CustomerClaimDetail = () => {
   const creatorUserId = data ? String(data.user_id || data.created_by || "") : "";
   const agentNameDisplay = agentsMap[String(data?.agent_id)] || data?.agent_name || "-";
   const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || "-";
+  const statusIdNum = Number(getStatusId(data?.current_status || data?.status));
+  const isProcessingOrHigher = currentStep >= 2 || [8, 9, 10].includes(statusIdNum);
+  const isShippingOrHigher = currentStep >= 3 || [9, 10].includes(statusIdNum);
 
   return (
     <div className="w-full flex flex-col gap-6 font-normal p-4 sm:p-6" style={{ boxSizing: "border-box" }}>
@@ -683,10 +686,46 @@ const CustomerClaimDetail = () => {
             <Table
               dataSource={claimItems}
               columns={[
-                { title: "ลำดับ", key: "index", width: 60, align: "center", render: (_, __, index) => index + 1 },
-                { title: "ชื่อสินค้า", dataIndex: "item_name", key: "item_name" },
-                { title: "จำนวนรับคืน", dataIndex: "qtychang", key: "qtychang", width: 110, align: "right" },
-                { title: "จำนวนส่งคืน", dataIndex: "qtyreceived", key: "qtyreceived", width: 110, align: "right" },
+                { 
+                  title: "ลำดับ", 
+                  key: "index", 
+                  width: 60, 
+                  align: "center", 
+                  render: (_, __, index) => index + 1 
+                },
+                { 
+                  title: "ชื่อสินค้า", 
+                  dataIndex: "item_name", 
+                  key: "item_name" 
+                },
+                { 
+                  title: "จำนวนรับคืน", 
+                  dataIndex: "qtychang", 
+                  key: "qtychang", 
+                  width: 110, 
+                  align: "right",
+                  render: (qty) => <span className="font-semibold text-slate-700">{qty ?? "-"}</span>
+                },
+                
+                { 
+                  title: "จำนวนส่งคืน", 
+                  dataIndex: "qtyreceived", 
+                  key: "qtyreceived", 
+                  width: 110, 
+                  align: "right",
+                  render: (qty, record) => {
+                    // 🟢 แสดงเมื่อถึง Shipping แล้วเท่านั้น
+                    if (!isShippingOrHigher) return "-";
+                    const val = qty ?? record.returned_qty;
+                    return <span className="font-semibold text-amber-600">{val ?? "-"}</span>;
+                  }
+                },
+                {
+                  title: "สาเหตุ",
+                  dataIndex: "item_remark",
+                  key: "item_remark",
+                  render: (text) => <div className="text-xs text-slate-600 whitespace-pre-wrap break-words">{text || "-"}</div>,
+                },
               ]}
               pagination={false}
               scroll={{ x: 650 }}

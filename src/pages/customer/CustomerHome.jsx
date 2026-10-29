@@ -1,10 +1,11 @@
 // src/pages/customer/CustomerHome.jsx
+
 import dayjs from "dayjs";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
-import { RightOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined } from "@ant-design/icons";
-import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
+import { RightOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined, AlertOutlined } from "@ant-design/icons";
+import { getStatusName, getStatusId } from "../../constants/claimStatus";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
@@ -20,7 +21,6 @@ const CustomerHome = () => {
   const [allClaims, setAllClaims] = useState([]);
 
   const user = loginService.getCurrentUser();
-  const role = user?.role || user?.user_type;
   const currentUserId = user?.user_id || user?.id;
 
   const userRef = useRef(user);
@@ -28,12 +28,57 @@ const CustomerHome = () => {
     userRef.current = user;
   }, [user]);
 
-  const getPriority = useCallback((item) => {
-    if (!item) return 99;
-    const statusVal = item?.current_status || item?.status;
-    const statusName = getStatusName(statusVal, "customer");
-    return STATUS_PRIORITY[statusVal] || STATUS_PRIORITY[statusName] || 99;
+  // 🟢 ตรวจสอบสถานะ Delivered
+  const checkIsDelivered = useCallback((item) => {
+    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
+    const statusName = String(getStatusName(rawStatus, "customer") || "").trim().toLowerCase();
+    const statusId = String(getStatusId ? getStatusId(rawStatus) : rawStatus);
+
+    return (
+      ["10", "delivered", "จัดส่งสำเร็จ", "จัดส่งสินค้าเคลมสำเร็จ"].includes(rawStatus) ||
+      ["10", "delivered", "จัดส่งสำเร็จ", "จัดส่งสินค้าเคลมสำเร็จ"].includes(statusName) ||
+      statusId === "10"
+    );
   }, []);
+
+  // 🟢 1. รายการกำลังดำเนินการ (Pending, Approved, Rejected, Processing, Shipping)
+  const processingClaims = allClaims.filter((item) => {
+    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
+    const statusName = String(getStatusName(rawStatus, "customer") || "").trim().toLowerCase();
+    const statusId = String(getStatusId ? getStatusId(rawStatus) : rawStatus);
+
+    const isProcessing = [
+      "1", "5", "6", "7", "8", "9",
+      "pending", "approved", "rejected", "processing", "shipping",
+      "สร้างรายการเคลม", "รอการพิจารณา", "มีสิทธิ์เคลม", "ไม่มีสิทธิ์เคลม", 
+      "อนุมัติเคลมสินค้า", "ไม่อนุมัติเคลมสินค้า", "กำลังดำเนินการ", "อยู่ระหว่างจัดส่ง"
+    ].some((s) => s === rawStatus || s === statusName || s === statusId);
+
+    return isProcessing && !checkIsDelivered(item);
+  });
+
+  // 🟢 2. รายการที่จัดส่งแล้ว (Delivered)
+  const deliveredClaims = allClaims.filter(checkIsDelivered);
+
+  // 🟢 3. รายการค้างเกิน 3 วัน
+  const overdue3DaysClaims = allClaims.filter((item) => {
+    if (checkIsDelivered(item)) return false;
+    const createdDate = item?.created_at || item?.claim_date || item?.createdDate;
+    if (!createdDate) return false;
+    const parsedDate = dayjs(createdDate);
+    if (!parsedDate.isValid()) return false;
+    return dayjs().diff(parsedDate, "day") >= 3;
+  });
+
+  // 🟢 4. รายการค้างเกิน 7 วัน
+  const overdue7DaysClaims = allClaims.filter((item) => {
+    if (checkIsDelivered(item)) return false;
+    const createdDate = item?.created_at || item?.claim_date || item?.createdDate;
+    if (!createdDate) return false;
+    const parsedDate = dayjs(createdDate);
+    if (!parsedDate.isValid()) return false;
+    return dayjs().diff(parsedDate, "day") >= 7;
+  });
 
   const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
     const activeUser = userRef.current;
@@ -120,17 +165,10 @@ const CustomerHome = () => {
 
         setAllClaims(claimsWithItems);
 
-        const sortedClaims = claimsWithItems.sort((a, b) => {
-          const priorityA = getPriority(a);
-          const priorityB = getPriority(b);
-
-          if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-          }
-
+        const sortedClaims = [...claimsWithItems].sort((a, b) => {
           const dateA = dayjs(a.claim_date || a.created_at);
           const dateB = dayjs(b.claim_date || b.created_at);
-          return dateB.valueOf() - dateA.valueOf();
+          return dateA.valueOf() - dateB.valueOf();
         });
 
         setLatestClaims(sortedClaims.slice(0, 8));
@@ -143,7 +181,7 @@ const CustomerHome = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [getPriority, navigate]);
+  }, [navigate]);
 
   useClaimRealtime({
     isStaff: false,
@@ -187,68 +225,81 @@ const CustomerHome = () => {
           </p>
         </header>
 
+        {/* Dashboard 4 Summary Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการเคลมใหม่</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight">
-                {allClaims.filter((item) => getPriority(item) <= 2).length}
-              </span>
-              <span className="text-xs text-blue-500 font-medium">รอการพิจารณา</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <FileSearchOutlined />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
+          
+          {/* Card 1: รายการกำลังดำเนินการ */}
+          <div
+            onClick={() => navigate("/customer/list-claim?filter=processing")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-amber-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
+          >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">รายการกำลังดำเนินการ</span>
               <span className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight">
-                {allClaims.filter((item) => {
-                  const p = getPriority(item);
-                  return p >= 3 && p <= 7;
-                }).length}
+                {processingClaims.length}
               </span>
-              <span className="text-xs text-amber-500 font-medium">อยู่ระหว่างการจัดการ</span>
+              <span className="text-xs text-amber-500 font-medium">Pending ➔ Shipping</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <ClockCircleOutlined />
             </div>
           </div>
 
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
+          {/* Card 2: รายการที่จัดส่งแล้ว */}
+          <div
+            onClick={() => navigate("/customer/list-claim?filter=delivered")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-emerald-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
+          >
             <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการที่สำเร็จ</span>
+              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการที่จัดส่งแล้ว</span>
               <span className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight">
-                {allClaims.filter((item) => getPriority(item) === 8).length}
+                {deliveredClaims.length}
               </span>
-              <span className="text-xs text-emerald-500 font-medium">จัดส่ง/เสร็จสิ้นแล้ว</span>
+              <span className="text-xs text-emerald-500 font-medium">Delivered แล้ว</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <CheckCircleOutlined />
             </div>
           </div>
 
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
+          {/* Card 3: รายการค้างเกิน 3 วัน */}
+          <div
+            onClick={() => navigate("/customer/list-claim?filter=overdue3")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-rose-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
+          >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">รายการค้างเกิน 3 วัน</span>
               <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight">
-                {allClaims.filter((item) => {
-                  const priority = getPriority(item);
-                  if (priority === 8 || priority === 9 || priority === 10) return false;
-                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
-                  if (!rawDate) return false;
-                  const parsedDate = dayjs(rawDate);
-                  return parsedDate.isValid() && dayjs().diff(parsedDate, "day") >= 3;
-                }).length}
+                {overdue3DaysClaims.length}
               </span>
-              <span className="text-xs text-rose-500 font-medium">ต้องเร่งดำเนินการ</span>
+              <span className="text-xs text-rose-500 font-medium">ยังไม่ Delivered ใน 3 วัน</span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
               <WarningOutlined />
             </div>
           </div>
+
+          {/* Card 4: รายการค้างเกิน 7 วัน */}
+          <div
+            onClick={() => navigate("/customer/list-claim?filter=overdue7")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-red-400 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการค้างเกิน 7 วัน</span>
+              <span className="text-3xl sm:text-4xl font-extrabold text-red-600 font-sans tracking-tight">
+                {overdue7DaysClaims.length}
+              </span>
+              <span className="text-xs text-red-500 font-medium">ยังไม่ Delivered ใน 7 วัน</span>
+            </div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
+              <AlertOutlined />
+            </div>
+          </div>
+
         </div>
 
         <section className="flex flex-col gap-4">

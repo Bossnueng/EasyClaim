@@ -27,6 +27,7 @@ import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
 import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 import { parseExtraDataFromLogs } from "../../utils/logPaser";
+import { getClaimReportPeople, getReportQuantities } from "../../utils/claimReport";
 
 const StaffClaimList = () => {
   const location = useLocation(); // 🟢 อ่านค่า Query parameter
@@ -46,6 +47,7 @@ const StaffClaimList = () => {
   const [usersList, setUsersList] = useState([]);
   const [claimLogsMap, setClaimLogsMap] = useState({});
   const [agentsRawList, setAgentsRawList] = useState([]);
+  const [deliveriesList, setDeliveriesList] = useState([]);
 
   // State สำหรับเปิด-ปิด ตัวกรองเพิ่มเติม
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -177,6 +179,7 @@ const StaffClaimList = () => {
       );
 
       const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
+      setDeliveriesList(deliveriesData);
       const claimsWithFlags = claimsWithItems.map((claim) => ({
         ...claim,
         needsDriverAssign: needsDriverAssignment(
@@ -315,16 +318,24 @@ const StaffClaimList = () => {
         const logData = parseExtraDataFromLogs(logs) || {};
 
         const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
-        const createdByName = userMap[String(claim.created_by || claim.user_id || "")] || "-";
+        const people = getClaimReportPeople({
+          claim,
+          logs,
+          deliveries: deliveriesList,
+          users: safeUsersList,
+          agents: agentsRawList,
+          logData,
+        });
+        const createdByName = people.agentSubmitter || "-";
         const claimAgentId = String(claim.agent_id || logData.agent_id || "");
         
         const agentCode = claim.agent_code || claim.agentCode || logData.agent_code || logData.agentCode || agentCodeMap[claimAgentId] || "-";
         const agentName = getAgentNameForClaim(claim) || claim.agent_name || "-";
 
-        const driverName = claim.driver_name || logData.driverName || "-";
-        const truckPlate = claim.truck_plate || logData.truckPlate || "-";
-        const deliveryDriver = claim.delivery_driver || logData.deliveryDriver || "-";
-        const deliveryPlate = claim.delivery_plate || logData.deliveryPlate || "-";
+        const driverName = people.pickup.name || "-";
+        const truckPlate = people.pickup.plate || "-";
+        const deliveryDriver = people.delivery.name || "-";
+        const deliveryPlate = people.delivery.plate || "-";
 
         const claimDate = formatDate(claim.claim_date || claim.created_at);
         const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate);
@@ -341,10 +352,10 @@ const StaffClaimList = () => {
           const itemName = (itemsMap && itemsMap[itemIdStr]) || item.item_name || item.name || (itemIdStr ? `สินค้า ID: ${itemIdStr}` : "-");
 
           const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
-          const parsedLogData = safeParseJson(logData);
 
-          const receivedQty = parsedRemark.receivedQty ?? item.receivedQty ?? parsedLogData.receivedQty ?? logData.receivedQty ?? claim.receivedQty ?? item.qty ?? 0;
-          const approvedQty = parsedRemark.approvedQty ?? item.approvedQty ?? parsedLogData.approvedQty ?? logData.approvedQty ?? claim.approvedQty ?? item.qtychang ?? 0;
+          const reportQty = getReportQuantities({ item, claim, logs });
+          const receivedQty = reportQty.received;
+          const approvedQty = reportQty.broken;
 
           let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
           if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {

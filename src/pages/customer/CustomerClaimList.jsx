@@ -25,6 +25,8 @@ import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
+import deliveryService from "../../services/deliveryService";
+import { getClaimReportPeople, getReportQuantities } from "../../utils/claimReport";
 import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 import { filterClaimsForUser } from "../../utils/claimAccess";
 import { enrichClaimsWithItems, matchesClaimSearch, getClaimGroup, isOverdueClaim } from "../../utils/claimDashboard";
@@ -54,6 +56,8 @@ const CustomerClaimList = () => {
   const [endDate, setEndDate] = useState(null);
   const [usersList, setUsersList] = useState([]);
   const [claimLogsMap, setClaimLogsMap] = useState({});
+  const [deliveriesList, setDeliveriesList] = useState([]);
+  const [agentsList, setAgentsList] = useState([]);
   const [sortOrder, setSortOrder] = useState("oldest");
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -102,13 +106,17 @@ const CustomerClaimList = () => {
 
     if (showLoading) setLoading(true);
     try {
-      const [resClaim, resItems, resUsers, resLogs, resAgents] = await Promise.all([
+      const [resClaim, resItems, resUsers, resLogs, resAgents, resDeliveries] = await Promise.all([
         claimService.getClaim().catch(() => ({ data: [] })),
         itemService.getItems().catch(() => ({ data: [] })),
         userService.getUsers().catch(() => []),
         claimService.getClaimStatusLogs().catch(() => []),
         agentService.getAgent().catch(() => []),
+        deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
+
+      const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
+      setDeliveriesList(deliveriesData);
 
       const usersData = resUsers?.data || resUsers || [];
       if (Array.isArray(usersData)) setUsersList(usersData);
@@ -137,6 +145,7 @@ const CustomerClaimList = () => {
       }
 
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
+      setAgentsList(agentsData);
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
       const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
 
@@ -241,10 +250,18 @@ const CustomerClaimList = () => {
         const createdById = String(claim.created_by || claim.user_id || claim.createdBy || claim.userId || "");
         const createdByName = userMap[createdById] || claim.created_by_name || claim.createdByName || claim.user_name || claim.userName || (createdById && createdById !== "undefined" ? currentUserName : "-");
 
-        const driverName = claim.driver_name || claim.driverName || claim.pickup_driver_name || logData.driver_name || logData.driverName || logData.pickupDriverName || "-";
-        const truckPlate = claim.truck_plate || claim.truckPlate || claim.license_plate || claim.licensePlate || logData.truck_plate || logData.truckPlate || logData.licensePlate || "-";
-        const deliveryDriver = claim.delivery_driver || claim.deliveryDriver || claim.shipping_driver_name || logData.delivery_driver || logData.deliveryDriver || "-";
-        const deliveryPlate = claim.delivery_plate || claim.deliveryPlate || claim.shipping_license_plate || logData.delivery_plate || logData.deliveryPlate || "-";
+        const people = getClaimReportPeople({
+          claim,
+          logs,
+          deliveries: deliveriesList,
+          users: safeUsersList,
+          agents: agentsList,
+          logData,
+        });
+        const driverName = people.pickup.name || "-";
+        const truckPlate = people.pickup.plate || "-";
+        const deliveryDriver = people.delivery.name || "-";
+        const deliveryPlate = people.delivery.plate || "-";
 
         const claimDate = formatDate(claim.claim_date || claim.created_at);
         const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate || logData.driver_receive_date);
@@ -261,10 +278,10 @@ const CustomerClaimList = () => {
           const itemName = (itemsMap && itemsMap[itemIdStr]) || item.item_name || item.name || (itemIdStr ? `สินค้า ID: ${itemIdStr}` : "-");
 
           const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
-          const parsedLogData = safeParseJson(logData);
 
-          const receivedQty = parsedRemark.receivedQty ?? item.receivedQty ?? parsedLogData.receivedQty ?? logData.receivedQty ?? claim.receivedQty ?? item.qty ?? 0;
-          const approvedQty = parsedRemark.approvedQty ?? item.approvedQty ?? parsedLogData.approvedQty ?? logData.approvedQty ?? claim.approvedQty ?? item.qtychang ?? 0;
+          const reportQty = getReportQuantities({ item, claim, logs });
+          const receivedQty = reportQty.received;
+          const approvedQty = reportQty.broken;
 
           let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
           if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {

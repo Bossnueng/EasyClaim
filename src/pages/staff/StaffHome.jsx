@@ -1,18 +1,21 @@
 // src/pages/staff/StaffHome.jsx
+
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
 import { RightOutlined, CheckCircleOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { STATUS_PRIORITY, CLAIM_STATUS_MAP } from "../../constants/claimStatus";
+import { getStatusName } from "../../constants/claimStatus";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
+import deliveryService from "../../services/deliveryService";
+import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime"; // 🟢 1. Import Hook
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 
 const StaffHome = () => {
   const navigate = useNavigate();
@@ -27,59 +30,90 @@ const StaffHome = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
 
-  // 🟢 2. เรียกใช้ Realtime Hook เพื่ออัปเดตหน้า Home ทันทีที่มีการสร้าง/เปลี่ยนสถานะ
   useClaimRealtime({
     isStaff: true,
     userId: currentUserId,
+    claimIds: allClaims.map((c) => c.claim_id),
     onCreated: () => fetchClaimsAndItems(false),
     onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
   });
 
   useEffect(() => {
-    fetchClaimsAndItems(true); // ครั้งแรกโชว์ Spin ตามปกติ
+    fetchClaimsAndItems(true);
 
     const interval = setInterval(() => {
-      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังนุ่มนวล ไม่โชว์ Spin
+      fetchClaimsAndItems(false);
     }, 5000);
 
     return () => clearInterval(interval);
   }, []);
 
-  const getPriority = (item) => {
-    if (!item) return 99;
-    const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
-    
-    if (statusVal !== undefined && statusVal !== null && CLAIM_STATUS_MAP[String(statusVal)]) {
-      return CLAIM_STATUS_MAP[String(statusVal)].priority;
-    }
-    if (statusVal !== undefined && statusVal !== null && STATUS_PRIORITY[statusVal] !== undefined) {
-      return STATUS_PRIORITY[statusVal];
-    }
-    return 99;
+  // 🟢 ตรวจสอบสถานะ Pending (รอการพิจารณา)
+  const checkIsPending = (item) => {
+    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
+    const statusName = String(getStatusName(rawStatus) || "").trim().toLowerCase();
+
+    return (
+      ["1", "5", "pending", "รอการพิจารณา", "สร้างรายการเคลม"].includes(rawStatus) ||
+      ["1", "5", "pending", "รอการพิจารณา", "สร้างรายการเคลม"].includes(statusName)
+    );
   };
 
-  const getStatusNameText = (item) => {
-    if (!item) return "ไม่ระบุสถานะ";
-    const statusVal = item?.status_id ?? item?.current_status ?? item?.status;
-    if (statusVal !== undefined && statusVal !== null && CLAIM_STATUS_MAP[String(statusVal)]) {
-      return CLAIM_STATUS_MAP[String(statusVal)].name;
-    }
-    return statusVal || "ไม่ระบุสถานะ";
+  // 🟢 ตรวจสอบสถานะ กำลังดำเนินการ (Approved, Rejected, Processing, Shipping)
+  const checkIsProcessing = (item) => {
+    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
+    const statusName = String(getStatusName(rawStatus) || "").trim().toLowerCase();
+
+    return (
+      ["6", "7", "8", "9", "approved", "rejected", "processing", "shipping", "มีสิทธิ์เคลม", "ไม่มีสิทธิ์เคลม", "อนุมัติเคลมสินค้า", "ไม่อนุมัติเคลมสินค้า", "กำลังดำเนินการ", "อยู่ระหว่างจัดส่ง"].includes(rawStatus) ||
+      ["6", "7", "8", "9", "approved", "rejected", "processing", "shipping", "มีสิทธิ์เคลม", "ไม่มีสิทธิ์เคลม", "อนุมัติเคลมสินค้า", "ไม่อนุมัติเคลมสินค้า", "กำลังดำเนินการ", "อยู่ระหว่างจัดส่ง"].includes(statusName)
+    );
   };
 
-  // 🟢 3. ปรับรองรับ showLoading
+  // 🟢 ตรวจสอบสถานะ จัดส่งแล้ว (Delivered)
+  const checkIsDelivered = (item) => {
+    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
+    const statusName = String(getStatusName(rawStatus) || "").trim().toLowerCase();
+
+    return (
+      ["10", "delivered", "จัดส่งสำเร็จ", "จัดส่งสินค้าเคลมสำเร็จ"].includes(rawStatus) ||
+      ["10", "delivered", "จัดส่งสำเร็จ", "จัดส่งสินค้าเคลมสำเร็จ"].includes(statusName)
+    );
+  };
+
+  const pendingClaims = allClaims.filter(checkIsPending);
+  const processingClaims = allClaims.filter(checkIsProcessing);
+  const deliveredClaims = allClaims.filter(checkIsDelivered);
+
+  const overdueClaims = allClaims.filter((item) => {
+    if (checkIsDelivered(item)) return false;
+
+    const createdDate = item?.created_at || item?.claim_date || item?.createdDate;
+    if (!createdDate) return false;
+
+    const parsedDate = dayjs(createdDate);
+    if (!parsedDate.isValid()) return false;
+
+    return dayjs().diff(parsedDate, "day") >= 3;
+  });
+
   const fetchClaimsAndItems = async (showLoading = true) => {
     if (showLoading) setLoading(true);
 
     try {
       let userAgentIdentifiers = [];
-      
-      const [resClaim, resItems, resAgents, resUsers] = await Promise.all([
+
+      const [resClaim, resItems, resAgents, resUsers, resDeliveries] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
         agentService.getAgent(),
         userService.getUsers(),
+        deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
+      const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
 
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
@@ -110,9 +144,7 @@ const StaffHome = () => {
         setItemsMap(map);
       }
 
-      const claimData = Array.isArray(resClaim)
-        ? resClaim
-        : resClaim?.data || [];
+      const claimData = Array.isArray(resClaim) ? resClaim : resClaim?.data || [];
 
       if (Array.isArray(currentUser?.agent_ids)) {
         currentUser.agent_ids.forEach((id) => {
@@ -126,7 +158,6 @@ const StaffHome = () => {
         agentsData.forEach((agent) => {
           const aId = String(agent.agent_id || agent.id || "");
           const aCode = String(agent.agent_code || agent.code || "");
-          
           if (userAgentIdentifiers.includes(aId) && aCode) {
             userAgentIdentifiers.push(aCode);
           }
@@ -145,13 +176,16 @@ const StaffHome = () => {
         allowedClaims.map(async (claim) => {
           try {
             const itemRes = await claimService.getClaimItems(claim.claim_id);
-            const rawItems = Array.isArray(itemRes) ? itemRes : (itemRes?.data || []);
+            const rawItems = Array.isArray(itemRes) ? itemRes : itemRes?.data || [];
             const itemDetails = rawItems[0] || {};
-
             const totalQty = rawItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
 
             return {
               ...claim,
+              needsDriverAssign: needsDriverAssignment(
+                getStatusName(claim.current_status || claim.status),
+                getDriverAssignments(deliveriesData, claim.claim_id).length > 0
+              ),
               items: rawItems,
               item_id: itemDetails.item_id || claim.item_id,
               qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
@@ -168,26 +202,14 @@ const StaffHome = () => {
       setAllClaims(claimWithDetails);
 
       if (claimWithDetails.length > 0) {
-        const pendingClaims = claimWithDetails.filter((item) => {
-          const priority = getPriority(item);
-          return priority !== 8 && priority !== 9 && priority !== 10;
-        });
-
-        const sortedClaims = pendingClaims.sort((a, b) => {
-          const priorityA = getPriority(a);
-          const priorityB = getPriority(b);
-
-          if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-          }
-
+        const sortedClaims = [...claimWithDetails].sort((a, b) => {
           const parsedA = dayjs(a.claim_date || a.created_at || a.createdDate);
           const parsedB = dayjs(b.claim_date || b.created_at || b.createdDate);
           
           const timeA = parsedA.isValid() ? parsedA.valueOf() : 0;
           const timeB = parsedB.isValid() ? parsedB.valueOf() : 0;
 
-          return timeA - timeB; 
+          return timeA - timeB;
         });
 
         setLatestClaims(sortedClaims.slice(0, 8));
@@ -195,10 +217,7 @@ const StaffHome = () => {
         setLatestClaims([]);
       }
     } catch (error) {
-      message.error(
-        "ไม่สามารถดึงข้อมูลรายการเคลมได้: " +
-          (error?.message || "เกิดข้อผิดพลาด")
-      );
+      message.error("ไม่สามารถดึงข้อมูลรายการเคลมได้: " + (error?.message || "เกิดข้อผิดพลาด"));
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -209,44 +228,34 @@ const StaffHome = () => {
       className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6"
       style={{ boxSizing: "border-box", width: "100%" }}
     >
-      <div
-        className="w-full flex flex-col gap-6"
-        style={{ boxSizing: "border-box" }}
-      >
+      <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
             สวัสดี, คุณ{currentUser?.full_name || currentUser?.name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
-            ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่
+            ติดตามสถานะการแจ้งเคลมได้ที่นี่
           </p>
         </header>
 
         {/* Dashboard Summary Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          
+          {/* Card 1: รายการรออนุมัติ (Pending) */}
           <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
+            onClick={() => navigate("/staff/list-claim?filter=pending")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-blue-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
           >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการเคลมใหม่
+                รายการรออนุมัติ
               </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
-                {allClaims.filter((item) => {
-                  const p = getPriority(item);
-                  return p <= 2;
-                }).length}
+              <span className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight">
+                {pendingClaims.length}
               </span>
               <span className="text-xs text-blue-500 font-medium">
-                รอการพิจารณา
+                รอการพิจารณา (Pending)
               </span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
@@ -254,26 +263,18 @@ const StaffHome = () => {
             </div>
           </div>
 
+          {/* Card 2: รายการกำลังดำเนินการ */}
           <div
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+            onClick={() => navigate("/staff/list-claim?filter=processing")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-amber-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
           >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">
                 รายการกำลังดำเนินการ
               </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
-                {allClaims.filter((item) => {
-                  const p = getPriority(item);
-                  return p >= 3 && p <= 7;
-                }).length}
+              <span className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight">
+                {processingClaims.length}
               </span>
               <span className="text-xs text-amber-500 font-medium">
                 อยู่ระหว่างการจัดการ
@@ -284,26 +285,21 @@ const StaffHome = () => {
             </div>
           </div>
 
+          {/* Card 3: รายการที่จัดส่งแล้ว */}
           <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
+            onClick={() => navigate("/staff/list-claim?filter=delivered")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-emerald-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
           >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">
-                รายการที่สำเร็จ
+                รายการที่จัดส่งแล้ว
               </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
-                {allClaims.filter((item) => getPriority(item) === 8).length}
+              <span className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight">
+                {deliveredClaims.length}
               </span>
               <span className="text-xs text-emerald-500 font-medium">
-                จัดส่ง/เสร็จสิ้นแล้ว
+                จัดส่งเรียบร้อยแล้ว (Delivered)
               </span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
@@ -311,39 +307,21 @@ const StaffHome = () => {
             </div>
           </div>
 
+          {/* Card 4: รายการค้างเกิน 3 วัน */}
           <div
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
-            style={{
-              boxSizing: "border-box",
-              padding: "24px 28px",
-              overflow: "hidden",
-            }}
+            onClick={() => navigate("/staff/list-claim?filter=overdue")}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-rose-300 transition-all"
+            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
           >
             <div className="flex flex-col gap-1">
               <span className="text-xs sm:text-sm font-medium text-gray-500">
                 รายการค้างเกิน 3 วัน
               </span>
-              <span 
-                className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight"
-                style={{ fontVariantNumeric: "normal" }}
-              >
-                {allClaims.filter((item) => {
-                  const priority = getPriority(item);
-                  const isFinished = priority === 8 || priority === 9 || priority === 10;
-                  if (isFinished) return false;
-
-                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
-                  if (!rawDate) return false;
-
-                  const parsedDate = dayjs(rawDate);
-                  if (!parsedDate.isValid()) return false;
-
-                  const diffDays = dayjs().diff(parsedDate, "day");
-                  return diffDays >= 3;
-                }).length}
+              <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight">
+                {overdueClaims.length}
               </span>
               <span className="text-xs text-rose-500 font-medium">
-                ต้องเร่งดำเนินการ
+                ยังไม่ Delivered ใน 3 วัน
               </span>
             </div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
@@ -379,37 +357,35 @@ const StaffHome = () => {
                 const claimAgentId = String(claim.agent_id || "");
                 const claimAgentCode = String(claim.agent_code || "");
 
-                const matchedAgentName = 
-                  agentsMap[claimAgentId] || 
-                  agentsMap[claimAgentCode] || 
+                const matchedAgentName =
+                  agentsMap[claimAgentId] ||
+                  agentsMap[claimAgentCode] ||
                   getAgentNameByUserId(creatorUserId, usersList, agentsMap);
 
-                const agentName = 
-                  (matchedAgentName && matchedAgentName !== "-") 
-                    ? matchedAgentName 
-                    : (claim.agent_name || claim.agentName || "-");
+                const agentName =
+                  matchedAgentName && matchedAgentName !== "-"
+                    ? matchedAgentName
+                    : claim.agent_name || claim.agentName || "-";
 
-                // 🟢 แก้ไข: ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
-                // ฟังก์ชันดึงชื่อสินค้า แปลง key เป็น String เพื่อจับคู่ข้อมูล
-                  const getDisplayProductName = () => {
-                    if (Array.isArray(claim.items) && claim.items.length > 0) {
-                      const names = claim.items
-                        .map((i) => {
-                          const idStr = String(i.item_id || "");
-                          return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
-                        })
-                        .filter(Boolean);
+                const getDisplayProductName = () => {
+                  if (Array.isArray(claim.items) && claim.items.length > 0) {
+                    const names = claim.items
+                      .map((i) => {
+                        const idStr = String(i.item_id || "");
+                        return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
+                      })
+                      .filter(Boolean);
 
-                      if (names.length > 0) return names.join(" + ");
-                    }
+                    if (names.length > 0) return names.join(" + ");
+                  }
 
-                    const singleIdStr = String(claim.item_id || "");
-                    return (
-                      itemsMap[singleIdStr] ||
-                      claim.item_name ||
-                      (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
-                    );
-                  };
+                  const singleIdStr = String(claim.item_id || "");
+                  return (
+                    itemsMap[singleIdStr] ||
+                    claim.item_name ||
+                    (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
+                  );
+                };
 
                 return (
                   <StaffClaimCard

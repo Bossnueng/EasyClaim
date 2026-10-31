@@ -2,7 +2,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Mitr:wght@200;300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
-/* 🟢 บังคับใช้ฟอนต์ Mitr ทั่วทั้งเว็บ */
 *,
 body,
 button,
@@ -13,11 +12,166 @@ textarea,
 .ant-input,
 .ant-select,
 .ant-picker {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  box-sizing: border-box;
   font-family: "Mitr", sans-serif !important;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  ul,
+  ol {
+    list-style: none;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* ============================================================ */
+/* ============================================================ */
+.ant-btn {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+.ant-btn:not(.ant-btn-icon-only):not(.ant-btn-link) {
+  padding-inline: 18px;
+}
+
+.ant-btn.ant-btn-sm:not(.ant-btn-icon-only):not(.ant-btn-link) {
+  padding-inline: 12px;
+}
+
+.ant-btn.ant-btn-lg:not(.ant-btn-icon-only):not(.ant-btn-link) {
+  padding-inline: 24px;
+}
+
+.ant-btn.ant-btn-link {
+  padding-inline: 6px;
+}
+
+.ant-btn.ant-btn-icon-only {
+  padding-inline: 0;
+}
+
+.ant-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ant-btn:focus-visible {
+  outline: 2px solid #93c5fd !important;
+  outline-offset: 2px;
+}
+
+button:not(.ant-btn):focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ============================================================ */
+/* ============================================================ */
+.ant-modal .ant-modal-container {
+  border-radius: 16px;
+  box-shadow: 0 20px 45px -12px rgba(15, 23, 42, 0.25);
+}
+
+.ant-modal .ant-modal-header {
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ant-modal .ant-modal-title {
+  font-weight: 500;
+  color: #1e293b;
+  line-height: 1.5;
+  padding-inline-end: 32px;
+}
+
+.ant-modal .ant-modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.ant-modal .ant-modal-footer > .ant-btn + .ant-btn {
+  margin-inline-start: 0 !important;
+}
+
+.ant-modal .ant-modal-close {
+  border-radius: 10px;
+}
+
+.ant-popconfirm .ant-popconfirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ant-popconfirm .ant-popconfirm-buttons > .ant-btn {
+  margin-inline-start: 0 !important;
+}
+
+/* ============================================================ */
+/* ============================================================ */
+.ant-card .ant-card-head-title {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.ant-card .ant-card-head {
+  min-height: 54px;
+  height: auto;
+}
+
+.ant-card .ant-card-head-wrapper {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ant-card .ant-card-head-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  padding-block: 12px;
+}
+
+@media (max-width: 480px) {
+  .ant-btn:not(.ant-btn-icon-only) {
+    white-space: normal;
+    height: auto;
+    min-height: 32px;
+    padding-block: 6px;
+    line-height: 1.3;
+    text-align: center;
+  }
+}
+
+.ant-tag {
+  padding-inline: 8px;
+  border-radius: 6px;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th {
+  font-weight: 500;
+  color: #475569;
 }
 
 .sidebar {
@@ -43,12 +197,31 @@ textarea,
 
 .menu-bar {
   height: 88vh;
-  margin-top: 2rem;
+  margin-top: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  font-size: 1rem;
+  gap: 6px;
+  font-size: 0.95rem;
   position: relative;
+  padding-inline: 12px !important;
+  border-inline-end: none !important;
+}
+
+.menu-bar.ant-menu .ant-menu-item {
+  height: 44px;
+  line-height: 44px;
+  margin: 0 !important;
+  width: 100% !important;
+  padding-inline: 16px !important;
+  border-radius: 10px;
+}
+
+.menu-bar.ant-menu .ant-menu-item .ant-menu-title-content {
+  margin-inline-start: 12px;
+}
+
+.menu-bar.ant-menu .ant-menu-item a {
+  color: inherit;
 }
 
 @media print {

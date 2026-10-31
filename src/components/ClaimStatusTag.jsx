@@ -8,8 +8,8 @@ const ClaimStatusTag = ({ status, role = "default", style, className = "" }) => 
   return (
     <Tag 
       color={getStatusColor(status)} 
-      style={{ margin: 0, padding: "0px 6px", fontSize: "10px", lineHeight: "18px", ...style }} 
-      className={`border-0 font-normal rounded-md text-[10px] ${className}`}
+      style={{ margin: 0, padding: "1px 10px", fontSize: "12px", lineHeight: "20px", ...style }} 
+      className={`border-0 font-normal rounded-full text-xs ${className}`}
     >
       {getStatusName(status, role)}
     </Tag>

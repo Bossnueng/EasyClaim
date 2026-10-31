@@ -1,26 +1,50 @@
 // src/pages/customer/CustomerClaimList.jsx
 
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom"; // 🟢 เพิ่ม useLocation
 import { Input, Empty, message, DatePicker, Button, Spin, Select } from "antd";
-import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined } from "@ant-design/icons";
+import { 
+  SearchOutlined, 
+  DownloadOutlined, 
+  CalendarOutlined, 
+  FilterOutlined,
+  DownOutlined,
+  UpOutlined,
+  ClearOutlined,
+  CloseOutlined
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import { 
-  STATUS_PRIORITY, 
   CUSTOMER_FILTER_TABS, 
   CUSTOMER_STATUS_GROUPS,
-  getStatusName 
+  getStatusName,
 } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
+import { filterClaimsForUser } from "../../utils/claimAccess";
+import { enrichClaimsWithItems, matchesClaimSearch, getClaimGroup, isOverdueClaim } from "../../utils/claimDashboard";
+
+const POLL_INTERVAL_MS = 15000;
+
+const CARD_FILTER_LABELS = {
+  processing: "กำลังดำเนินการ (Approved ➔ Shipping)",
+  overdue3: "ค้างเกิน 3 วัน",
+  overdue7: "ค้างเกิน 7 วัน",
+};
+const CARD_FILTER_TO_TAB = { new: "Pending", delivered: "Delivered" };
+import { parseExtraDataFromLogs } from "../../utils/logPaser";
 
 const CustomerClaimList = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // 🟢 อ่าน Query parameter จาก URL
+  const searchParams = new URLSearchParams(location.search);
+  const urlFilterParam = searchParams.get("filter");
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("ทั้งหมด");
   const [claims, setClaims] = useState([]);
@@ -32,30 +56,46 @@ const CustomerClaimList = () => {
   const [claimLogsMap, setClaimLogsMap] = useState({});
   const [sortOrder, setSortOrder] = useState("oldest");
 
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+
+  const [cardFilter, setCardFilter] = useState(null);
+  useEffect(() => {
+    if (CARD_FILTER_TO_TAB[urlFilterParam]) {
+      setSelectedStatus(CARD_FILTER_TO_TAB[urlFilterParam]);
+      setCardFilter(null);
+    } else if (CARD_FILTER_LABELS[urlFilterParam]) {
+      setSelectedStatus("ทั้งหมด");
+      setCardFilter(urlFilterParam);
+    } else {
+      setCardFilter(null);
+    }
+  }, [urlFilterParam]);
+
+  const clearCardFilter = () => {
+    setCardFilter(null);
+    if (urlFilterParam) navigate(location.pathname, { replace: true });
+  };
+
+  const handleStatusChange = (val) => {
+    setSelectedStatus(val);
+    clearCardFilter();
+  };
+
   const user = loginService.getCurrentUser();
-  const role = user?.role || user?.user_type;
   const currentUserId = user?.user_id || user?.id;
 
-  useClaimRealtime({
-    isStaff: false,
-    userId: currentUserId,
-    onCreated: () => fetchClaimsAndItems(false),
-    onStatusUpdated: () => fetchClaimsAndItems(false),
-  });
-
+  const userRef = useRef(user);
   useEffect(() => {
-    fetchClaimsAndItems(true); // โหลดครั้งแรกขึ้น Spin ปกติ
+    userRef.current = user;
+  }, [user]);
 
-    const interval = setInterval(() => {
-      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังเงียบๆ ไม่ขึ้น Spin
-    }, 5000);
+  const itemsCacheRef = useRef(new Map());
 
-    return () => clearInterval(interval);
-  }, []);
+  const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
+    const activeUser = userRef.current;
+    const activeRole = activeUser?.role || activeUser?.user_type;
 
-  // 🟢 1. ปรับฟังก์ชัน fetchClaimsAndItems ให้รับพารามิเตอร์ showLoading
-  const fetchClaimsAndItems = async (showLoading = true) => {
-    if (role === "staff" || role === "admin") {
+    if (activeRole === "staff" || activeRole === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
@@ -71,9 +111,7 @@ const CustomerClaimList = () => {
       ]);
 
       const usersData = resUsers?.data || resUsers || [];
-      if (Array.isArray(usersData)) {
-        setUsersList(usersData);
-      }
+      if (Array.isArray(usersData)) setUsersList(usersData);
 
       const logsData = resLogs?.data || resLogs || [];
       if (Array.isArray(logsData)) {
@@ -88,69 +126,24 @@ const CustomerClaimList = () => {
         setClaimLogsMap(lMap);
       }
 
-      if (resItems && resItems.data) {
+      if (resItems?.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[String(item.item_id)] = item.item_name;
+          const name = item.item_name;
+          if (item.item_id !== null && item.item_id !== undefined) map[String(item.item_id).trim()] = name;
+          if (item.item_code) map[String(item.item_code).trim()] = name;
         });
         setItemsMap(map);
       }
 
-      let userAgentIdentifiers = [];
-
-      if (Array.isArray(user?.agent_ids)) {
-        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
-      }
-      if (user?.agent_id) {
-        userAgentIdentifiers.push(String(user.agent_id));
-      }
-
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
-      const allowedClaims = rawClaims.filter((claim) => {
-        const claimAgentIdStr = String(claim.agent_id || "");
-        const claimAgentCodeStr = String(claim.agent_code || "");
-        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+      const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
 
-        const isAgentMatch =
-          userAgentIdentifiers.length > 0 &&
-          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
-
-        return isAgentMatch || isUserMatch;
-      });
-
-      const claimsWithItems = await Promise.all(
-        allowedClaims.map(async (claim) => {
-          try {
-            const resItems = await claimService.getClaimItems(claim.claim_id);
-            const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
-            if (rawItems.length > 0) {
-              const firstItem = rawItems[0];
-              return {
-                ...claim,
-                item_id: firstItem.item_id,
-                qty: firstItem.qty,
-                remark: firstItem.remark,
-                lot_no: firstItem.lot_no,
-                items: rawItems,
-              };
-            }
-          } catch (err) {
-            console.error(`Error fetching items for claim ${claim.claim_id}`, err);
-          }
-          return claim;
-        })
+      const claimsWithItems = await enrichClaimsWithItems(
+        allowedClaims,
+        (id) => claimService.getClaimItems(id),
+        itemsCacheRef.current
       );
 
       setClaims(claimsWithItems);
@@ -159,18 +152,34 @@ const CustomerClaimList = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useClaimRealtime({
+    isStaff: false,
+    userId: currentUserId,
+    claimIds: claims.map((c) => c.claim_id),
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
+  });
+
+  useEffect(() => {
+    fetchClaimsAndItems(true);
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [fetchClaimsAndItems]);
 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
-
     try {
       const response = await claimService.delClaim(claimId);
-      if (response.status) {
+      if (response?.status) {
         message.success("ลบรายการเคลมเรียบร้อยแล้ว");
-        setClaims((prevClaims) =>
-          prevClaims.filter((claim) => claim.claim_id !== claimId)
-        );
+        setClaims((prev) => prev.filter((claim) => claim.claim_id !== claimId));
       }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการลบรายการ");
@@ -194,78 +203,31 @@ const CustomerClaimList = () => {
       safeUsersList.forEach((u) => {
         if (!u) return;
         const uName = u.full_name || u.fullname || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.username || u.email;
-        
         const idKeys = [u.user_id, u.id, u.userId, u.user_code].filter(Boolean);
-        idKeys.forEach((key) => {
-          userMap[String(key)] = uName;
-        });
+        idKeys.forEach((key) => { userMap[String(key)] = uName; });
       });
 
       const currentUser = loginService.getCurrentUser() || {};
       const currentUserName = currentUser.full_name || currentUser.fullname || currentUser.name || currentUser.username || "-";
 
       const headers = [
-        "ลำดับ",
-        "เลขที่เอกสารเคลม",
-        "วันที่แจ้งเคลม",
-        "ผู้แจ้งเคลม",
-        "ชื่อสินค้า",
-        "รับจริง (ขวด/กระป๋อง)",
-        "แตกจริง (ขวด/กระป๋อง)",
-        "สาเหตุการแตก",
-        "ชื่อ พขร. ที่รับสินค้า",
-        "ทะเบียนรถรับสินค้า",
-        "วันที่ พขร. รับสินค้า",
-        "วันที่ คลังสินค้า รับสินค้า",
-        "วันที่ อนุมัติเคลม",
-        "วันที่ จัดส่งสินค้าเคลม",
-        "วันที่ จัดส่งสำเร็จ",
-        "ชื่อ พขร. ที่ส่งสินค้า",
-        "ทะเบียนรถส่งสินค้า",
-        "สถานะสินค้า",
+        "ลำดับ", "เลขที่เอกสารเคลม", "วันที่แจ้งเคลม", "ผู้แจ้งเคลม", "ชื่อสินค้า",
+        "รับจริง (ขวด/กระป๋อง)", "แตกจริง (ขวด/กระป๋อง)", "สาเหตุการแตก", "ชื่อ พขร. ที่รับสินค้า",
+        "ทะเบียนรถรับสินค้า", "วันที่ พขร. รับสินค้า", "วันที่ คลังสินค้า รับสินค้า", "วันที่ อนุมัติเคลม",
+        "วันที่ จัดส่งสินค้าเคลม", "วันที่ จัดส่งสำเร็จ", "ชื่อ พขร. ที่ส่งสินค้า", "ทะเบียนรถส่งสินค้า", "สถานะสินค้า"
       ];
 
       const csvRows = [headers.join(",")];
-
-      const cleanStr = (val) => {
-        if (val === null || val === undefined || val === "") return '"-"';
-        return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
-      };
-
-      const formatDate = (dateVal) => {
-        if (!dateVal) return "-";
-        const d = dayjs(dateVal);
-        return d.isValid() ? d.format("DD/MM/YYYY HH:mm") : "-";
-      };
+      const cleanStr = (val) => (val === null || val === undefined || val === "" ? '"-"' : `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`);
+      const formatDate = (dateVal) => (dateVal && dayjs(dateVal).isValid() ? dayjs(dateVal).format("DD/MM/YYYY HH:mm") : "-");
 
       const safeParseJson = (data) => {
         if (!data) return {};
         if (typeof data === "object") return data;
         if (typeof data === "string" && data.trim().startsWith("{")) {
-          try {
-            return JSON.parse(data);
-          } catch (e) {
-            return {};
-          }
+          try { return JSON.parse(data); } catch { return {}; }
         }
         return {};
-      };
-
-      const parseDataFromLogs = (logs) => {
-        if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
-        let result = {};
-        logs.forEach((log) => {
-          if (log && log.remark && typeof log.remark === "string") {
-            if (log.remark.includes("| DATA:")) {
-              try {
-                const jsonStr = log.remark.split("| DATA:")[1];
-                const parsed = JSON.parse(jsonStr);
-                result = { ...result, ...parsed };
-              } catch (e) {}
-            }
-          }
-        });
-        return result;
       };
 
       let rowNum = 1;
@@ -273,55 +235,16 @@ const CustomerClaimList = () => {
       filteredClaims.forEach((claim) => {
         const claimIdStr = String(claim.claim_id || claim.id || "");
         const logs = claimLogsMap ? (claimLogsMap[claimIdStr] || []) : [];
-        
-        let logData = {};
-        try { logData = parseDataFromLogs(logs) || {}; } catch (e) { logData = {}; }
+        const logData = parseExtraDataFromLogs(logs) || {};
 
         const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
-        
         const createdById = String(claim.created_by || claim.user_id || claim.createdBy || claim.userId || "");
-        const createdByName = 
-          userMap[createdById] || 
-          claim.created_by_name || 
-          claim.createdByName || 
-          claim.user_name || 
-          claim.userName || 
-          (createdById && createdById !== "undefined" ? currentUserName : "-");
+        const createdByName = userMap[createdById] || claim.created_by_name || claim.createdByName || claim.user_name || claim.userName || (createdById && createdById !== "undefined" ? currentUserName : "-");
 
-        const driverName = 
-          claim.driver_name || 
-          claim.driverName || 
-          claim.pickup_driver_name || 
-          logData.driver_name || 
-          logData.driverName || 
-          logData.pickupDriverName || 
-          "-";
-
-        const truckPlate = 
-          claim.truck_plate || 
-          claim.truckPlate || 
-          claim.license_plate || 
-          claim.licensePlate || 
-          logData.truck_plate || 
-          logData.truckPlate || 
-          logData.licensePlate || 
-          "-";
-
-        const deliveryDriver = 
-          claim.delivery_driver || 
-          claim.deliveryDriver || 
-          claim.shipping_driver_name || 
-          logData.delivery_driver || 
-          logData.deliveryDriver || 
-          "-";
-
-        const deliveryPlate = 
-          claim.delivery_plate || 
-          claim.deliveryPlate || 
-          claim.shipping_license_plate || 
-          logData.delivery_plate || 
-          logData.deliveryPlate || 
-          "-";
+        const driverName = claim.driver_name || claim.driverName || claim.pickup_driver_name || logData.driver_name || logData.driverName || logData.pickupDriverName || "-";
+        const truckPlate = claim.truck_plate || claim.truckPlate || claim.license_plate || claim.licensePlate || logData.truck_plate || logData.truckPlate || logData.licensePlate || "-";
+        const deliveryDriver = claim.delivery_driver || claim.deliveryDriver || claim.shipping_driver_name || logData.delivery_driver || logData.deliveryDriver || "-";
+        const deliveryPlate = claim.delivery_plate || claim.deliveryPlate || claim.shipping_license_plate || logData.delivery_plate || logData.deliveryPlate || "-";
 
         const claimDate = formatDate(claim.claim_date || claim.created_at);
         const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate || logData.driver_receive_date);
@@ -330,13 +253,8 @@ const CustomerClaimList = () => {
         const deliveryDate = formatDate(claim.delivery_date || logData.deliveryDate || logData.delivery_date);
         const receiveFinishDate = formatDate(claim.receive_finish_date || logData.receiveFinishDate || logData.receive_finish_date);
 
-        const displayStatusName = typeof getStatusName === "function" 
-          ? getStatusName(claim.current_status || claim.status, "customer")
-          : (claim.current_status || claim.status || "-");
-
-        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 
-          ? claim.items 
-          : [claim];
+        const displayStatusName = getStatusName(claim.current_status || claim.status, "customer");
+        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 ? claim.items : [claim];
 
         claimItemsList.forEach((item) => {
           const itemIdStr = String(item.item_id || "");
@@ -345,26 +263,10 @@ const CustomerClaimList = () => {
           const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
           const parsedLogData = safeParseJson(logData);
 
-          const receivedQty = 
-            parsedRemark.receivedQty ?? 
-            item.receivedQty ?? 
-            parsedLogData.receivedQty ?? 
-            logData.receivedQty ?? 
-            claim.receivedQty ?? 
-            item.qty ?? 
-            0;
-
-          const approvedQty = 
-            parsedRemark.approvedQty ?? 
-            item.approvedQty ?? 
-            parsedLogData.approvedQty ?? 
-            logData.approvedQty ?? 
-            claim.approvedQty ?? 
-            item.qtychang ?? 
-            0;
+          const receivedQty = parsedRemark.receivedQty ?? item.receivedQty ?? parsedLogData.receivedQty ?? logData.receivedQty ?? claim.receivedQty ?? item.qty ?? 0;
+          const approvedQty = parsedRemark.approvedQty ?? item.approvedQty ?? parsedLogData.approvedQty ?? logData.approvedQty ?? claim.approvedQty ?? item.qtychang ?? 0;
 
           let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
-          
           if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {
             const innerJson = safeParseJson(rawReason);
             rawReason = innerJson.itemRemark || innerJson.remark || "-";
@@ -432,224 +334,317 @@ const CustomerClaimList = () => {
   }, {});
 
   const filteredClaims = claims
-    .filter((claim) => {
-      const rawStatus = claim.current_status || claim.status;
-      const nameStatus = getStatusName(rawStatus, "customer");
-      let matchesStatus = false;
+  .filter((claim) => {
+    const rawStatus = claim.current_status || claim.status;
+    const nameStatus = getStatusName(rawStatus, "customer");
+    let matchesStatus = false;
 
-      if (selectedStatus === "ทั้งหมด") {
-        matchesStatus = true;
-      } else if (CUSTOMER_STATUS_GROUPS && CUSTOMER_STATUS_GROUPS[selectedStatus]) {
-        const allowedStatuses = CUSTOMER_STATUS_GROUPS[selectedStatus] || [];
-        matchesStatus =
-          allowedStatuses.includes(rawStatus) ||
-          allowedStatuses.includes(String(rawStatus)) ||
-          allowedStatuses.includes(nameStatus);
-      } else {
-        matchesStatus = rawStatus === selectedStatus || nameStatus === selectedStatus;
-      }
+    if (cardFilter === "processing") {
+      matchesStatus = getClaimGroup(claim) === "processing";
+    } else if (cardFilter === "overdue3" || cardFilter === "overdue7") {
+      matchesStatus = isOverdueClaim(claim, cardFilter === "overdue7" ? 7 : 3);
+    }
+    else if (selectedStatus === "ทั้งหมด") {
+      matchesStatus = true;
+    }
+    else if (CUSTOMER_STATUS_GROUPS && CUSTOMER_STATUS_GROUPS[selectedStatus]) {
+      const allowedStatuses = CUSTOMER_STATUS_GROUPS[selectedStatus] || [];
+      matchesStatus =
+        allowedStatuses.includes(rawStatus) ||
+        allowedStatuses.includes(String(rawStatus)) ||
+        allowedStatuses.includes(nameStatus);
+    } else {
+      matchesStatus = rawStatus === selectedStatus || nameStatus === selectedStatus;
+    }
 
-      const searchLower = searchTerm.toLowerCase();
-      const itemName = itemsMap[claim.item_id] || claim.item_name || "";
-      const matchesProduct = itemName.toString().toLowerCase().includes(searchLower);
-      const matchesId = (claim.claim_no || claim.claim_id || "")
-        .toString()
-        .toLowerCase()
-        .includes(searchLower);
+    const matchesSearch = matchesClaimSearch(claim, searchTerm, itemsMap);
 
-      let matchesDate = true;
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const claimDate = dayjs(claim.claim_date || claim.created_at);
       if (startDate && endDate) {
-        const claimDate = dayjs(claim.claim_date || claim.created_at);
-        matchesDate =
-          claimDate.isAfter(dayjs(startDate).startOf("day")) &&
-          claimDate.isBefore(dayjs(endDate).endOf("day"));
+        const start = dayjs(startDate).startOf("day").valueOf();
+        const end = dayjs(endDate).endOf("day").valueOf();
+        const current = claimDate.valueOf();
+        matchesDate = current >= start && current <= end;
       } else if (startDate) {
-        const claimDate = dayjs(claim.claim_date || claim.created_at);
-        matchesDate = claimDate.isAfter(dayjs(startDate).startOf("day"));
+        const start = dayjs(startDate).startOf("day").valueOf();
+        matchesDate = claimDate.valueOf() >= start;
       } else if (endDate) {
-        const claimDate = dayjs(claim.claim_date || claim.created_at);
-        matchesDate = claimDate.isBefore(dayjs(endDate).endOf("day"));
+        const end = dayjs(endDate).endOf("day").valueOf();
+        matchesDate = claimDate.valueOf() <= end;
       }
+    }
 
-      return matchesStatus && (matchesProduct || matchesId) && matchesDate;
-    })
+    return matchesStatus && matchesSearch && matchesDate;
+  })
     .sort((a, b) => {
       const dateA = dayjs(a.claim_date || a.created_at);
       const dateB = dayjs(b.claim_date || b.created_at);
-
       const timeA = dateA.isValid() ? dateA.valueOf() : 0;
       const timeB = dateB.isValid() ? dateB.valueOf() : 0;
 
-      if (sortOrder === "oldest") {
-        return timeA - timeB; // 🕒 วันที่น้อยสุด (เก่าสุด) ขึ้นก่อน
-      } else {
-        return timeB - timeA; // 🆕 วันที่มากสุด (ใหม่สุด) ขึ้นก่อน
-      }
+      return sortOrder === "oldest" ? timeA - timeB : timeB - timeA;
     });
 
+  const activeAdvancedFilterCount = [
+    startDate !== null,
+    endDate !== null,
+    sortOrder !== "oldest"
+  ].filter(Boolean).length;
+
+  const handleResetAdvanced = () => {
+    setStartDate(null);
+    setEndDate(null);
+    setSortOrder("oldest");
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50/50 p-2.5 sm:p-4 md:p-6 w-full max-w-full overflow-hidden box-border">
-      <div className="w-full flex flex-col gap-4 sm:gap-6">
+    <div className="min-h-screen bg-gray-50/60 p-4 sm:p-6 md:p-8 w-full box-border">
+      {/* 🟢 CSS OVERRIDES บังคับปลดล็อค inset-inline-start และยึด Padding ขอบซ้าย-ขวา ทั้งหมด */}
+      <style>{`
+        .ant-select-single .ant-select-selection-item,
+        .ant-select-single .ant-select-selection-placeholder,
+        .ant-select-single .ant-select-selection-search {
+          inset-inline-start: 14px !important;
+          left: 14px !important;
+          padding-left: 0 !important;
+        }
+        .ant-select-single .ant-select-selector {
+          padding-left: 14px !important;
+          padding-right: 36px !important;
+        }
+        .ant-select-single .ant-select-arrow {
+          right: 14px !important;
+          inset-inline-end: 14px !important;
+        }
+        .ant-select-single .ant-select-selection-item > div {
+          width: 100%;
+        }
+        .ant-picker {
+          padding-left: 16px !important;
+          padding-right: 16px !important;
+        }
+        .ant-picker {
+          padding-left: 10px !important;
+          padding-right: 10px !important;
+        }
+        .ant-picker .ant-picker-input > input {
+          font-size: 13px !important;
+        }
+      `}</style>
+
+      <div className="w-full flex flex-col gap-5">
         
-        {/* Header */}
-        <header className="flex flex-row justify-between items-center gap-2 w-full">
+        {/* Header Section */}
+        <header className="flex flex-row flex-wrap justify-between items-start md:items-center gap-4 w-full">
           <div>
-            <h1 className="text-lg sm:text-2xl font-bold text-slate-800 m-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0">
               รายการการเคลมสินค้า
             </h1>
-            <p className="text-[11px] sm:text-sm text-gray-500 m-0 mt-0.5">
+            <p className="text-xs sm:text-sm text-gray-500 m-0 mt-1">
               ตรวจสอบและติดตามสถานะรายการเคลมทั้งหมดของคุณ
             </p>
           </div>
           <Button
             type="primary"
-            style={{ paddingLeft: "16px", paddingRight: "16px" }}
-            className="bg-emerald-600 hover:bg-emerald-700 border-none rounded-xl shrink-0 h-9 sm:h-10 shadow-sm flex items-center justify-center"
+            icon={<DownloadOutlined className="text-sm" />}
+            className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl h-10 px-5 shadow-xs font-medium inline-flex items-center gap-1.5"
             onClick={handleExportReport}
           >
-            <DownloadOutlined className="text-sm" />
-            <span className="hidden sm:inline text-xs sm:text-sm font-medium ml-2">Report</span>
+            ส่งออกรายงาน
           </Button>
         </header>
 
-        {/* Filter Section */}
-        <div className="flex flex-col lg:flex-row gap-2 w-full">
-          <div className="flex-1 min-w-0">
-            <Input
-              placeholder="ค้นหาตามชื่อสินค้า หรือ Claim ID..."
-              prefix={<SearchOutlined className="text-gray-400 mr-1 text-xs sm:text-sm" />}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              allowClear
-              className="w-full rounded-lg border-gray-200 bg-white hover:border-emerald-500 focus:border-emerald-500 text-xs sm:text-sm h-9 sm:h-10 shadow-sm px-3"
-            />
-          </div>
-
-          <div className="flex gap-2 lg:w-80 shrink-0">
-            <DatePicker
-              placeholder="เริ่มวันไหน"
-              suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
-              format="DD/MM/YYYY"
-              value={startDate}
-              onChange={(date) => setStartDate(date)}
-              disabledDate={(current) => endDate && current && current.isAfter(endDate, "day")}
-              style={{ paddingLeft: "8px", paddingRight: "8px" }}
-              className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
-            />
-            <DatePicker
-              placeholder="ถึงวันไหน"
-              suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
-              format="DD/MM/YYYY"
-              value={endDate}
-              onChange={(date) => setEndDate(date)}
-              disabledDate={(current) => startDate && current && current.isBefore(startDate, "day")}
-              style={{ paddingLeft: "8px", paddingRight: "8px" }}
-              className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
-            />
-          </div>
-
-          <div className="sm:col-span-1 lg:col-span-3">
-            <Select
-              value={sortOrder}
-              onChange={(val) => setSortOrder(val)}
-              className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
-              options={[
-                { value: "oldest", label: "🕒 เก่าสุด ➔ ใหม่สุด" },
-                { value: "newest", label: "🆕 ใหม่สุด ➔ เก่าสุด" },
-              ]}
-            />
-          </div>
-
-          <div className="lg:w-56 shrink-0">
-            <Select
-              value={selectedStatus}
-              onChange={(val) => setSelectedStatus(val)}
-              className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
-              suffixIcon={
-                <div style={{ paddingRight: "4px" }}>
-                  <FilterOutlined className="text-gray-400 text-xs" />
-                </div>
-              }
-              labelRender={({ value }) => {
-                const count =
-                  value === "ทั้งหมด"
-                    ? claims.length
-                    : tabCounts[value] ?? 0;
-                return (
-                  <div className="flex justify-between items-center w-full pr-1">
-                    <span 
-                      className="text-xs font-medium text-slate-700"
-                      style={{ paddingLeft: "4px" }}
-                    >
-                      {value}
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
-                      {count} รายการ
-                    </span>
-                  </div>
-                );
-              }}
-              options={CUSTOMER_FILTER_TABS.map((tab) => {
-                const count =
-                  tab === "ทั้งหมด"
-                    ? claims.length
-                    : tabCounts[tab] ?? 0;
-                return {
-                  value: tab,
-                  label: (
-                    <div className="flex justify-between items-center w-full px-0.5">
-                      <span className="text-xs font-medium text-slate-700">{tab}</span>
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                        {count} รายการ
+        {/* 🟢 FILTER AREA */}
+        <div className="flex flex-col gap-3 w-full">
+          
+          {/* Row 1: Search Bar & Main Status Filter */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-8">
+              <Input
+                placeholder="ค้นหาตามชื่อสินค้า หรือ Claim ID..."
+                prefix={<SearchOutlined className="text-gray-400 mr-2 text-sm" />}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                allowClear
+                className="w-full rounded-xl border-gray-200 bg-white hover:border-blue-500 focus:border-blue-500 text-sm h-10 px-4 shadow-2xs"
+              />
+            </div>
+            <div className="lg:col-span-4">
+              <Select
+                value={selectedStatus}
+                onChange={handleStatusChange}
+                className="w-full h-10 text-sm rounded-xl shadow-2xs"
+                style={{
+                  paddingLeft: '12px',
+                  paddingRight: '12px',
+                }}
+                suffixIcon={
+                  <FilterOutlined 
+                    className="text-gray-400 text-xs" 
+                    style={{ marginRight: '6px' }}
+                  />
+                }
+                labelRender={({ value }) => {
+                  const count = value === "ทั้งหมด" ? claims.length : tabCounts[value] ?? 0;
+                  return (
+                    <div className="flex justify-between items-center w-full px-2">
+                      <span className="text-sm font-medium text-slate-700">{`${value}`}</span>
+                      <span className="text-xs font-semibold text-blue-600 ml-2">
+                        {count}
                       </span>
                     </div>
-                  ),
-                };
-              })}
-            />
+                  );
+                }}
+                options={CUSTOMER_FILTER_TABS.map((tab) => {
+                  const count = tab === "ทั้งหมด" ? claims.length : tabCounts[tab] ?? 0;
+                  return {
+                    value: tab,
+                    label: (
+                      <div className="flex justify-between items-center w-full px-1">
+                        <span className="text-sm font-medium text-slate-700">{tab}</span>
+                        <span className="text-xs font-semibold text-slate-400 ml-2">
+                          {count}
+                        </span>
+                      </div>
+                    ),
+                  };
+                })}
+              />
+            </div>
           </div>
+
+          {cardFilter && (
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full pl-3 pr-1 py-1 max-w-full">
+                <span className="truncate">ตัวกรองจากหน้าแรก: {CARD_FILTER_LABELS[cardFilter]}</span>
+                <button
+                  type="button"
+                  onClick={clearCardFilter}
+                  aria-label="ล้างตัวกรองจากหน้าแรก"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-full border-none bg-transparent text-blue-600 hover:bg-blue-100 cursor-pointer shrink-0"
+                >
+                  <CloseOutlined className="text-[10px]" />
+                </button>
+              </span>
+              <span className="text-xs text-gray-500">{filteredClaims.length} รายการ</span>
+            </div>
+          )}
+
+          {/* Row 2: Collapsible Toggle Button */}
+          <div className="flex flex-wrap justify-between items-center gap-2 px-1 pt-1">
+            <button
+              onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-blue-600 transition-colors cursor-pointer border-none bg-transparent p-0 whitespace-nowrap shrink-0"
+            >
+              <span>ตัวกรองเพิ่มเติม</span>
+              {activeAdvancedFilterCount > 0 && (
+                <span className="text-xs font-semibold text-blue-600">
+                  ({activeAdvancedFilterCount})
+                </span>
+              )}
+              {isAdvancedOpen ? (
+                <UpOutlined className="text-[10px] text-slate-500 ml-0.5" />
+              ) : (
+                <DownOutlined className="text-[10px] text-slate-500 ml-0.5" />
+              )}
+            </button>
+
+            {activeAdvancedFilterCount > 0 && isAdvancedOpen && (
+              <button
+                onClick={handleResetAdvanced}
+                style={{ color: '#3b82f6' }}
+                className="inline-flex items-center gap-1 text-xs font-normal bg-transparent border-none cursor-pointer p-0 whitespace-nowrap ml-auto transition-colors hover:opacity-80"
+              >
+                <ClearOutlined className="text-xs" style={{ color: '#3b82f6' }} />
+                <span style={{ color: '#3b82f6' }}>ล้างตัวกรอง</span>
+              </button>
+            )}
+          </div>
+
+          {/* Row 3: Collapsible Advanced Filter Fields */}
+          {isAdvancedOpen && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 pt-1">
+              
+              {/* Date Range Inputs */}
+              <div className="lg:col-span-8 flex flex-col gap-1.5">
+                <label className="text-[11px] font-normal text-gray-500 px-1">ช่วงวันที่เคลม:</label>
+                <div className="flex gap-2 w-full">
+                  <DatePicker
+                    placeholder="เริ่มวันไหน"
+                    suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
+                    format="DD/MM/YYYY"
+                    value={startDate}
+                    onChange={(date) => setStartDate(date)}
+                    disabledDate={(current) => endDate && current && current.isAfter(endDate, "day")}
+                    className="w-full rounded-xl border-gray-200 bg-white h-10 text-sm shadow-2xs"
+                  />
+                  <DatePicker
+                    placeholder="ถึงวันไหน"
+                    suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
+                    format="DD/MM/YYYY"
+                    value={endDate}
+                    onChange={(date) => setEndDate(date)}
+                    disabledDate={(current) => startDate && current && current.isBefore(startDate, "day")}
+                    className="w-full rounded-xl border-gray-200 bg-white h-10 text-sm shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Sort Order */}
+              <div className="lg:col-span-4 flex flex-col gap-1.5">
+                <label className="text-[11px] font-normal text-gray-500 px-1">เรียงลำดับเวลา:</label>
+                <Select
+                  value={sortOrder}
+                  onChange={(val) => setSortOrder(val)}
+                  className="w-full h-10 text-xs rounded-xl shadow-2xs"
+                  style={{
+                    paddingLeft: '12px',
+                    paddingRight: '12px',
+                  }}
+                  suffixIcon={
+                    <DownOutlined 
+                      className="text-gray-400 text-[10px]" 
+                      style={{ marginRight: '6px' }}
+                    />
+                  }
+                  options={[
+                    { value: "oldest", label: "เก่าสุด ➔ ใหม่สุด" },
+                    { value: "newest", label: "ใหม่สุด ➔ เก่าสุด" },
+                  ]}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Claim Cards List */}
         {loading ? (
-          <div className="bg-white rounded-2xl p-12 text-center w-full shadow-sm">
-            <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+          <div className="bg-white rounded-2xl p-12 text-center w-full shadow-xs">
+            <Spin size="large" description="กำลังโหลดข้อมูล..." />
           </div>
         ) : filteredClaims.length > 0 ? (
-          <div className="flex flex-col gap-2.5 sm:gap-3 w-full">
-            {filteredClaims.map((claim) => {
-              const getDisplayProductName = () => {
-                if (Array.isArray(claim.items) && claim.items.length > 0) {
-                  return claim.items
-                    .map((i) => itemsMap[i.item_id] || i.item_name || i.name || `สินค้า ID: ${i.item_id}`)
-                    .join(" + ");
-                }
-                return (
-                  itemsMap[claim.item_id] ||
-                  claim.item_name ||
-                  (claim.item_id ? `สินค้า ID: ${claim.item_id}` : "ไม่พบข้อมูลสินค้า")
-                );
-              };
-
-              return (
-                <CustomerClaimCard
-                  key={claim.claim_id || claim.claim_no}
-                  claim={{
-                    ...claim,
-                    current_status: claim.current_status || claim.status,
-                    agent_name: claim.agent_name || claim.agent_id || "-",
-                    item_name: getDisplayProductName(),
-                    created_at_formatted: dayjs(claim.claim_date || claim.created_at).format("DD/MM/YY HH:mm"),
-                  }}
-                  onDelete={handleDeleteClaim}
-                  hideDeleteWhenDisabled={true}
-                  layout="horizontal"
-                />
-              );
-            })}
+          <div className="flex flex-col gap-3 w-full">
+            {filteredClaims.map((claim) => (
+              <CustomerClaimCard
+                key={claim.claim_id || claim.claim_no}
+                claim={{
+                  ...claim,
+                  current_status: claim.current_status || claim.status,
+                  agent_name: claim.agent_name || claim.agent_id || "-",
+                  item_name: itemsMap[claim.item_id] || claim.item_name || "ไม่พบข้อมูลสินค้า",
+                  created_at_formatted: dayjs(claim.claim_date || claim.created_at).format("DD/MM/YY HH:mm"),
+                }}
+                onDelete={handleDeleteClaim}
+                hideDeleteWhenDisabled={true}
+                layout="horizontal"
+                itemsMap={itemsMap}
+              />
+            ))}
           </div>
         ) : (
-          <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 sm:p-12 text-center my-2 w-full">
+          <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center w-full">
             <Empty description="ไม่พบรายการเคลมสินค้า" />
           </div>
         )}

@@ -1,40 +1,41 @@
 // src/pages/staff/StaffClaimList.jsx
-import React, { useState, useEffect } from "react";
+
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom"; // 🟢 เพิ่ม useLocation
 import { Input, Empty, message, Spin, DatePicker, Button, Select } from "antd";
-import { SearchOutlined, DownloadOutlined, CalendarOutlined, FilterOutlined, FileTextOutlined } from "@ant-design/icons";
+import { 
+  SearchOutlined, 
+  DownloadOutlined, 
+  CalendarOutlined, 
+  FileTextOutlined, 
+  FilterOutlined,
+  DownOutlined,
+  UpOutlined,
+  ClearOutlined
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 import StaffClaimCard from "../../components/StaffClaimCard";
-import { STATUS_PRIORITY, FILTER_OPTIONS, CUSTOMER_FILTER_TABS, CUSTOMER_STATUS_GROUPS, getStatusName } from "../../constants/claimStatus";
+import { FILTER_OPTIONS, CUSTOMER_FILTER_TABS, CUSTOMER_STATUS_GROUPS, getStatusName, getStatusId } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
+import deliveryService from "../../services/deliveryService";
+import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow";
+import { runAutoConfirms } from "../../hooks/useAutoConfirm";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
-
-
-const parseDataFromLogs = (logs) => {
-  if (!logs || !Array.isArray(logs) || logs.length === 0) return {};
-  
-  let result = {};
-  logs.forEach((log) => {
-    if (log && log.remark && log.remark.includes("| DATA:")) {
-      try {
-        const jsonStr = log.remark.split("| DATA:")[1];
-        const parsed = JSON.parse(jsonStr);
-        result = { ...result, ...parsed, status_id: log.status || log.status_id };
-      } catch (e) {
-        console.error("Error parsing log data", e);
-      }
-    }
-  });
-  return result;
-};
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
+import { parseExtraDataFromLogs } from "../../utils/logPaser";
 
 const StaffClaimList = () => {
+  const location = useLocation(); // 🟢 อ่านค่า Query parameter
+  const searchParams = new URLSearchParams(location.search);
+  const cardFilterParam = searchParams.get("filter");
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("ทั้งหมด");
+  const [selectedAgent, setSelectedAgent] = useState("ALL");
   const [claims, setClaims] = useState([]);
   const [sortOrder, setSortOrder] = useState("oldest");
   const [loading, setLoading] = useState(false);
@@ -46,37 +47,42 @@ const StaffClaimList = () => {
   const [claimLogsMap, setClaimLogsMap] = useState({});
   const [agentsRawList, setAgentsRawList] = useState([]);
 
-  // 🟢 ประกาศไว้ด้านบนสุดเพื่อให้ JSX และทุกฟังก์ชันเรียกใช้ได้โดยไม่ติด Error
+  // State สำหรับเปิด-ปิด ตัวกรองเพิ่มเติม
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+
+  useEffect(() => {
+    if (cardFilterParam === "pending") {
+      setSelectedStatus("Pending");
+    } else if (cardFilterParam === "processing") {
+      setSelectedStatus("Processing");
+    } else if (cardFilterParam === "delivered") {
+      setSelectedStatus("Delivered");
+    }
+  }, [cardFilterParam]);
+  
   const currentUser = loginService.getCurrentUser();
   const userRoleId = Number(currentUser?.role_id);
   const currentUserId = currentUser?.user_id || currentUser?.id;
 
-  useClaimRealtime({
-    isStaff: true,
-    userId: currentUserId,
-    onCreated: () => fetchClaimsAndItems(false),
-    onStatusUpdated: () => fetchClaimsAndItems(false),
-  });
-
+  const currentUserRef = useRef(currentUser);
   useEffect(() => {
-    fetchClaimsAndItems(true);
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
-    const interval = setInterval(() => {
-      fetchClaimsAndItems(false);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchClaimsAndItems = async (showLoading = true) => {
+  const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const [resClaim, resItems, resAgents, resUsers, resLogs] = await Promise.all([
-        claimService.getClaim(),
-        itemService.getItems(),
-        agentService.getAgent(),
-        userService.getUsers(),
-        claimService.getClaimStatusLogs(),
+      const activeUser = currentUserRef.current;
+      const [resClaim, resItems, resAgents, resUsers, resLogs, resDeliveries] = await Promise.all([
+        claimService.getClaim().catch((err) => {
+          console.error("Fetch claims error:", err);
+          return { status: false, data: [] };
+        }),
+        itemService.getItems().catch(() => ({ data: [] })),
+        agentService.getAgent().catch(() => ({ data: [] })),
+        userService.getUsers().catch(() => ({ data: [] })),
+        claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
+        deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
 
       const aMap = {};
@@ -94,14 +100,13 @@ const StaffClaimList = () => {
       }
 
       const usersData = resUsers?.data || resUsers || [];
-      if (Array.isArray(usersData)) {
-        setUsersList(usersData);
-      }
+      if (Array.isArray(usersData)) setUsersList(usersData);
 
       const itemMap = {};
-      if (resItems && resItems.data) {
-        resItems.data.forEach((item) => {
-          itemMap[item.item_id] = item.item_name;
+      const masterItems = resItems?.data || resItems || [];
+      if (Array.isArray(masterItems)) {
+        masterItems.forEach((item) => {
+          itemMap[String(item.item_id)] = item.item_name;
         });
         setItemsMap(itemMap);
       }
@@ -117,33 +122,30 @@ const StaffClaimList = () => {
         setClaimLogsMap(lMap);
       }
 
-      const rawClaims = resClaim && resClaim.status ? resClaim.data : [];
+      const rawClaims = Array.isArray(resClaim?.data)
+        ? resClaim.data
+        : Array.isArray(resClaim)
+        ? resClaim
+        : [];
 
-      // 🟢 รวบรวมสิทธิ์ Agent ทั้ง ID และ Code
-      let userAgentIdentifiers = [];
-
-      if (Array.isArray(currentUser?.agent_ids)) {
-        currentUser.agent_ids.forEach((id) => {
-          userAgentIdentifiers.push(String(id));
-        });
-      } else if (currentUser?.agent_id) {
-        userAgentIdentifiers.push(String(currentUser.agent_id));
+      const userAgentIdentifiers = [];
+      if (Array.isArray(activeUser?.agent_ids)) {
+        activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
+      } else if (activeUser?.agent_id) {
+        userAgentIdentifiers.push(String(activeUser.agent_id));
       }
 
-      // ค้นหา agent_code ที่เกี่ยวข้องเพิ่มจาก agentsData
-      if (Array.isArray(agentsData)) {
+      if (Array.isArray(agentsData) && userAgentIdentifiers.length > 0) {
         agentsData.forEach((agent) => {
           const aId = String(agent.agent_id || agent.id || "");
           const aCode = String(agent.agent_code || agent.code || "");
-          
           if (userAgentIdentifiers.includes(aId) && aCode) {
             userAgentIdentifiers.push(aCode);
           }
         });
       }
 
-      // 🟢 กรองรายการเคลม
-      const allowedClaims = (userAgentIdentifiers.length > 0)
+      const allowedClaims = userAgentIdentifiers.length > 0
         ? rawClaims.filter((claim) => {
             const claimAgentIdStr = String(claim.agent_id || "");
             const claimAgentCodeStr = String(claim.agent_code || "");
@@ -151,7 +153,6 @@ const StaffClaimList = () => {
           })
         : rawClaims;
 
-      // ดึงรายละเอียด Item แต่ละรายการเพิ่ม
       const claimsWithItems = await Promise.all(
         allowedClaims.map(async (claim) => {
           try {
@@ -175,15 +176,59 @@ const StaffClaimList = () => {
         })
       );
 
-      setClaims(claimsWithItems);
+      const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
+      const claimsWithFlags = claimsWithItems.map((claim) => ({
+        ...claim,
+        needsDriverAssign: needsDriverAssignment(
+          getStatusName(claim.current_status || claim.status),
+          getDriverAssignments(deliveriesData, claim.claim_id).length > 0
+        ),
+      }));
+
+      setClaims(claimsWithFlags);
+
+      const allLogs = Array.isArray(logsData) ? logsData : [];
+      const staffId = activeUser?.user_id || activeUser?.id;
+      claimsWithFlags.slice(0, 200).reduce(async (prev, claim) => {
+        const count = await prev;
+        if (count >= 20) return count;
+        const written = await runAutoConfirms({
+          claim,
+          logs: allLogs.filter((l) => String(l.claim_id) === String(claim.claim_id)),
+          deliveries: deliveriesData,
+          statusName: getStatusName(claim.current_status || claim.status),
+          updateBy: staffId,
+        }).catch(() => 0);
+        return count + written;
+      }, Promise.resolve(0));
     } catch (error) {
+      console.error("fetchClaimsAndItems Error:", error);
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
+  }, []);
 
-  const getAgentNameForClaim = (claim) => {
+  useClaimRealtime({
+    isStaff: true,
+    userId: currentUserId,
+    claimIds: claims.map((c) => c.claim_id),
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
+  });
+
+  useEffect(() => {
+    fetchClaimsAndItems(true);
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchClaimsAndItems]);
+
+  const getAgentNameForClaim = useCallback((claim) => {
     const creatorUserId = String(claim.user_id || claim.created_by || "");
     const claimAgentId = String(claim.agent_id || "");
     const claimAgentCode = String(claim.agent_code || "");
@@ -196,27 +241,22 @@ const StaffClaimList = () => {
     return (matchedAgentName && matchedAgentName !== "-")
       ? matchedAgentName
       : (claim.agent_name || claim.agentName || "-");
-  };
+  }, [agentsMap, usersList]);
 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
-
     try {
       const response = await claimService.delClaim(claimId);
-      if (response && response.status) {
+      if (response?.status) {
         message.success("ลบรายการเคลมเรียบร้อยแล้ว");
-        setClaims((prevClaims) =>
-          prevClaims.filter(
-            (item) => item.claim_id !== claimId && item.claim_no !== claimId
-          )
-        );
+        setClaims((prev) => prev.filter((item) => item.claim_id !== claimId && item.claim_no !== claimId));
       }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการลบรายการ");
     }
   };
 
- const handleExportReport = () => {
+  const handleExportReport = () => {
     try {
       if (!filteredClaims || filteredClaims.length === 0) {
         message.warning("ไม่พบข้อมูลรายการเคลมสำหรับออกรายงาน");
@@ -228,7 +268,6 @@ const StaffClaimList = () => {
         dateStr = `${dayjs(startDate).format("YYYYMMDD")}_to_${dayjs(endDate).format("YYYYMMDD")}`;
       }
 
-      // 1. Map ผู้ใช้งานสำหรับหาชื่อผู้แจ้งเคลม (created_by)
       const userMap = {};
       const safeUsersList = Array.isArray(usersList) ? usersList : (usersList?.data || []);
       safeUsersList.forEach((u) => {
@@ -237,65 +276,33 @@ const StaffClaimList = () => {
         if (uId) userMap[uId] = uName;
       });
 
-      // 2. สร้าง Map สำหรับค้นหา agent_code จาก agentsRawList
       const agentCodeMap = {};
       if (Array.isArray(agentsRawList)) {
         agentsRawList.forEach((ag) => {
           if (!ag) return;
           const aId = String(ag.agent_id || ag.id || "");
           const aCode = ag.agent_code || ag.code || ag.agentCode;
-          if (aId && aCode) {
-            agentCodeMap[aId] = aCode;
-          }
+          if (aId && aCode) agentCodeMap[aId] = aCode;
         });
       }
 
-      // กำหนด Headers
       const headers = [
-        "ลำดับ",
-        "เลขที่เอกสารเคลม",
-        "วันที่แจ้งเคลม",
-        "ผู้แจ้งเคลม",
-        "รหัสร้านค้า/Agent Code",
-        "ชื่อร้านค้า/Customer Name",
-        "ชื่อสินค้า",
-        "รับจริง (ขวด/กระป๋อง)",
-        "แตกจริง (ขวด/กระป๋อง)",
-        "สาเหตุการแตก",
-        "ชื่อ พขร. ที่รับสินค้า",
-        "ทะเบียนรถรับสินค้า",
-        "วันที่ พขร. รับสินค้า",
-        "วันที่ คลังสินค้า รับสินค้า",
-        "วันที่ อนุมัติเคลม",
-        "วันที่ จัดส่งสินค้าเคลม",
-        "วันที่ จัดส่งสำเร็จ",
-        "ชื่อ พขร. ที่ส่งสินค้า",
-        "ทะเบียนรถส่งสินค้า",
-        "สถานะสินค้า",
+        "ลำดับ", "เลขที่เอกสารเคลม", "วันที่แจ้งเคลม", "ผู้แจ้งเคลม", "รหัสร้านค้า/Agent Code",
+        "ชื่อร้านค้า/Customer Name", "ชื่อสินค้า", "รับจริง (ขวด/กระป๋อง)", "แตกจริง (ขวด/กระป๋อง)",
+        "สาเหตุการแตก", "ชื่อ พขร. ที่รับสินค้า", "ทะเบียนรถรับสินค้า", "วันที่ พขร. รับสินค้า",
+        "วันที่ คลังสินค้า รับสินค้า", "วันที่ อนุมัติเคลม", "วันที่ จัดส่งสินค้าเคลม", "วันที่ จัดส่งสำเร็จ",
+        "ชื่อ พขร. ที่ส่งสินค้า", "ทะเบียนรถส่งสินค้า", "สถานะสินค้า"
       ];
 
       const csvRows = [headers.join(",")];
-
-      const cleanStr = (val) => {
-        if (val === null || val === undefined) return '""';
-        return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
-      };
-
-      const formatDate = (dateVal) => {
-        if (!dateVal) return "-";
-        const d = dayjs(dateVal);
-        return d.isValid() ? d.format("DD/MM/YYYY HH:mm") : "-";
-      };
+      const cleanStr = (val) => (val === null || val === undefined ? '""' : `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`);
+      const formatDate = (dateVal) => (dateVal && dayjs(dateVal).isValid() ? dayjs(dateVal).format("DD/MM/YYYY HH:mm") : "-");
 
       const safeParseJson = (data) => {
         if (!data) return {};
         if (typeof data === "object") return data;
         if (typeof data === "string" && data.trim().startsWith("{")) {
-          try {
-            return JSON.parse(data);
-          } catch (e) {
-            return {};
-          }
+          try { return JSON.parse(data); } catch { return {}; }
         }
         return {};
       };
@@ -305,39 +312,20 @@ const StaffClaimList = () => {
       filteredClaims.forEach((claim) => {
         const claimIdStr = String(claim.claim_id || claim.id || "");
         const logs = claimLogsMap ? (claimLogsMap[claimIdStr] || []) : [];
-        
-        let logData = {};
-        if (typeof parseDataFromLogs === "function") {
-          try { logData = parseDataFromLogs(logs) || {}; } catch (e) { logData = {}; }
-        }
+        const logData = parseExtraDataFromLogs(logs) || {};
 
-        // ข้อมูลทั่วไปของเคลม
         const claimNo = claim.claim_no || logData.claimNoInput || claim.claim_id || "-";
         const createdByName = userMap[String(claim.created_by || claim.user_id || "")] || "-";
-
-        // ดึง Agent ID และค้นหา Agent Code
         const claimAgentId = String(claim.agent_id || logData.agent_id || "");
         
-        const agentCode = 
-          claim.agent_code || 
-          claim.agentCode ||
-          logData.agent_code || 
-          logData.agentCode || 
-          agentCodeMap[claimAgentId] || 
-          "-";
+        const agentCode = claim.agent_code || claim.agentCode || logData.agent_code || logData.agentCode || agentCodeMap[claimAgentId] || "-";
+        const agentName = getAgentNameForClaim(claim) || claim.agent_name || "-";
 
-        const agentName = 
-          (typeof getAgentNameForClaim === "function" ? getAgentNameForClaim(claim) : null) || 
-          claim.agent_name || 
-          "-";
-
-        // ข้อมูล พขร. รับ-ส่ง
         const driverName = claim.driver_name || logData.driverName || "-";
         const truckPlate = claim.truck_plate || logData.truckPlate || "-";
         const deliveryDriver = claim.delivery_driver || logData.deliveryDriver || "-";
         const deliveryPlate = claim.delivery_plate || logData.deliveryPlate || "-";
 
-        // ข้อมูลวันที่สถานะ Timeline
         const claimDate = formatDate(claim.claim_date || claim.created_at);
         const driverReceiveDate = formatDate(claim.driver_receive_date || logData.driverReceiveDate);
         const warehouseReceiveDate = formatDate(claim.warehouse_receive_date || logData.warehouseReceiveDate);
@@ -345,14 +333,8 @@ const StaffClaimList = () => {
         const deliveryDate = formatDate(claim.delivery_date || logData.deliveryDate);
         const receiveFinishDate = formatDate(claim.receive_finish_date || logData.receiveFinishDate);
 
-        const displayStatusName = typeof getStatusName === "function" 
-          ? getStatusName(claim.current_status || claim.status, "staff")
-          : (claim.current_status || claim.status || "-");
-
-        // ตรวจสอบรายการสินค้า
-        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 
-          ? claim.items 
-          : [claim];
+        const displayStatusName = getStatusName(claim.current_status || claim.status, "staff");
+        const claimItemsList = Array.isArray(claim.items) && claim.items.length > 0 ? claim.items : [claim];
 
         claimItemsList.forEach((item) => {
           const itemIdStr = String(item.item_id || "");
@@ -361,26 +343,10 @@ const StaffClaimList = () => {
           const parsedRemark = safeParseJson(item.itemRemark || item.remark || claim.remark);
           const parsedLogData = safeParseJson(logData);
 
-          const receivedQty = 
-            parsedRemark.receivedQty ?? 
-            item.receivedQty ?? 
-            parsedLogData.receivedQty ?? 
-            logData.receivedQty ?? 
-            claim.receivedQty ?? 
-            item.qty ?? 
-            0;
-
-          const approvedQty = 
-            parsedRemark.approvedQty ?? 
-            item.approvedQty ?? 
-            parsedLogData.approvedQty ?? 
-            logData.approvedQty ?? 
-            claim.approvedQty ?? 
-            item.qtychang ?? 
-            0;
+          const receivedQty = parsedRemark.receivedQty ?? item.receivedQty ?? parsedLogData.receivedQty ?? logData.receivedQty ?? claim.receivedQty ?? item.qty ?? 0;
+          const approvedQty = parsedRemark.approvedQty ?? item.approvedQty ?? parsedLogData.approvedQty ?? logData.approvedQty ?? claim.approvedQty ?? item.qtychang ?? 0;
 
           let rawReason = parsedRemark.itemRemark || parsedRemark.remark || item.itemRemark || item.remark || claim.remark || claim.claim_reason || "-";
-          
           if (typeof rawReason === "string" && rawReason.trim().startsWith("{")) {
             const innerJson = safeParseJson(rawReason);
             rawReason = innerJson.itemRemark || innerJson.remark || "-";
@@ -443,7 +409,6 @@ const StaffClaimList = () => {
       return;
     }
 
-    // 1. สร้าง Map สำหรับแปลง user_id -> Name
     const userMap = {};
     usersList.forEach((u) => {
       const uId = String(u.user_id || u.id || "");
@@ -451,37 +416,27 @@ const StaffClaimList = () => {
       if (uId) userMap[uId] = uName;
     });
 
-    // 2. สร้าง Map สำหรับค้นหา claim_no จาก claim_id (ในกรณีที่ log ไม่มี claim_no ติดมา)
     const claimMap = {};
     claims.forEach((c) => {
       const cId = String(c.claim_id || c.id || "");
       if (cId) claimMap[cId] = c;
     });
 
-    // Header Column
     const headers = ["Log ID", "Claim No", "Status", "Remark", "Update By ID", "Update By Name", "Update Date"];
     const csvRows = [headers.join(",")];
-
-    const cleanStr = (val) => {
-      if (val === null || val === undefined) return '""';
-      return `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`;
-    };
+    const cleanStr = (val) => (val === null || val === undefined ? '""' : `"${String(val).replace(/"/g, '""').replace(/\n/g, " ")}"`);
 
     allLogs.forEach((log) => {
       const updateById = String(log.update_by || log.user_id || "");
       const updateByName = userMap[updateById] || "-";
-
-      // ดึงค่า rawStatus แล้วแปลงเป็นชื่อสถานะภาษาไทย
       const rawStatus = log.status || log.status_id;
       const statusName = getStatusName(rawStatus, "staff");
-
-      // ค้นหา claim_no โดยเช็คจาก log -> จากรายการ claims -> fallback ไปใช้ claim_id
       const claimIdStr = String(log.claim_id || "");
       const claimNo = log.claim_no || claimMap[claimIdStr]?.claim_no || claimIdStr || "-";
 
       const row = [
         cleanStr(log.log_id || "-"),
-        cleanStr(claimNo), // แสดง เลขที่ใบเคลม (เช่น CLM-20261006200912)
+        cleanStr(claimNo),
         cleanStr(statusName),
         cleanStr(log.remark || "-"),
         cleanStr(updateById || "-"),
@@ -507,11 +462,17 @@ const StaffClaimList = () => {
 
   const tabCounts = claims.reduce((acc, claim) => {
     const rawStatus = claim.current_status || claim.status;
-    const status = getStatusName(rawStatus);
+    const nameStatus = getStatusName(rawStatus);
+
     if (CUSTOMER_STATUS_GROUPS) {
-      Object.keys(CUSTOMER_STATUS_GROUPS).forEach((tabName) => {
-        if (CUSTOMER_STATUS_GROUPS[tabName].includes(rawStatus) || CUSTOMER_STATUS_GROUPS[tabName].includes(status)) {
-          acc[tabName] = (acc[tabName] || 0) + 1;
+      Object.keys(CUSTOMER_STATUS_GROUPS).forEach((groupName) => {
+        const allowedStatuses = CUSTOMER_STATUS_GROUPS[groupName];
+        if (
+          allowedStatuses.includes(rawStatus) ||
+          allowedStatuses.includes(String(rawStatus)) ||
+          allowedStatuses.includes(nameStatus)
+        ) {
+          acc[groupName] = (acc[groupName] || 0) + 1;
         }
       });
     }
@@ -531,15 +492,60 @@ const StaffClaimList = () => {
     .filter((claim) => {
       const rawStatus = claim.current_status || claim.status;
       const claimStatusName = getStatusName(rawStatus);
+      const statusId = String(getStatusId(rawStatus) || rawStatus);
       let matchesStatus = false;
 
-      if (selectedStatus === "ทั้งหมด") {
+      // 🟢 รองรับการกรองตาม Card เพิ่มเติม
+      if (cardFilterParam === "overdue") {
+      // เช็กสถานะว่ายังไม่สำเร็จ (ไม่เป็น 10 หรือ Delivered)
+      const isNotDelivered = statusId !== "10" && 
+                             claimStatusName !== "Delivered" && 
+                             claimStatusName !== "จัดส่งสำเร็จ" && 
+                             claimStatusName !== "จัดส่งสินค้าเคลมสำเร็จ";
+                             
+      const createdDate = claim?.created_at || claim?.claim_date || claim?.createdDate;
+      
+      // 🟢 เปลี่ยนจาก >= 7 เป็น >= 3 วัน
+      const isOver3Days = createdDate && dayjs().diff(dayjs(createdDate), "day") >= 3;
+      
+      matchesStatus = isNotDelivered && isOver3Days;
+     } else if (cardFilterParam === "processing" && selectedStatus === "Processing") {
+        // ครอบคลุม Approved, Rejected, Processing, Shipping
+        matchesStatus = ["6", "7", "8", "9", "Approved", "Rejected", "Processing", "Shipping"].includes(statusId) ||
+                        ["6", "7", "8", "9", "Approved", "Rejected", "Processing", "Shipping"].includes(claimStatusName);
+      } else if (selectedStatus === "ทั้งหมด") {
         matchesStatus = true;
       } else if (CUSTOMER_STATUS_GROUPS && CUSTOMER_STATUS_GROUPS[selectedStatus]) {
         const allowedStatuses = CUSTOMER_STATUS_GROUPS[selectedStatus] || [];
         matchesStatus = allowedStatuses.includes(rawStatus) || allowedStatuses.includes(claimStatusName);
       } else {
         matchesStatus = claimStatusName === selectedStatus || String(rawStatus) === String(selectedStatus);
+      }
+
+      const currentClaimAgentName = getAgentNameForClaim(claim);
+
+      let matchesAgentFilter = true;
+      if (selectedAgent !== "ALL") {
+        const selectedAgentObj = agentsRawList.find((ag) => {
+          const aId = String(ag.agent_id || ag.id || "");
+          const aCode = String(ag.agent_code || ag.code || "");
+          const aName = ag.agent_name || ag.name || "";
+          return selectedAgent === aId || selectedAgent === aCode || selectedAgent === aName;
+        });
+
+        const targetAgentId = String(selectedAgentObj?.agent_id || selectedAgentObj?.id || selectedAgent);
+        const targetAgentCode = String(selectedAgentObj?.agent_code || selectedAgentObj?.code || "");
+        const targetAgentName = String(selectedAgentObj?.agent_name || selectedAgentObj?.name || "").toLowerCase();
+
+        const claimAgentIdStr = String(claim.agent_id || "");
+        const claimAgentCodeStr = String(claim.agent_code || "");
+        const claimAgentNameStr = String(claim.agent_name || claim.agentName || "").toLowerCase();
+        const matchedNameStr = String(currentClaimAgentName || "").toLowerCase();
+
+        matchesAgentFilter =
+          (targetAgentId && claimAgentIdStr === targetAgentId) ||
+          (targetAgentCode && claimAgentCodeStr === targetAgentCode) ||
+          (targetAgentName && (claimAgentNameStr.includes(targetAgentName) || matchedNameStr.includes(targetAgentName)));
       }
 
       const searchLower = searchTerm.toLowerCase();
@@ -554,230 +560,346 @@ const StaffClaimList = () => {
       const matchesAgent = agentName.toString().toLowerCase().includes(searchLower);
 
       let matchesDate = true;
-      if (startDate && endDate) {
+      if (startDate || endDate) {
         const claimDate = dayjs(claim.claim_date || claim.created_at);
-        matchesDate =
-          claimDate.isAfter(dayjs(startDate).startOf("day")) &&
-          claimDate.isBefore(dayjs(endDate).endOf("day"));
-      } else if (startDate) {
-        const claimDate = dayjs(claim.claim_date || claim.created_at);
-        matchesDate = claimDate.isAfter(dayjs(startDate).startOf("day"));
-      } else if (endDate) {
-        const claimDate = dayjs(claim.claim_date || claim.created_at);
-        matchesDate = claimDate.isBefore(dayjs(endDate).endOf("day"));
+        if (startDate && endDate) {
+          const start = dayjs(startDate).startOf("day").valueOf();
+          const end = dayjs(endDate).endOf("day").valueOf();
+          const current = claimDate.valueOf();
+          matchesDate = current >= start && current <= end;
+        } else if (startDate) {
+          const start = dayjs(startDate).startOf("day").valueOf();
+          matchesDate = claimDate.valueOf() >= start;
+        } else if (endDate) {
+          const end = dayjs(endDate).endOf("day").valueOf();
+          matchesDate = claimDate.valueOf() <= end;
+        }
       }
 
-      return matchesStatus && (matchesProduct || matchesId || matchesAgent) && matchesDate;
+     return matchesStatus && matchesAgentFilter && (matchesProduct || matchesId || matchesAgent) && matchesDate;
     })
     .sort((a, b) => {
       const dateA = dayjs(a.claim_date || a.created_at || a.createdDate);
       const dateB = dayjs(b.claim_date || b.created_at || b.createdDate);
-
       const timeA = dateA.isValid() ? dateA.valueOf() : 0;
       const timeB = dateB.isValid() ? dateB.valueOf() : 0;
 
-      if (sortOrder === "oldest") {
-        return timeA - timeB; // เก่าสุดไปใหม่สุด (อายุมากสุดขึ้นก่อน)
-      } else {
-        return timeB - timeA; // ใหม่สุดไปเก่าสุด
-      }
-    })
+      return sortOrder === "oldest" ? timeA - timeB : timeB - timeA;
+    });
 
   const filterTabs = CUSTOMER_FILTER_TABS || FILTER_OPTIONS;
 
+  const activeAdvancedFilterCount = [
+    selectedAgent !== "ALL",
+    startDate !== null,
+    endDate !== null,
+    sortOrder !== "oldest"
+  ].filter(Boolean).length;
+
+  const handleResetAdvanced = () => {
+    setSelectedAgent("ALL");
+    setStartDate(null);
+    setEndDate(null);
+    setSortOrder("oldest");
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50/50 p-2.5 sm:p-4 md:p-6 w-full max-w-full overflow-hidden box-border">
-      <div className="w-full flex flex-col gap-4 sm:gap-6">
+    <div className="min-h-screen bg-gray-50/60 p-4 sm:p-6 md:p-8 w-full box-border">
+      {/* 🟢 CSS OVERRIDES บังคับปลดล็อค inset-inline-start และยึด Padding ขอบซ้าย-ขวา ทั้งหมด */}
+      <style>{`
+        .ant-select-single .ant-select-selection-item,
+        .ant-select-single .ant-select-selection-placeholder,
+        .ant-select-single .ant-select-selection-search {
+          inset-inline-start: 14px !important;
+          left: 14px !important;
+          padding-left: 0 !important;
+        }
+        .ant-select-single .ant-select-selector {
+          padding-left: 14px !important;
+          padding-right: 36px !important;
+        }
+        .ant-select-single .ant-select-arrow {
+          right: 14px !important;
+          inset-inline-end: 14px !important;
+        }
+        .ant-select-single .ant-select-selection-item > div {
+          width: 100%;
+        }
+        .ant-picker {
+          padding-left: 16px !important;
+          padding-right: 16px !important;
+        }
+        .ant-picker {
+          padding-left: 10px !important;
+          padding-right: 10px !important;
+        }
+        .ant-picker .ant-picker-input > input {
+          font-size: 13px !important;
+        }
+      `}</style>
+
+      <div className="w-full flex flex-col gap-5">
         
-        {/* Header */}
-        <header className="flex flex-row justify-between items-center gap-2 w-full">
+        {/* Header Section */}
+        <header className="flex flex-row flex-wrap justify-between items-start md:items-center gap-4 w-full">
           <div>
-            <h1 className="text-lg sm:text-2xl font-bold text-slate-800 m-0">
-              รายการการเคลมสินค้า
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0">
+              จัดการคำร้องขอเคลม
             </h1>
-            <p className="text-[11px] sm:text-sm text-gray-500 m-0 mt-0.5">
-              ตรวจสอบและติดตามสถานะรายการเคลมทั้งหมดในระบบ
+            <p className="text-xs sm:text-sm text-gray-500 m-0 mt-1">
+              ตรวจสอบ กรองข้อมูลการเคลม และบริหารจัดการสถานะประจำวัน
             </p>
           </div>
-          <div className="flex gap-2 shrink-0">
+          <div className="flex gap-2.5 shrink-0">
             {userRoleId === 1 && (
               <Button
                 type="default"
-                size="small"
-                style={{ paddingLeft: "16px", paddingRight: "16px" }}
-                className="border-blue-500 text-blue-600 hover:text-blue-700 hover:border-blue-600 rounded-xl h-9 sm:h-10 shadow-sm flex items-center justify-center px-0 sm:px-5"
+                icon={<FileTextOutlined className="text-sm" />}
+                className="border-blue-500 text-blue-600 hover:bg-blue-50 rounded-xl h-10 px-4 font-medium shadow-xs inline-flex items-center gap-1.5"
                 onClick={handleExportLog}
               >
-                <FileTextOutlined className="text-sm" />
-                <span className="hidden sm:inline text-xs sm:text-sm font-medium ml-0 sm:ml-2">Export Log</span>
+                ส่งออก Log
               </Button>
             )}
             <Button
               type="primary"
-              size="small"
-              style={{ paddingLeft: "16px", paddingRight: "16px" }}
-              className="bg-emerald-600 hover:bg-emerald-700 border-none rounded-xl h-9 sm:h-10 shadow-sm flex items-center justify-center px-0 sm:px-5"
+              icon={<DownloadOutlined className="text-sm" />}
+              className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl h-10 px-5 shadow-xs font-medium inline-flex items-center gap-1.5"
               onClick={handleExportReport}
             >
-              <DownloadOutlined className="text-sm" />
-              <span className="hidden sm:inline text-xs sm:text-sm font-medium ml-0 sm:ml-2">Report</span>
+              ส่งออกรายงาน
             </Button>
           </div>
         </header>
 
-        {/* Filter Section */}
-        <div className="flex flex-col gap-2 w-full">
-  {/* แถวที่ 1: ช่องค้นหา (กว้างเต็ม 100% อยู่บนสุดเสมอ ไม่ถูกบีบหาย) */}
-  <div className="w-full">
-    <Input
-      placeholder="ค้นหาตามชื่อสินค้า, Claim ID หรือชื่อ Agent..."
-      prefix={<SearchOutlined className="text-gray-400 mr-1 text-xs sm:text-sm" />}
-      value={searchTerm}
-      onChange={(e) => setSearchTerm(e.target.value)}
-      allowClear
-      className="w-full rounded-lg border-gray-200 bg-white hover:border-emerald-500 focus:border-emerald-500 text-xs sm:text-sm h-9 sm:h-10 shadow-sm px-3"
-    />
-  </div>
-
-  {/* แถวที่ 2: เครื่องมือกรอง (ช่วงวันที่, ปุ่มสลับเรียงลำดับ, และเลือกสถานะ) */}
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 w-full">
-    {/* ช่วงวันที่ (บนจอคอมกิน 5 คอลัมน์ / จอมือถือแบ่งคนละซีก) */}
-    <div className="sm:col-span-2 lg:col-span-5 flex gap-2">
-      <DatePicker
-        placeholder="เริ่มวันไหน"
-        suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
-        format="DD/MM/YYYY"
-        value={startDate}
-        onChange={(date) => setStartDate(date)}
-        disabledDate={(current) => endDate && current && current.isAfter(endDate, "day")}
-        style={{ paddingLeft: "8px", paddingRight: "8px" }}
-        className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
-      />
-      <DatePicker
-        placeholder="ถึงวันไหน"
-        suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
-        format="DD/MM/YYYY"
-        value={endDate}
-        onChange={(date) => setEndDate(date)}
-        disabledDate={(current) => startDate && current && current.isBefore(startDate, "day")}
-        style={{ paddingLeft: "8px", paddingRight: "8px" }}
-        className="w-full rounded-lg border-gray-200 bg-white h-9 sm:h-10 text-xs shadow-sm"
-      />
-    </div>
-
-    {/* ปุ่มเรียงลำดับ (บนจอคอมกิน 3 คอลัมน์) */}
-    <div className="sm:col-span-1 lg:col-span-3">
-      <Select
-        value={sortOrder}
-        onChange={(val) => setSortOrder(val)}
-        className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
-        options={[
-          { value: "oldest", label: "🕒 เก่าสุด ➔ ใหม่สุด" },
-          { value: "newest", label: "🆕 ใหม่สุด ➔ เก่าสุด" },
-        ]}
-      />
-    </div>
-
-    {/* ปุ่มสถานะ (บนจอคอมกิน 4 คอลัมน์) */}
-    <div className="sm:col-span-1 lg:col-span-4">
-      <Select
-        value={selectedStatus}
-        onChange={(val) => setSelectedStatus(val)}
-        className="w-full h-9 sm:h-10 shadow-sm rounded-lg text-xs"
-        suffixIcon={
-          <div style={{ paddingRight: "4px" }}>
-            <FilterOutlined className="text-gray-400 text-xs" />
-          </div>
-        }
-        labelRender={({ value }) => {
-          const count =
-            value === "ทั้งหมด"
-              ? claims.length
-              : tabCounts[value] ?? statusCounts[value] ?? 0;
-          return (
-            <div className="flex justify-between items-center w-full pr-1">
-              <span className="text-xs font-medium text-slate-700" style={{ paddingLeft: "4px" }}>
-                {value}
-              </span>
-              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full ml-1">
-                {count} รายการ
-              </span>
+        {/* 🟢 FILTER AREA */}
+        <div className="flex flex-col gap-3 w-full">
+          
+          {/* Row 1: Search Input & Main Status Select */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-8">
+              <Input
+                placeholder="ค้นหาด่วน (Claim ID, ชื่อสินค้า, ชื่อ Agent/ร้านค้า)..."
+                prefix={<SearchOutlined className="text-gray-400 mr-2 text-sm" />}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                allowClear
+                className="w-full rounded-xl border-gray-200 bg-white hover:border-blue-500 focus:border-blue-500 text-sm h-10 px-4 shadow-2xs"
+              />
             </div>
-          );
-        }}
-        options={filterTabs.map((tab) => {
-          const count =
-            tab === "ทั้งหมด"
-              ? claims.length
-              : tabCounts[tab] ?? statusCounts[tab] ?? 0;
-          return {
-            value: tab,
-            label: (
-              <div className="flex justify-between items-center w-full px-0.5">
-                <span className="text-xs font-medium text-slate-700">{tab}</span>
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {count} รายการ
+            <div className="lg:col-span-4">
+              <Select
+                value={selectedStatus}
+                onChange={(val) => setSelectedStatus(val)}
+                className="w-full h-10 text-sm rounded-xl shadow-2xs"
+                style={{
+                  paddingLeft: '12px',
+                  paddingRight: '12px',
+                }}
+                suffixIcon={
+                  <FilterOutlined 
+                    className="text-gray-400 text-xs" 
+                    style={{ marginRight: '6px' }}
+                  />
+                }
+                labelRender={({ value }) => {
+                  const count = value === "ทั้งหมด" ? claims.length : tabCounts[value] ?? statusCounts[value] ?? 0;
+                  return (
+                    <div className="flex justify-between items-center w-full px-2">
+                      <span className="text-sm font-medium text-slate-700">{`${value}`}</span>
+                      <span className="text-xs font-semibold text-blue-600 ml-2">
+                        {count}
+                      </span>
+                    </div>
+                  );
+                }}
+                options={filterTabs.map((tab) => {
+                  const count = tab === "ทั้งหมด" ? claims.length : tabCounts[tab] ?? statusCounts[tab] ?? 0;
+                  return {
+                    value: tab,
+                    label: (
+                      <div className="flex justify-between items-center w-full px-1">
+                        <span className="text-sm font-medium text-slate-700">{tab}</span>
+                        <span className="text-xs font-semibold text-slate-400 ml-2">
+                          {count}
+                        </span>
+                      </div>
+                    ),
+                  };
+                })}
+              />
+            </div>
+          </div>
+
+          {/* Row 2: Collapsible Toggle Button */}
+          <div className="flex flex-wrap justify-between items-center gap-2 px-1 pt-1">
+            <button
+              onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-blue-600 transition-colors cursor-pointer border-none bg-transparent p-0 whitespace-nowrap shrink-0"
+            >
+              <span>ตัวกรองเพิ่มเติม</span>
+              {activeAdvancedFilterCount > 0 && (
+                <span className="text-xs font-semibold text-blue-600">
+                  ({activeAdvancedFilterCount})
                 </span>
+              )}
+              {isAdvancedOpen ? (
+                <UpOutlined className="text-[10px] text-slate-500 ml-0.5" />
+              ) : (
+                <DownOutlined className="text-[10px] text-slate-500 ml-0.5" />
+              )}
+            </button>
+
+            {activeAdvancedFilterCount > 0 && isAdvancedOpen && (
+              <button
+                onClick={handleResetAdvanced}
+                style={{ color: '#3b82f6' }}
+                className="inline-flex items-center gap-1 text-xs font-normal bg-transparent border-none cursor-pointer p-0 whitespace-nowrap ml-auto transition-colors hover:opacity-80"
+              >
+                <ClearOutlined className="text-xs" style={{ color: '#3b82f6' }} />
+                <span style={{ color: '#3b82f6' }}>ล้างตัวกรอง</span>
+              </button>
+            )}
+          </div>
+
+          {/* Row 3: Advanced Filters Grid */}
+          {isAdvancedOpen && (
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-12 gap-3 pt-1">
+              
+              {/* Agent Select */}
+              <div className="lg:col-span-4 flex flex-col gap-1.5">
+                <label className="text-[11px] font-normal text-gray-500 px-1">กรองตามชื่อ Agent / ร้านค้า:</label>
+                <Select
+                  value={selectedAgent}
+                  onChange={(val) => setSelectedAgent(val)}
+                  className="w-full h-10 text-sm rounded-xl shadow-2xs"
+                  style={{
+                    paddingLeft: '12px',
+                    paddingRight: '12px',
+                  }}
+                  suffixIcon={
+                    <DownOutlined 
+                      className="text-gray-400 text-[10px]" 
+                      style={{ marginRight: '6px' }}
+                    />
+                  }
+                  options={[
+                    { value: "ALL", label: "Agent ทั้งหมด" },
+                    ...agentsRawList.map((ag) => {
+                      const aId = String(ag.agent_id || ag.id || "");
+                      const aCode = String(ag.agent_code || ag.code || "");
+                      const aName = ag.agent_name || ag.name || "";
+                      return {
+                        value: aId || aCode || aName, 
+                        label: aName || aCode || `Agent ${aId}`,
+                        agentObj: ag,
+                      };
+                    }),
+                  ]}
+                />
               </div>
-            ),
-          };
-        })}
-      />
-    </div>
-  </div>
-</div>
+
+              {/* Date Range Inputs */}
+              <div className="lg:col-span-5 flex flex-col gap-1.5">
+                <label className="text-[11px] font-normal text-gray-500 px-1">ช่วงวันที่เคลม:</label>
+                <div className="flex gap-2 w-full">
+                  <DatePicker
+                    placeholder="เริ่มวันไหน"
+                    suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
+                    format="DD/MM/YYYY"
+                    value={startDate}
+                    onChange={(date) => setStartDate(date)}
+                    disabledDate={(current) => endDate && current && current.isAfter(endDate, "day")}
+                    className="w-full rounded-xl border-gray-200 bg-white h-10 text-sm shadow-2xs"
+                  />
+                  <DatePicker
+                    placeholder="ถึงวันไหน"
+                    suffixIcon={<CalendarOutlined className="text-gray-400 text-xs" />}
+                    format="DD/MM/YYYY"
+                    value={endDate}
+                    onChange={(date) => setEndDate(date)}
+                    disabledDate={(current) => startDate && current && current.isBefore(startDate, "day")}
+                    className="w-full rounded-xl border-gray-200 bg-white h-10 text-sm shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Sort Order Select */}
+              <div className="lg:col-span-3 flex flex-col gap-1.5">
+                <label className="text-[11px] font-normal text-gray-500 px-1">เรียงลำดับเวลา:</label>
+                <Select
+                  value={sortOrder}
+                  onChange={(val) => setSortOrder(val)}
+                  className="w-full h-10 text-xs rounded-xl shadow-2xs"
+                  style={{
+                    paddingLeft: '12px',
+                    paddingRight: '12px',
+                  }}
+                  suffixIcon={
+                    <DownOutlined 
+                      className="text-gray-400 text-[10px]" 
+                      style={{ marginRight: '6px' }}
+                    />
+                  }
+                  options={[
+                    { value: "oldest", label: "เก่าสุด ➔ ใหม่สุด" },
+                    { value: "newest", label: "ใหม่สุด ➔ เก่าสุด" },
+                  ]}
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Claim Cards List */}
         {loading ? (
-          <div className="bg-white rounded-2xl p-12 text-center w-full shadow-sm">
-            <Spin size="large" tip="กำลังโหลดข้อมูล..." />
+          <div className="bg-white rounded-2xl p-12 text-center w-full shadow-xs">
+            <Spin size="large" description="กำลังโหลดข้อมูล..." />
           </div>
         ) : filteredClaims.length > 0 ? (
-          <div className="flex flex-col gap-2.5 sm:gap-3 w-full">
+          <div className="flex flex-col gap-3 w-full">
+            {filteredClaims.map((claim) => {
+              const agentName = getAgentNameForClaim(claim);
 
-{filteredClaims.map((claim) => {
-  const agentName = getAgentNameForClaim(claim);
+              const getDisplayProductName = () => {
+                if (Array.isArray(claim.items) && claim.items.length > 0) {
+                  const names = claim.items
+                    .map((i) => {
+                      const idStr = String(i.item_id || "");
+                      return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
+                    })
+                    .filter(Boolean);
 
-  // ฟังก์ชันดึงชื่อสินค้าทั้งหมดและเชื่อมด้วยเครื่องหมาย "+"
-  const getDisplayProductName = () => {
-    if (Array.isArray(claim.items) && claim.items.length > 0) {
-      const names = claim.items
-        .map((i) => {
-          const idStr = String(i.item_id || "");
-          return itemsMap[idStr] || i.item_name || i.name || (idStr ? `สินค้า ID: ${idStr}` : "");
-        })
-        .filter(Boolean);
+                  if (names.length > 0) return names.join(" + ");
+                }
 
-      if (names.length > 0) return names.join(" + ");
-    }
+                const singleIdStr = String(claim.item_id || "");
+                return (
+                  itemsMap[singleIdStr] ||
+                  claim.item_name ||
+                  (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
+                );
+              };
 
-    const singleIdStr = String(claim.item_id || "");
-    return (
-      itemsMap[singleIdStr] ||
-      claim.item_name ||
-      (singleIdStr ? `สินค้า ID: ${singleIdStr}` : "ไม่พบข้อมูลสินค้า")
-    );
-  };
-
-  return (
-    <StaffClaimCard
-      key={claim.claim_id || claim.claim_no}
-      claim={{
-        ...claim,
-        current_status: getStatusName(claim.current_status || claim.status, "staff"),
-        status: getStatusName(claim.status || claim.current_status, "staff"),
-        item_name: getDisplayProductName(),
-        agent_name: agentName,
-      }}
-      onDelete={handleDeleteClaim}
-      hideDeleteWhenDisabled={true}
-      layout="horizontal"
-    />
-  );
-})}
+              return (
+                <StaffClaimCard
+                  key={claim.claim_id || claim.claim_no}
+                  claim={{
+                    ...claim,
+                    current_status: getStatusName(claim.current_status || claim.status, "staff"),
+                    status: getStatusName(claim.status || claim.current_status, "staff"),
+                    item_name: getDisplayProductName(),
+                    agent_name: agentName,
+                  }}
+                  onDelete={handleDeleteClaim}
+                  hideDeleteWhenDisabled={true}
+                  layout="horizontal"
+                />
+              );
+            })}
           </div>
         ) : (
-          <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 sm:p-12 text-center my-2 w-full">
+          <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-12 text-center w-full">
             <Empty description="ไม่พบรายการเคลมสินค้า" />
           </div>
         )}

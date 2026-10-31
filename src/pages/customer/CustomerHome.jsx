@@ -1,17 +1,20 @@
 // src/pages/customer/CustomerHome.jsx
 
-import React, { useState, useEffect } from "react";
+import dayjs from "dayjs";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
-import { RightOutlined, FileSearchOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { RightOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined, FileAddOutlined } from "@ant-design/icons";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
-import { STATUS_PRIORITY, getStatusName } from "../../constants/claimStatus";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
+import { filterClaimsForUser } from "../../utils/claimAccess";
+import { getDashboardSummary, getLatestClaims, enrichClaimsWithItems } from "../../utils/claimDashboard";
+
+const POLL_INTERVAL_MS = 15000;
 
 const CustomerHome = () => {
   const navigate = useNavigate();
@@ -21,37 +24,22 @@ const CustomerHome = () => {
   const [allClaims, setAllClaims] = useState([]);
 
   const user = loginService.getCurrentUser();
-  const role = user?.role || user?.user_type;
   const currentUserId = user?.user_id || user?.id;
 
-  useClaimRealtime({
-    isStaff: false,
-    userId: currentUserId,
-    onCreated: () => fetchClaimsAndItems(false),
-    onStatusUpdated: () => fetchClaimsAndItems(false),
-  });
-  
-  // 🟢 1. ตั้งเวลาดึงข้อมูลเบื้องหลังนุ่มนวลทุกๆ 5 วินาที
+  const userRef = useRef(user);
   useEffect(() => {
-    fetchClaimsAndItems(true); // โหลดครั้งแรกขึ้น Spin ปกติ
+    userRef.current = user;
+  }, [user]);
 
-    const interval = setInterval(() => {
-      fetchClaimsAndItems(false); // รอบถัดไปดึงเบื้องหลังเงียบๆ ไม่ขึ้น Spin
-    }, 5000);
+  const summary = getDashboardSummary(allClaims);
 
-    return () => clearInterval(interval);
-  }, []);
+  const itemsCacheRef = useRef(new Map());
 
-  const getPriority = (item) => {
-    if (!item) return 99;
-    const statusVal = item?.current_status || item?.status;
-    const statusName = getStatusName(statusVal, "customer");
-    return STATUS_PRIORITY[statusVal] || STATUS_PRIORITY[statusName] || 99;
-  };
+  const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
+    const activeUser = userRef.current;
+    const activeRole = activeUser?.role || activeUser?.user_type;
 
-  // 🟢 2. ปรับฟังก์ชัน fetchClaimsAndItems ให้รับพารามิเตอร์ showLoading
-  const fetchClaimsAndItems = async (showLoading = true) => {
-    if (role === "staff" || role === "admin") {
+    if (activeRole === "staff" || activeRole === "admin") {
       navigate("/staff", { replace: true });
       return;
     }
@@ -64,112 +52,63 @@ const CustomerHome = () => {
         agentService.getAgent().catch(() => []),
       ]);
 
-      if (resItems && resItems.data) {
+      if (resItems?.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[String(item.item_id)] = item.item_name;
+          const name = item.item_name;
+          if (item.item_id !== null && item.item_id !== undefined) map[String(item.item_id).trim()] = name;
+          if (item.item_code) map[String(item.item_code).trim()] = name;
         });
         setItemsMap(map);
       }
 
-      let userAgentIdentifiers = [];
-
-      if (Array.isArray(user?.agent_ids)) {
-        user.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
-      }
-      if (user?.agent_id) {
-        userAgentIdentifiers.push(String(user.agent_id));
-      }
-
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
-      const allowedClaims = rawClaims.filter((claim) => {
-        const claimAgentIdStr = String(claim.agent_id || "");
-        const claimAgentCodeStr = String(claim.agent_code || "");
-        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+      const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
 
-        const isAgentMatch =
-          userAgentIdentifiers.length > 0 &&
-          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = currentUserId && claimCreatedByStr === currentUserId;
+      const claimsWithItems = await enrichClaimsWithItems(
+        allowedClaims,
+        (id) => claimService.getClaimItems(id),
+        itemsCacheRef.current
+      );
 
-        return isAgentMatch || isUserMatch;
-      });
-
-      if (allowedClaims.length > 0) {
-        const claimsWithItems = await Promise.all(
-          allowedClaims.map(async (claim) => {
-            try {
-              const resItems = await claimService.getClaimItems(claim.claim_id);
-              const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
-              if (rawItems.length > 0) {
-                const firstItem = rawItems[0];
-                return {
-                  ...claim,
-                  item_id: firstItem.item_id,
-                  qty: firstItem.qty,
-                  remark: firstItem.remark,
-                  lot_no: firstItem.lot_no,
-                  items: rawItems,
-                };
-              }
-            } catch (err) {
-              console.error(`Error fetching items for claim ${claim.claim_id}`, err);
-            }
-            return claim;
-          })
-        );
-
-        setAllClaims(claimsWithItems);
-
-        const sortedClaims = claimsWithItems.sort((a, b) => {
-          const priorityA = getPriority(a);
-          const priorityB = getPriority(b);
-
-          if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-          }
-
-          const dateA = dayjs(a.claim_date || a.created_at);
-          const dateB = dayjs(b.claim_date || b.created_at);
-          return dateB.valueOf() - dateA.valueOf();
-        });
-
-        setLatestClaims(sortedClaims.slice(0, 8));
-      } else {
-        setAllClaims([]);
-        setLatestClaims([]);
-      }
+      setAllClaims(claimsWithItems);
+      setLatestClaims(getLatestClaims(claimsWithItems, 8));
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
       if (showLoading) setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useClaimRealtime({
+    isStaff: false,
+    userId: currentUserId,
+    claimIds: allClaims.map((c) => c.claim_id),
+    onCreated: () => fetchClaimsAndItems(false),
+    onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
+  });
+
+  useEffect(() => {
+    fetchClaimsAndItems(true);
+    const interval = setInterval(() => {
+      fetchClaimsAndItems(false);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [fetchClaimsAndItems]);
 
   const handleDeleteClaim = async (e, claimId) => {
     if (e) e.stopPropagation();
 
     try {
       const response = await claimService.delClaim(claimId);
-      if (response.status) {
+      if (response?.status) {
         message.success("ลบรายการเคลมเรียบร้อยแล้ว");
-        setLatestClaims((prev) =>
-          prev.filter((item) => (item.claim_id || item.claim_no) !== claimId)
-        );
-        setAllClaims((prev) =>
-          prev.filter((item) => (item.claim_id || item.claim_no) !== claimId)
-        );
+        setLatestClaims((prev) => prev.filter((item) => (item.claim_id || item.claim_no) !== claimId));
+        setAllClaims((prev) => prev.filter((item) => (item.claim_id || item.claim_no) !== claimId));
       }
     } catch (error) {
       message.error(error.message || "เกิดข้อผิดพลาดในการลบรายการ");
@@ -177,87 +116,84 @@ const CustomerHome = () => {
   };
 
   return (
-    <div
-      className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6"
-      style={{ boxSizing: "border-box", width: "100%" }}
-    >
+    <div className="p-4 sm:p-6 md:p-8 bg-gray-100 min-h-screen flex flex-col gap-6" style={{ boxSizing: "border-box", width: "100%" }}>
       <div className="w-full flex flex-col gap-6" style={{ boxSizing: "border-box" }}>
-        {/* Header */}
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 m-0">
             สวัสดี, คุณ{user?.full_name || user?.username || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
-            ติดตามสถานะหรือแจ้งเคลมสินค้าใหม่ได้ง่ายๆ ที่นี่
+            ติดตามสถานะเคลมสินค้าใหม่ได้ง่ายๆ ที่นี่
           </p>
         </header>
 
-        {/* Dashboard Cards */}
+        {/* Dashboard 4 Summary Cards */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการเคลมใหม่</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-blue-600 font-sans tracking-tight">
-                {allClaims.filter((item) => getPriority(item) <= 2).length}
-              </span>
-              <span className="text-xs text-blue-500 font-medium">รอการพิจารณา</span>
+          {[
+            {
+              key: "new",
+              to: "/customer/list-claim?filter=new",
+              label: "รายการใหม่",
+              value: summary.new,
+              hint: "Pending รอพิจารณา",
+              icon: <FileAddOutlined />,
+              tone: { text: "text-blue-600", sub: "text-blue-500", bg: "bg-blue-50", hover: "hover:border-blue-300" },
+            },
+            {
+              key: "processing",
+              to: "/customer/list-claim?filter=processing",
+              label: "กำลังดำเนินการ",
+              value: summary.processing,
+              hint: "Approved ➔ Shipping",
+              icon: <ClockCircleOutlined />,
+              tone: { text: "text-amber-600", sub: "text-amber-500", bg: "bg-amber-50", hover: "hover:border-amber-300" },
+            },
+            {
+              key: "delivered",
+              to: "/customer/list-claim?filter=delivered",
+              label: "สำเร็จ",
+              value: summary.delivered,
+              hint: "Delivered แล้ว",
+              icon: <CheckCircleOutlined />,
+              tone: { text: "text-emerald-600", sub: "text-emerald-500", bg: "bg-emerald-50", hover: "hover:border-emerald-300" },
+            },
+            {
+              key: "overdue3",
+              to: "/customer/list-claim?filter=overdue3",
+              label: "ค้างเกิน 3 วัน",
+              value: summary.overdue3,
+              hint: `ยังไม่ Delivered (เกิน 7 วัน ${summary.overdue7})`,
+              icon: <WarningOutlined />,
+              tone: { text: "text-rose-600", sub: "text-rose-500", bg: "bg-rose-50", hover: "hover:border-rose-300" },
+            },
+          ].map((card) => (
+            <div
+              key={card.key}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(card.to)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") navigate(card.to);
+              }}
+              className={`bg-white p-4 sm:px-7 sm:py-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-2 cursor-pointer hover:shadow-md ${card.tone.hover} transition-all min-w-0`}
+              style={{ boxSizing: "border-box", overflow: "hidden" }}
+            >
+              <div className="flex flex-col gap-1 min-w-0">
+                <span className="text-xs sm:text-sm font-medium text-gray-500 truncate">{card.label}</span>
+                <span className={`text-3xl sm:text-4xl font-extrabold ${card.tone.text} font-sans tracking-tight`}>
+                  {card.value}
+                </span>
+                <span className={`text-[11px] sm:text-xs ${card.tone.sub} font-medium leading-snug`}>{card.hint}</span>
+              </div>
+              <div
+                className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl ${card.tone.bg} ${card.tone.text} flex items-center justify-center text-base sm:text-xl shrink-0`}
+              >
+                {card.icon}
+              </div>
             </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <FileSearchOutlined />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการกำลังดำเนินการ</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight">
-                {allClaims.filter((item) => {
-                  const p = getPriority(item);
-                  return p >= 3 && p <= 7;
-                }).length}
-              </span>
-              <span className="text-xs text-amber-500 font-medium">อยู่ระหว่างการจัดการ</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <ClockCircleOutlined />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการที่สำเร็จ</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight">
-                {allClaims.filter((item) => getPriority(item) === 8).length}
-              </span>
-              <span className="text-xs text-emerald-500 font-medium">จัดส่ง/เสร็จสิ้นแล้ว</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <CheckCircleOutlined />
-            </div>
-          </div>
-
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between" style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการค้างเกิน 3 วัน</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight">
-                {allClaims.filter((item) => {
-                  const priority = getPriority(item);
-                  if (priority === 8 || priority === 9 || priority === 10) return false;
-                  const rawDate = item?.updated_at || item?.approved_at || item?.claim_date || item?.created_at;
-                  if (!rawDate) return false;
-                  const parsedDate = dayjs(rawDate);
-                  return parsedDate.isValid() && dayjs().diff(parsedDate, "day") >= 3;
-                }).length}
-              </span>
-              <span className="text-xs text-rose-500 font-medium">ต้องเร่งดำเนินการ</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <WarningOutlined />
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* List Section */}
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg sm:text-xl font-bold text-slate-800 m-0">รายการเคลมล่าสุด</h2>
@@ -306,6 +242,7 @@ const CustomerHome = () => {
                     onDelete={handleDeleteClaim}
                     hideDeleteWhenDisabled={true}
                     layout="horizontal"
+                    itemsMap={itemsMap}
                   />
                 );
               })}

@@ -33,8 +33,8 @@ function App() {
 
         <Content
           style={{
-            padding: "24px",
-            background: "#f5f5f5",
+            padding: 0,
+            background: "#f8fafc",
             overflowY: "auto",
             flex: 1,
           }}

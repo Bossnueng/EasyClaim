@@ -3,19 +3,17 @@ import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import StaffClaimUpdate from "../pages/staff/StaffClaimUpdate";
 import StaffHome from "../pages/staff/StaffHome";
 import StaffClaimList from "../pages/staff/StaffClaimList";
-import StaffChat from "../pages/staff/StaffChat";
-import CustomerChat from "../pages/customer/CustomerChat";
 import CustomerClaimList from "../pages/customer/CustomerClaimList";
 import CustomerHome from "../pages/customer/CustomerHome";
-import CustomerNewClaim from "../pages/customer/CustomerNewClaim";
 import CustomerClaimDatail from "../pages/customer/CustomerClaimDetail";
 import AgentManagement from "../pages/admin/AgentManagement";
 import RoleManagement from "../pages/admin/RoleManagement";
-import Login from "../pages/auth/Login";
+import Login from "../pages/auth/login";
 import UserSettings from "../pages/auth/UserSettings";
-import CustomerClaimProcessing from "../pages/customer/CustomerClaimProcessing";
 import UserManagement from "../pages/admin/UserManagement";
+import SignatureManagement from "../pages/admin/SignatureManagement";
 import loginService from "../services/loginService";
+import { isStaffUser, isAdminUser } from "../constants/roles";
 
 // 🟢 ดึงข้อมูลผู้ใช้ และตรวจสอบสถานะ Authentication ที่ถูกต้อง
 const getValidUser = () => {
@@ -33,14 +31,7 @@ const getValidUser = () => {
 };
 
 // 🟢 เช็กว่าเป็น Staff/Admin (รองรับ role_id 1, 3, 4, 5)
-const isStaff = (user) => {
-  if (!user) return false;
-  const roleId = Number(user.role_id);
-  const roleStr = String(user.role || user.user_type || "").toLowerCase();
-  
-  const staffRoleIds = [1, 3, 4, 5]; 
-  return staffRoleIds.includes(roleId) || roleStr === "staff" || roleStr === "admin";
-};
+const isStaff = (user) => isStaffUser(user);
 
 // 1. ตรวจสอบ Login
 const ProtectedRoute = () => {
@@ -56,6 +47,14 @@ const StaffRoute = () => {
   const user = getValidUser();
   if (!isStaff(user)) {
     return <Navigate to="/customer" replace />;
+  }
+  return <Outlet />;
+};
+
+const AdminRoute = () => {
+  const user = getValidUser();
+  if (!isAdminUser(user)) {
+    return <Navigate to="/staff" replace />;
   }
   return <Outlet />;
 };
@@ -103,17 +102,20 @@ function AppRouter() {
       <Route element={<ProtectedRoute />}>
         <Route element={<StaffRoute />}>
           <Route path="/admin/:claimId" element={<StaffClaimUpdate />} />
-          <Route path="/staff/users" element={<UserManagement />} />
           <Route path="/staff" element={<StaffHome />} />
           <Route path="/staff/list-claim" element={<StaffClaimList />} />
           <Route path="/staff/update-claim/:claimId" element={<StaffClaimUpdate />} />
-          <Route path="/staff/chat" element={<StaffChat />} />
+     
+          
           <Route path="/staff/setting" element={<UserSettings />} />
-          <Route path="/staff/users" element={<UserManagement />} />
-          <Route path="/staff/agents" element={<AgentManagement />} />
-          <Route path="/staff/roles" element={<RoleManagement />} />
-          <Route path="/staff/new-claim" element={<CustomerNewClaim />} />
-          <Route path="/staff/new-claim/processing/:claimId" element={<CustomerClaimProcessing />} />
+          <Route element={<AdminRoute />}>
+            <Route path="/staff/users" element={<UserManagement />} />
+            <Route path="/staff/agents" element={<AgentManagement />} />
+            <Route path="/staff/roles" element={<RoleManagement />} />
+            <Route path="/staff/signatures" element={<SignatureManagement />} />
+          </Route>
+          
+      
         </Route>
 
         <Route element={<CustomerRoute />}>
@@ -121,7 +123,7 @@ function AppRouter() {
           <Route path="/customer/list-claim" element={<CustomerClaimList />} />
           <Route path="/customer/detail-claim/:claimId" element={<CustomerClaimDatail />} />
          
-          <Route path="/customer/chat/:claimId?" element={<CustomerChat />} />
+        
           <Route path="/customer/setting" element={<UserSettings />} />
         </Route>
       </Route>

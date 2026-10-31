@@ -3,13 +3,14 @@ import {
   ShopOutlined,
   SafetyCertificateOutlined,
   HomeOutlined,
-  FileAddOutlined,
   HistoryOutlined,
   WechatOutlined,
   SettingFilled,
   UserOutlined, // 🟢 1. Import Icon สำหรับจัดการผู้ใช้
+  FormOutlined,
 } from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
+import { isStaffUser, isAdminUser, CUSTOMER_ROLE_ID } from "../constants/roles";
 
 const MenuList = () => {
   const location = useLocation();
@@ -19,8 +20,8 @@ const MenuList = () => {
   const user = savedUser ? JSON.parse(savedUser) : null;
   const role = user?.role_id; // role_id ของผู้ใช้
 
-  const isStaffRole = [1, 4, 5].includes(role);
-  const isAdminRole = Number(role) === 1; // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
+  const isStaffRole = isStaffUser(user);
+  const isAdminRole = isAdminUser(user); // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
 
   const getSelectedKey = () => {
     // Customer
@@ -51,6 +52,7 @@ const MenuList = () => {
     }
     if (location.pathname.includes("/staff/agents")) return "staff-agents";
     if (location.pathname.includes("/staff/roles")) return "staff-roles";
+    if (location.pathname.includes("/staff/signatures")) return "staff-signatures";
 
     if (location.pathname.includes("/staff/setting")) {
       return "staff-setting";
@@ -96,9 +98,6 @@ const MenuList = () => {
           {/* 🟢 4. แสดงเมนูนี้เฉพาะผู้ที่มี role_id === 1 เท่านั้น */}
           {isAdminRole && (
             <>
-              <Menu.Item key="staff-create-claim" icon={<FileAddOutlined />}>
-                <NavLink to="/staff/new-claim">สร้างรายการเคลม</NavLink>
-              </Menu.Item>
 
               <Menu.Item key="staff-users" icon={<UserOutlined />}>
                 <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
@@ -111,6 +110,10 @@ const MenuList = () => {
               <Menu.Item key="staff-roles" icon={<SafetyCertificateOutlined />}>
                 <NavLink to="/staff/roles">จัดการสิทธิ์ (Role)</NavLink>
               </Menu.Item>
+
+              <Menu.Item key="staff-signatures" icon={<FormOutlined />}>
+                <NavLink to="/staff/signatures">ลายเซ็นผู้สอบทาน</NavLink>
+              </Menu.Item>
             </>
           )}
 
@@ -121,31 +124,11 @@ const MenuList = () => {
       )}
 
       {/* ==================== CUSTOMER MENUS ==================== */}
-      {role == 2 && (
+      {Number(role) === CUSTOMER_ROLE_ID && (
         <>
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
             <NavLink to="/customer">หน้าแรก</NavLink>
           </Menu.Item>
-          {/**
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-           * 
-           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
-          </Menu.Item>
-           * 
-           * 
-=======
-           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
-          </Menu.Item>
->>>>>>> Stashed changes
-=======
-           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
-          </Menu.Item>
->>>>>>> Stashed changes
-           */}
           
           <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>
             <NavLink to="/customer/list-claim">รายการเคลม</NavLink>

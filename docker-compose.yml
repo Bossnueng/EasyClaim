@@ -1,0 +1,46 @@
+# EasyClaim — Frontend (Nginx) + Backend (Node/Express + Socket.IO)
+# ฐานข้อมูล SQL Server อยู่ภายนอก (ตั้งค่าใน backend/.env)
+#
+#   docker compose up -d --build
+#   เปิดเว็บ:  http://<IP เครื่อง>:8080
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: easyclaim-backend:latest
+    container_name: easyclaim-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: "5001"
+      TZ: Asia/Bangkok
+      # ใน container "127.0.0.1 / localhost" คือตัว container เอง -> ชี้ไปที่เครื่อง Windows แทน
+      # (ค่านี้ทับ DB_SERVER / DB_PORT ใน backend/.env เฉพาะตอนรันใน Docker)
+      DB_SERVER: "${DOCKER_DB_SERVER:-host.docker.internal}"
+      DB_PORT: "${DOCKER_DB_PORT:-1433}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${BACKEND_PORT:-5001}:5001"
+    volumes:
+      - ./backend/src/uploads:/app/src/uploads
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+        VITE_API_BASE_URL: "${DOCKER_API_BASE_URL:-}"
+        VITE_AUTO_CONFIRM_SUBMIT_SECONDS: "${VITE_AUTO_CONFIRM_SUBMIT_SECONDS:-86400}"
+        VITE_AUTO_CONFIRM_RECEIVE_SECONDS: "${VITE_AUTO_CONFIRM_RECEIVE_SECONDS:-259200}"
+    image: easyclaim-frontend:latest
+    container_name: easyclaim-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${WEB_PORT:-8080}:80"

@@ -1,4 +1,3 @@
-// [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลังสินค้า — สเปก: BACKEND_SIGNATURE_API.md (root โปรเจกต์)
 const express = require("express");
 const router = express.Router();
 

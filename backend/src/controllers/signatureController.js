@@ -1,11 +1,3 @@
-// [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลังสินค้า (ใช้ในเอกสารใบรับ-เบิก-ส่ง สินค้าแตก)
-// สเปก: BACKEND_SIGNATURE_API.md (root โปรเจกต์)
-//
-// - สร้างตาราง warehouse_signatures ให้อัตโนมัติถ้ายังไม่มี (รันซ้ำได้) — SQL เดียวกันอยู่ที่ backend/database/warehouse_signatures.sql
-// - POST/DELETE อนุญาตเฉพาะผู้ใช้ role_id = 1 (ตรวจจาก updated_by ในตาราง users)
-//   หมายเหตุ: ไม่ใช้ verifyToken เพราะ middleware เดิมยังเขียนแบบ PostgreSQL และ export ไม่ตรงกับที่ route อื่นเรียกใช้
-// - ตอบ error การตรวจสิทธิ์เป็น 400 (ไม่ใช่ 401/403) เพราะ frontend จะ logout อัตโนมัติเมื่อได้ 401/403
-
 const path = require("path");
 const fs = require("fs");
 const { sql, connectDB } = require("../config/db");

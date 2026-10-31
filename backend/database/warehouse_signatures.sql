@@ -1,4 +1,3 @@
--- [DOC-FIX 2026-10-31] ตารางลายเซ็นผู้สอบทานรายคลังสินค้า
 -- หมายเหตุ: backend จะสร้างตารางนี้ให้อัตโนมัติเมื่อเริ่มทำงาน (signatureController.ensureSignatureTable)
 --          ไฟล์นี้มีไว้สำหรับสร้างด้วยตนเองผ่าน SSMS ได้เช่นกัน (รันซ้ำได้ ไม่สร้างซ้ำ)
 IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signatures]', N'U') IS NULL

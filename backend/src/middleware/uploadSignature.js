@@ -1,4 +1,3 @@
-// [DOC-FIX 2026-10-31] อัปโหลดไฟล์ลายเซ็นผู้สอบทาน → src/uploads/signatures (PNG/JPG ไม่เกิน 2MB)
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");

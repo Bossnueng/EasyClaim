@@ -11,6 +11,7 @@ import RoleManagement from "../pages/admin/RoleManagement";
 import Login from "../pages/auth/Login";
 import UserSettings from "../pages/auth/UserSettings";
 import UserManagement from "../pages/admin/UserManagement";
+import SignatureManagement from "../pages/admin/SignatureManagement"; // [DOC-FIX 2026-10-31]
 import loginService from "../services/loginService";
 
 // 🟢 ดึงข้อมูลผู้ใช้ และตรวจสอบสถานะ Authentication ที่ถูกต้อง
@@ -109,6 +110,8 @@ function AppRouter() {
           <Route path="/staff/users" element={<UserManagement />} />
           <Route path="/staff/agents" element={<AgentManagement />} />
           <Route path="/staff/roles" element={<RoleManagement />} />
+          {/* [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลัง (Admin) */}
+          <Route path="/staff/signatures" element={<SignatureManagement />} />
           
       
         </Route>

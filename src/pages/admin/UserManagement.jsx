@@ -491,7 +491,7 @@ export default function UserManagement() {
                 onClick={() => handleOpenModal()}
                 style={{ paddingLeft: 24, paddingRight: 24 }}
               >
-                เพิ่มผู้ใช้ใหม่
+                เพิ่มผู้ใช้
               </Button>
             </Space>
           </div>

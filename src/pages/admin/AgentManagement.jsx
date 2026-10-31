@@ -257,7 +257,7 @@ export default function AgentManagement() {
                 รีเฟรช
               </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()} style={{ paddingLeft: 16, paddingRight: 16 }}>
-                เพิ่ม Agent ใหม่
+                เพิ่ม Agent
               </Button>
             </Space>
           </div>

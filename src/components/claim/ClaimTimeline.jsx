@@ -47,7 +47,8 @@ const ClaimTimeline = ({ statusLogs = [], usersMap = {} }) => {
         const sName = getStatusName(log.status);
         const sColor = getStatusColor(sName);
         const updaterName = usersMap[String(log.update_by || log.user_id)] || `ID: ${log.update_by || log.user_id || "-"}`;
-        const cleanRemark = log.remark ? log.remark.split("| DATA:")[0].trim() : "";
+        // [DOC-FIX 2026-10-31] ตัดข้อมูลเทคนิค (| DATA:, | AUTO_AT:) ออกจากข้อความที่แสดง
+        const cleanRemark = log.remark ? log.remark.split("| DATA:")[0].split("| AUTO_AT:")[0].trim() : "";
         
         // เช็คว่ารายการนี้เป็น Log ล่าสุดของ Timeline หรือไม่
         const isLatest = index === statusLogs.length - 1;

@@ -221,7 +221,7 @@ const CustomerHome = () => {
             สวัสดี, คุณ{user?.full_name || user?.username || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
-            ติดตามสถานะหรือแจ้งเคลมสินค้าใหม่ได้ง่ายๆ ที่นี่
+            ติดตามสถานะเคลมสินค้าใหม่ได้ง่ายๆ ที่นี่
           </p>
         </header>
 

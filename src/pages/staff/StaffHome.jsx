@@ -9,6 +9,8 @@ import { getStatusName } from "../../constants/claimStatus";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
+import deliveryService from "../../services/deliveryService"; // [FLOW-FIX 2026-10-31]
+import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow"; // [FLOW-FIX 2026-10-31]
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
@@ -100,12 +102,15 @@ const StaffHome = () => {
     try {
       let userAgentIdentifiers = [];
 
-      const [resClaim, resItems, resAgents, resUsers] = await Promise.all([
+      const [resClaim, resItems, resAgents, resUsers, resDeliveries] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
         agentService.getAgent(),
         userService.getUsers(),
+        // [FLOW-FIX 2026-10-31] ใช้ตรวจว่าเคลมไหนยังไม่ได้มอบหมาย พขร. (ไม่ให้หน้าแรกพังถ้าโหลดไม่ได้)
+        deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
+      const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
 
       const aMap = {};
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
@@ -174,6 +179,11 @@ const StaffHome = () => {
 
             return {
               ...claim,
+              // [FLOW-FIX 2026-10-31] ธงสำหรับป้าย "รอมอบหมาย พขร." บนการ์ด
+              needsDriverAssign: needsDriverAssignment(
+                getStatusName(claim.current_status || claim.status),
+                getDriverAssignments(deliveriesData, claim.claim_id).length > 0
+              ),
               items: rawItems,
               item_id: itemDetails.item_id || claim.item_id,
               qty: rawItems.length > 0 ? totalQty : (claim.qty ?? 0),
@@ -222,7 +232,7 @@ const StaffHome = () => {
             สวัสดี, คุณ{currentUser?.full_name || currentUser?.name || "-"}
           </h1>
           <p className="text-gray-500 text-sm m-0">
-            ติดตามสถานะการแจ้งเคลมสินค้าใหม่ได้ที่นี่
+            ติดตามสถานะการแจ้งเคลมได้ที่นี่
           </p>
         </header>
 

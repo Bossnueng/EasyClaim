@@ -29,7 +29,7 @@ import { useClaimRealtime } from "../../hooks/useClaimRealtime";
 import ClaimStatusTag from "../../components/ClaimStatusTag";
 import ClaimPrintModal from "../../components/ClaimPrintModal";
 import ClaimTimeline from "../../components/claim/ClaimTimeline";
-import { STATUS_PRIORITY, getStatusName, getStatusId } from "../../constants/claimStatus";
+import { getStatusName, getStatusId } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
@@ -37,6 +37,25 @@ import userService from "../../services/userService";
 import agentService from "../../services/agentService";
 import { parseDateSafely } from "../../utils/dateUtils";
 import { parseExtraDataFromLogs, getRejectReasonText } from "../../utils/logPaser";
+import deliveryService from "../../services/deliveryService";
+// [DOC-FIX 2026-10-31] ยืนยันส่งเคลม/รับสินค้า + ยืนยันอัตโนมัติเมื่อครบกำหนด
+import { useAutoConfirm } from "../../hooks/useAutoConfirm";
+import {
+  CONFIRM_KIND,
+  findConfirmLog,
+  getConfirmDeadline,
+  describeRemaining,
+  buildManualConfirmPayload,
+} from "../../utils/claimConfirm";
+// [FLOW-FIX 2026-10-31] ตัวช่วยกลางคำนวณสถานะ/ไทม์ไลน์ (ใช้ร่วมกับฝั่ง Staff)
+import {
+  sortLogs,
+  getStatusStampDate,
+  getLatestDecision,
+  getStepIndex,
+  isRejectedFlow,
+  getDeliveryDateByStatus,
+} from "../../utils/claimFlow";
 
 function convertstatusClaim(staus) {
   switch (String(staus)) {
@@ -80,12 +99,14 @@ const CustomerClaimDetail = () => {
   const [approveLogs, setApproveLogs] = useState([]);
   const [usersMap, setUsersMap] = useState({});
   const [agentsMap, setAgentsMap] = useState({});
-  const [, setUsersList] = useState([]);
+  const [agentsList, setAgentsList] = useState([]); // [DOC-FIX R4] ใช้หา User ตัวแทน Agent ในเอกสาร
+  const [usersList, setUsersList] = useState([]); // [DOC-FIX R2] ใช้หา User ตัวแทน Agent ในเอกสาร
   const [allImages, setAllImages] = useState([]);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [deliveryDataList, setDeliveryDataList] = useState([]); // [FLOW-FIX 2026-10-31]
 
-  // State ตรวจสอบว่าลูกค้ายืนยันแล้วหรือยัง
+  // State ตรวจสอบว่าลูกค้ายืนยันส่งเคลม/รับสินค้าแล้วหรือยัง
   const [hasConfirmedSubmit, setHasConfirmedSubmit] = useState(false);
   const [hasConfirmedDelivery, setHasConfirmedDelivery] = useState(false);
 
@@ -101,43 +122,22 @@ const CustomerClaimDetail = () => {
     userRef.current = user;
   }, [user]);
 
-  const isExecutingAutoStampRef = useRef(false);
-
-  // 🟢 ฟังก์ชันสำหรับลูกค้ายืนยันส่งเคลม (Pending)
-  const handleConfirmClaimSubmit = async (remarkText = "ลูกค้ากดยืนยันการส่งเคลมสินค้าเรียบร้อยแล้ว", isAuto = false) => {
+  // [DOC-FIX 2026-10-31] ลูกค้ากดยืนยันเอง — บันทึก User + เวลา ใช้ในเอกสารใบเคลม (ข้อ 4 และ 5)
+  const confirmByCustomer = async (kind) => {
     try {
       const userId = user?.user_id || user?.id || "";
-      await claimService.createClaimStatusLogs({
-        claim_id: String(data.claim_id),
-        status: "5",
-        remark: remarkText,
-        update_by: String(userId),
-      });
-      setHasConfirmedSubmit(true);
-      if (!isAuto) message.success("ยืนยันการส่งเคลมเรียบร้อยแล้ว");
+      await claimService.createClaimStatusLogs(buildManualConfirmPayload({ claimId: data.claim_id, kind, updateBy: userId }));
+      if (kind === CONFIRM_KIND.SUBMIT) setHasConfirmedSubmit(true);
+      else setHasConfirmedDelivery(true);
+      message.success(kind === CONFIRM_KIND.SUBMIT ? "ยืนยันการส่งเคลมเรียบร้อยแล้ว" : "ยืนยันการรับสินค้าเรียบร้อยแล้ว");
       fetchClaimDetail(false);
     } catch (err) {
-      if (!isAuto) message.error("เกิดข้อผิดพลาดในการยืนยันรายการ");
+      message.error("เกิดข้อผิดพลาดในการยืนยันรายการ");
     }
   };
 
-  // 🟢 ฟังก์ชันสำหรับลูกค้ายืนยันรับสินค้า (Delivered)
-  const handleConfirmDelivery = async (remarkText = "ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว", isAuto = false) => {
-    try {
-      const userId = user?.user_id || user?.id || "";
-      await claimService.createClaimStatusLogs({
-        claim_id: String(data.claim_id),
-        status: "10",
-        remark: remarkText,
-        update_by: String(userId),
-      });
-      setHasConfirmedDelivery(true);
-      if (!isAuto) message.success("ยืนยันการรับสินค้าเรียบร้อยแล้ว");
-      fetchClaimDetail(false);
-    } catch (err) {
-      if (!isAuto) message.error("เกิดข้อผิดพลาดในการบันทึกยืนยันรับสินค้า");
-    }
-  };
+  const handleConfirmClaimSubmit = () => confirmByCustomer(CONFIRM_KIND.SUBMIT);
+  const handleConfirmDelivery = () => confirmByCustomer(CONFIRM_KIND.RECEIVE);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
@@ -173,14 +173,18 @@ const CustomerClaimDetail = () => {
     async (showLoading = true) => {
       if (showLoading) setLoading(true);
       try {
-        const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents] = await Promise.all([
+        const [resClaim, resMasterItems, resLogs, resApproves, resUsers, resAgents, resDeliveries] = await Promise.all([
           claimService.getClaim().catch(() => ({ data: [] })),
           itemService.getItems().catch(() => ({ data: [] })),
           claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
           claimService.getclaimapproves().catch(() => ({ data: [] })),
           userService.getUsers().catch(() => ({ data: [] })),
           agentService.getAgent().catch(() => ({ data: [] })),
+          // [FLOW-FIX 2026-10-31] ใช้วันที่ Shipping/Delivered ที่ พขร. อัปเดตจากอีกแพลตฟอร์ม
+          deliveryService.getDelivery().catch(() => ({ data: [] })),
         ]);
+        const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
+        setDeliveryDataList(deliveriesData);
 
         const masterItemsMap = {};
         const masterItemsData = Array.isArray(resMasterItems?.data)
@@ -207,6 +211,7 @@ const CustomerClaimDetail = () => {
             if (aCode) aMap[aCode] = agent.agent_name || agent.name;
           });
           setAgentsMap(aMap);
+          setAgentsList(agentsData); // [DOC-FIX R4]
         }
 
         const usersData = resUsers?.data || resUsers || [];
@@ -238,8 +243,9 @@ const CustomerClaimDetail = () => {
 
           if (currentClaim) {
             const logsData = resLogs?.data || resLogs || [];
+            // [FLOW-FIX 2026-10-31] เรียง Log เก่า → ใหม่
             const filteredLogs = Array.isArray(logsData)
-              ? logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id))
+              ? sortLogs(logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id)))
               : [];
             setStatusLogs(filteredLogs);
 
@@ -333,14 +339,10 @@ const CustomerClaimDetail = () => {
               setApproveLogs(approvesData.filter((app) => String(app.claim_id) === String(currentClaim.claim_id)));
             }
 
-            // 🟢 ตรวจสอบว่าเคยมี Log Stamp การยืนยันของลูกค้ารอบนี้แล้วหรือไม่
-            const isSubmitStamped = filteredLogs.some(
-              (log) => log.remark && log.remark.includes("ยืนยันการส่งเคลม")
-            );
-
-            const isDeliveryStamped = filteredLogs.some(
-              (log) => log.remark && log.remark.includes("ลูกค้ายืนยันรับสินค้า")
-            );
+            // 🟢 เช็คเฉพาะ Log ที่ลูกค้ายืนยันแล้วจริงๆ (ไม่นับ Log สร้างรายการของระบบ)
+            // [DOC-FIX 2026-10-31] รองรับทั้งกดเอง / อัตโนมัติแบบเดิม (10 วินาที) / อัตโนมัติแบบใหม่
+            const isSubmitStamped = Boolean(findConfirmLog(filteredLogs, CONFIRM_KIND.SUBMIT));
+            const isDeliveryStamped = Boolean(findConfirmLog(filteredLogs, CONFIRM_KIND.RECEIVE));
 
             setHasConfirmedSubmit(isSubmitStamped);
             setHasConfirmedDelivery(isDeliveryStamped);
@@ -371,45 +373,29 @@ const CustomerClaimDetail = () => {
     [claimId]
   );
 
-  // 🟢 AUTO STAMP TIMER (นับถอยหลัง 10 วินาที เมื่อเข้าสถานะ Pending หรือ Delivered)
-  useEffect(() => {
-    if (!data) return;
-
-    const rawStatus = String(data.current_status || data.status || "");
-    const statusId = String(getStatusId(rawStatus));
-
-    // 1. auto-stamp สถานะ Pending (5)
-    if (["1", "5"].includes(statusId) && !hasConfirmedSubmit && !isExecutingAutoStampRef.current) {
-      const timer = setTimeout(() => {
-        if (!isExecutingAutoStampRef.current && !hasConfirmedSubmit) {
-          isExecutingAutoStampRef.current = true;
-          handleConfirmClaimSubmit("ลูกค้ากดยืนยันการส่งเคลมสินค้าเรียบร้อยแล้ว (ระบบ Stamp อัตโนมัติ 10 วินาที)", true)
-            .finally(() => { isExecutingAutoStampRef.current = false; });
-        }
-      }, 10000);
-
-      return () => clearTimeout(timer);
-    }
-
-    // 2. auto-stamp สถานะ Delivered (10)
-    if (statusId === "10" && !hasConfirmedDelivery && !isExecutingAutoStampRef.current) {
-      const timer = setTimeout(() => {
-        if (!isExecutingAutoStampRef.current && !hasConfirmedDelivery) {
-          isExecutingAutoStampRef.current = true;
-          handleConfirmDelivery("ลูกค้ายืนยันรับสินค้าเรียบร้อยแล้ว (ระบบ Stamp อัตโนมัติ 10 วินาที)", true)
-            .finally(() => { isExecutingAutoStampRef.current = false; });
-        }
-      }, 10000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [data?.current_status, data?.status, hasConfirmedSubmit, hasConfirmedDelivery]);
+  // [DOC-FIX 2026-10-31] ยืนยันอัตโนมัติเมื่อครบกำหนด (ตั้งเวลาได้ใน .env — ดู constants/autoConfirm.js)
+  // เดิม: นับ 10 วินาทีจากตอนเปิดหน้า เฉพาะเมื่อสถานะยังเป็น Pending/Delivered และลูกค้าต้องเปิดหน้าค้างไว้
+  // ใหม่: นับจากเวลาแจ้งเคลม / เวลาส่งสำเร็จ, ทำงานได้ทั้งหน้า Customer และ Staff, เวลาในเอกสาร = เวลาครบกำหนด
+  useAutoConfirm({
+    claim: data,
+    logs: statusLogs,
+    deliveries: deliveryDataList,
+    statusName: data ? getStatusName(String(data.current_status || "5")) : "",
+    updateBy: user?.user_id || user?.id,
+    onStamped: () => fetchClaimDetail(false),
+  });
 
   useClaimRealtime({
     claimId,
     isStaff: false,
     onStatusUpdated: () => fetchClaimDetail(false),
     onCommentCreated: (newLog) => {
+      // [FLOW-FIX 2026-10-31] backend ไม่ได้ส่ง event "claim:status_updated" แต่ทุกการเปลี่ยนสถานะจะสร้าง Log
+      // และส่ง "claim:comment_created" → ถ้าไม่ใช่ข้อความแชท ให้รีเฟรชทันที (เดิมต้องรอ polling 3–5 วินาที)
+      if (newLog && !String(newLog.remark || "").startsWith("[MSG]")) {
+        fetchClaimDetail(false);
+        return;
+      }
       if (newLog && newLog.remark && newLog.remark.startsWith("[MSG]")) {
         const cleanRemark = newLog.remark.replace("[MSG]", "").trim();
         const senderRole = newLog.remark.includes("[STAFF]") ? "staff" : "customer";
@@ -457,86 +443,35 @@ const CustomerClaimDetail = () => {
   const rawStatusVal = String(data?.current_status || data?.status || data?.status_id || "");
   const currentStatusInDB = convertstatusClaim(rawStatusVal);
 
-  const hasRejectInLogs = statusLogs.some(
-    (log) => log.remark && (log.remark.includes("ปฏิเสธรายการเคลม") || String(log.status) === "7")
-  );
-
-  const hasRejectInApproves = approveLogs.some(
-    (app) => String(app.approve_status) === "false" || String(app.approve_status) === "0"
-  );
-
-  const isRejectedInDB =
-    hasRejectInLogs ||
-    hasRejectInApproves ||
-    ["7", "rejected", "ไม่อนุมัติเคลมสินค้า"].includes(rawStatusVal.toLowerCase());
-
-  const getLogDate = (targetStatusId) => {
-    const targetId = String(targetStatusId);
-    if (["1", "5", "Pending"].includes(targetId)) {
-      return formatDate(data?.created_at || data?.created_date || data?.claim_date);
-    }
-
-    const matchingLogs = statusLogs.filter((log) => String(log.status || log.status_id) === targetId);
-    if (matchingLogs.length > 0) {
-      const lastLog = matchingLogs[matchingLogs.length - 1];
-      return formatDate(lastLog.update_date || lastLog.created_at || lastLog.created_date);
-    }
-
-    if (targetId === "6" || targetId === "7") return formatDate(data.approve_date || data.updated_at);
-    if (targetId === "8") return formatDate(data.withdraw_date);
-    if (targetId === "9") return formatDate(data.delivery_date);
-    if (targetId === "10") return formatDate(data.receive_finish_date);
-
-    return "-";
-  };
+  // [FLOW-FIX 2026-10-31] ใช้ตัวช่วยกลาง (เหมือนฝั่ง Staff) — คิดจากสถานะปัจจุบัน + Log เปลี่ยนสถานะจริงเท่านั้น
+  // เดิม: เวลา Pending ถูกทับด้วยเวลาที่ลูกค้ากดยืนยัน/ส่งข้อความ, เคยมี Log Rejected = แดงตลอด,
+  //       และเคลม Rejected ไม่แสดงการข้ามขั้น Processing
+  const statusName = getStatusName(rawStatusVal || "5");
+  const rejectedFlow = isRejectedFlow(statusName, statusLogs);
+  const latestDecision = getLatestDecision(statusLogs);
+  const isRejectedInDB = rejectedFlow;
 
   const rejectReasonDisplay = getRejectReasonText(statusLogs, approveLogs, data) || "เนื่องจากสินค้าไม่อยู่ในเงื่อนไขการเคลม";
 
-  const getCurrentStepIndex = () => {
-    const statusStr = rawStatusVal.trim().toLowerCase();
-    const statusNameStr = String(currentStatusInDB || "").trim().toLowerCase();
+  const currentStep = getStepIndex(statusName);
 
-    const hasApprovedLog = statusLogs.some((l) => ["6", "7"].includes(String(l.status || l.status_id)));
-    const hasProcessingLog = statusLogs.some((l) => String(l.status || l.status_id) === "8");
-    const hasShippingLog = statusLogs.some((l) => String(l.status || l.status_id) === "9");
-    const hasDeliveredLog = statusLogs.some((l) => String(l.status || l.status_id) === "10");
-
-    if (["10", "delivered", "จัดส่งสำเร็จ"].includes(statusStr) || statusNameStr.includes("delivered") || hasDeliveredLog) {
-      return 4;
-    }
-
-    if (["9", "shipping", "กำลังจัดส่ง"].includes(statusStr) || statusNameStr.includes("shipping") || hasShippingLog) {
-      return 3;
-    }
-
-    if (["8", "processing", "กำลังดำเนินการ"].includes(statusStr) || statusNameStr.includes("processing") || hasProcessingLog) {
-      return 2;
-    }
-
-    if (
-      ["6", "7", "approved", "rejected", "อนุมัติ", "ปฏิเสธ"].includes(statusStr) ||
-      statusNameStr.includes("approved") ||
-      statusNameStr.includes("rejected") ||
-      hasApprovedLog
-    ) {
-      return 1;
-    }
-
-    return 0;
+  const stampOf = (stepIdx, statusIds, ...fallbacks) => {
+    if (stepIdx > currentStep) return "-";
+    const value = getStatusStampDate(statusLogs, statusIds) || fallbacks.find(Boolean);
+    return value ? formatDate(value) : "-";
   };
-
-  const currentStep = getCurrentStepIndex();
 
   const stepItems = [
     {
       title: "1. Pending",
-      description: formatDate(data?.created_at || data?.created_date || data?.claim_date),
+      // เวลาที่ พขร. แจ้งเคลมเข้าระบบ
+      description: formatDate(data?.claim_date || data?.created_at),
     },
     {
       title: isRejectedInDB ? "2. Rejected" : "2. Approved",
       description: (
         <div className="text-xs">
-          <div>{getLogDate(6) !== "-" ? getLogDate(6) : getLogDate(7)}</div>
+          <div>{stampOf(1, latestDecision === "Rejected" ? ["7"] : ["6"], data?.approve_date)}</div>
           {isRejectedInDB && rejectReasonDisplay && (
             <div className="text-red-500 font-medium break-words mt-0.5">{rejectReasonDisplay}</div>
           )}
@@ -545,15 +480,18 @@ const CustomerClaimDetail = () => {
     },
     {
       title: "3. Processing",
-      description: isRejectedInDB ? "-" : getLogDate(8),
+      ...(rejectedFlow ? { status: "wait" } : {}),
+      description: rejectedFlow
+        ? <div className="text-[11px] text-slate-500">ข้าม (ไม่อนุมัติ)</div>
+        : stampOf(2, ["8"], data?.warehouse_receive_date),
     },
     {
       title: "4. Shipping",
-      description: isRejectedInDB ? "-" : getLogDate(9),
+      description: stampOf(3, ["9"], getDeliveryDateByStatus(deliveryDataList, data?.claim_id, 9), data?.delivery_date),
     },
     {
       title: "5. Delivered",
-      description: isRejectedInDB ? "-" : getLogDate(10),
+      description: stampOf(4, ["10"], getDeliveryDateByStatus(deliveryDataList, data?.claim_id, 10), data?.receive_finish_date),
     },
   ];
 
@@ -561,8 +499,9 @@ const CustomerClaimDetail = () => {
   const agentNameDisplay = agentsMap[String(data?.agent_id)] || data?.agent_name || "-";
   const reporterNameDisplay = usersMap[creatorUserId] || data?.created_by || "-";
   const statusIdNum = Number(getStatusId(data?.current_status || data?.status));
-  const isProcessingOrHigher = currentStep >= 2 || [8, 9, 10].includes(statusIdNum);
+  const isProcessingOrHigher = (currentStep >= 2 && !rejectedFlow) || [8, 9, 10].includes(statusIdNum);
   const isShippingOrHigher = currentStep >= 3 || [9, 10].includes(statusIdNum);
+
 
   return (
     <div className="w-full flex flex-col gap-6 font-normal p-4 sm:p-6" style={{ boxSizing: "border-box" }}>
@@ -580,63 +519,75 @@ const CustomerClaimDetail = () => {
               <ClaimStatusTag status={data.current_status || data.status} />
             </div>
 
-            {STATUS_PRIORITY[currentStatusInDB] >= 4 && (
-              <div>
-                <Button
-                  type="default"
-                  icon={<PrinterOutlined />}
-                  className="border-slate-300 text-slate-700 hover:text-slate-900 rounded-xl h-10 shadow-sm"
-                  onClick={() => setIsPreviewModalOpen(true)}
+            {/* [DOC-FIX 2026-10-31] พิมพ์เอกสารได้ทุกสถานะ Pending → Delivered (เดิมเฉพาะ Shipping ขึ้นไป)
+                ข้อมูลที่ยังไม่ถึงขั้นจะเว้นว่างในเอกสาร */}
+            <Button
+              type="default"
+              icon={<PrinterOutlined />}
+              className="rounded-xl h-10"
+              onClick={() => setIsPreviewModalOpen(true)}
+            >
+              พิมพ์เอกสาร
+            </Button>
+
+            {/* 🟢 ยืนยันการส่งเคลม — แสดงจนกว่าจะยืนยัน (กดเอง หรือระบบยืนยันเมื่อครบกำหนด) */}
+            {!hasConfirmedSubmit && (
+              <div className="flex flex-col items-start md:items-end gap-1">
+                <Popconfirm
+                  title="ยืนยันการส่งเคลม"
+                  description="คุณได้ส่งสินค้าแตกให้ พขร. ตามรายการนี้แล้วใช่หรือไม่?"
+                  onConfirm={handleConfirmClaimSubmit}
+                  okText="ยืนยัน"
+                  cancelText="ยกเลิก"
                 >
-                  พิมพ์ / ดาวน์โหลดเอกสาร
-                </Button>
-                <ClaimPrintModal
-                  open={isPreviewModalOpen}
-                  onClose={() => setIsPreviewModalOpen(false)}
-                  isStaff={false}
-                  data={{
-                    ...data,
-                    claimNo: data.claim_no,
-                    items: claimItems,
-                    agentName: agentNameDisplay,
-                    reporter: reporterNameDisplay,
-                  }}
-                />
+                  <Button type="primary" size="large" className="rounded-xl h-11">
+                    ยืนยันส่งเคลม
+                  </Button>
+                </Popconfirm>
+                <span className="text-[11px] text-slate-500">
+                  {describeRemaining(getConfirmDeadline(CONFIRM_KIND.SUBMIT, data, statusLogs, deliveryDataList))}
+                </span>
               </div>
             )}
 
-            {/* 🟢 ปุ่มยืนยันส่งเคลม (เมื่อสถานะเป็น Pending และยังไม่ถูกยืนยัน) */}
-            {["1", "5"].includes(String(getStatusId(data.current_status))) && !hasConfirmedSubmit && (
-              <Popconfirm
-                title="ยืนยันการส่งเคลม"
-                description="คุณต้องการยืนยันการส่งเคลมสินค้ารายการนี้ใช่หรือไม่?"
-                onConfirm={() => handleConfirmClaimSubmit()}
-                okText="ยืนยัน"
-                cancelText="ยกเลิก"
-              >
-                <Button type="primary" size="large" className="bg-blue-600 hover:bg-blue-700 rounded-xl h-11">
-                  ยืนยันการส่งเคลมสินค้า
-                </Button>
-              </Popconfirm>
-            )}
-
-            {/* 🟢 ปุ่มยืนยันรับสินค้าเคลม (เมื่อสถานะเป็น Delivered และยังไม่ถูกยืนยัน) */}
-            {String(getStatusId(data.current_status)) === "10" && !hasConfirmedDelivery && (
-              <Popconfirm
-                title="ยืนยันรับสินค้าเคลมแล้ว"
-                description="คุณได้รับสินค้าเคลมถูกต้องและครบถ้วนแล้วใช่หรือไม่?"
-                onConfirm={() => handleConfirmDelivery()}
-                okText="ยืนยันรับสินค้า"
-                cancelText="ยกเลิก"
-              >
-                <Button type="primary" size="large" className="bg-emerald-600 hover:bg-emerald-700 rounded-xl h-11">
-                  ยืนยันรับสินค้าเคลมแล้ว
-                </Button>
-              </Popconfirm>
+            {/* 🟢 ยืนยันรับสินค้าเคลม — เฉพาะ Delivered และยังไม่ยืนยัน */}
+            {statusName === "Delivered" && !hasConfirmedDelivery && (
+              <div className="flex flex-col items-start md:items-end gap-1">
+                <Popconfirm
+                  title="ยืนยันรับสินค้าเคลมแล้ว"
+                  description="คุณได้รับสินค้าเคลมถูกต้องและครบถ้วนแล้วใช่หรือไม่?"
+                  onConfirm={handleConfirmDelivery}
+                  okText="ยืนยันรับสินค้า"
+                  cancelText="ยกเลิก"
+                >
+                  <Button type="primary" size="large" className="rounded-xl h-11" style={{ background: "#059669" }}>
+                    ยืนยันรับสินค้า
+                  </Button>
+                </Popconfirm>
+                <span className="text-[11px] text-slate-500">
+                  {describeRemaining(getConfirmDeadline(CONFIRM_KIND.RECEIVE, data, statusLogs, deliveryDataList))}
+                </span>
+              </div>
             )}
           </div>
         </div>
       </Card>
+
+      {/* [DOC-FIX 2026-10-31] เอกสารใบเคลม (ใช้ข้อมูลจริงทั้งหมด — ดู utils/claimDocument.js) */}
+      <ClaimPrintModal
+        open={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        isStaff={false}
+        claim={data}
+        items={claimItems}
+        statusLogs={statusLogs}
+        approveLogs={approveLogs}
+        deliveries={deliveryDataList}
+        usersMap={usersMap}
+        users={usersList}
+        agents={agentsList}
+        agentName={agentNameDisplay}
+      />
 
       {isRejectedInDB && (
         <Alert
@@ -665,7 +616,7 @@ const CustomerClaimDetail = () => {
           <Steps
             responsive={true}
             current={currentStep}
-            status={isRejectedInDB ? "error" : "process"}
+            status={isRejectedInDB && currentStep === 1 ? "error" : "process"}
             items={stepItems}
           />
         </ConfigProvider>
@@ -714,7 +665,6 @@ const CustomerClaimDetail = () => {
                   width: 110, 
                   align: "right",
                   render: (qty, record) => {
-                    // 🟢 แสดงเมื่อถึง Shipping แล้วเท่านั้น
                     if (!isShippingOrHigher) return "-";
                     const val = qty ?? record.returned_qty;
                     return <span className="font-semibold text-amber-600">{val ?? "-"}</span>;
@@ -797,7 +747,7 @@ const CustomerClaimDetail = () => {
       </div>
 
       <Modal
-        title="ประวัติการบันทึกสถานะทั้งหมด (Log History)"
+        title="ประวัติสถานะทั้งหมด" /* [UI-FIX 2026-10-31 R2] เดิม "ประวัติการบันทึกสถานะทั้งหมด (Log History)" */
         open={isLogModalOpen}
         onCancel={() => setIsLogModalOpen(false)}
         footer={[<Button key="close" onClick={() => setIsLogModalOpen(false)}>ปิด</Button>]}

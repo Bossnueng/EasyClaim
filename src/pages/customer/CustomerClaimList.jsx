@@ -490,7 +490,8 @@ const CustomerClaimList = () => {
       <div className="w-full flex flex-col gap-5">
         
         {/* Header Section */}
-        <header className="flex flex-row justify-between items-start md:items-center gap-4 w-full">
+        {/* [UI-FIX 2026-10-31 R2] เพิ่ม flex-wrap ให้ปุ่มลงบรรทัดใหม่บนจอแคบ */}
+        <header className="flex flex-row flex-wrap justify-between items-start md:items-center gap-4 w-full">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0">
               รายการการเคลมสินค้า
@@ -505,7 +506,7 @@ const CustomerClaimList = () => {
             className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl h-10 px-5 shadow-xs font-medium inline-flex items-center gap-1.5"
             onClick={handleExportReport}
           >
-            ดาวน์โหลดรายงาน
+            ส่งออกรายงาน
           </Button>
         </header>
 
@@ -574,7 +575,7 @@ const CustomerClaimList = () => {
               onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-blue-600 transition-colors cursor-pointer border-none bg-transparent p-0 whitespace-nowrap shrink-0"
             >
-              <span>ตัวกรองเพิ่มเติม (Advanced Filters)</span>
+              <span>ตัวกรองเพิ่มเติม</span>
               {activeAdvancedFilterCount > 0 && (
                 <span className="text-xs font-semibold text-blue-600">
                   ({activeAdvancedFilterCount})
@@ -594,7 +595,7 @@ const CustomerClaimList = () => {
                 className="inline-flex items-center gap-1 text-xs font-normal bg-transparent border-none cursor-pointer p-0 whitespace-nowrap ml-auto transition-colors hover:opacity-80"
               >
                 <ClearOutlined className="text-xs" style={{ color: '#3b82f6' }} />
-                <span style={{ color: '#3b82f6' }}>ล้างตัวกรองเสริม</span>
+                <span style={{ color: '#3b82f6' }}>ล้างตัวกรอง</span>
               </button>
             )}
           </div>

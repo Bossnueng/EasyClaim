@@ -8,6 +8,7 @@ import {
   WechatOutlined,
   SettingFilled,
   UserOutlined, // 🟢 1. Import Icon สำหรับจัดการผู้ใช้
+  FormOutlined, // [DOC-FIX 2026-10-31] เมนูลายเซ็นผู้สอบทาน
 } from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
 
@@ -51,6 +52,7 @@ const MenuList = () => {
     }
     if (location.pathname.includes("/staff/agents")) return "staff-agents";
     if (location.pathname.includes("/staff/roles")) return "staff-roles";
+    if (location.pathname.includes("/staff/signatures")) return "staff-signatures"; // [DOC-FIX 2026-10-31]
 
     if (location.pathname.includes("/staff/setting")) {
       return "staff-setting";
@@ -108,6 +110,11 @@ const MenuList = () => {
 
               <Menu.Item key="staff-roles" icon={<SafetyCertificateOutlined />}>
                 <NavLink to="/staff/roles">จัดการสิทธิ์ (Role)</NavLink>
+              </Menu.Item>
+
+              {/* [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลัง */}
+              <Menu.Item key="staff-signatures" icon={<FormOutlined />}>
+                <NavLink to="/staff/signatures">ลายเซ็นผู้สอบทาน</NavLink>
               </Menu.Item>
             </>
           )}

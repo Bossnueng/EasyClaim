@@ -204,6 +204,12 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
                 ค้างเกิน 7 วัน
               </Tag>
             )}
+            {/* [FLOW-FIX 2026-10-31] เตือนเคลมที่ยังไม่ได้มอบหมาย พขร. (Processing / Rejected) */}
+            {claim?.needsDriverAssign && (
+              <Tag color="warning" style={{ margin: 0 }} className="font-normal rounded-full shrink-0">
+                รอมอบหมาย พขร.
+              </Tag>
+            )}
           </div>
 
           <div className="flex flex-col gap-1 text-[11px] sm:text-xs text-gray-500 font-mono mt-1">
@@ -251,7 +257,8 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
         <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
           <CodeSandboxOutlined className="text-lg sm:text-xl" />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        {/* [FLOW-FIX 2026-10-31] flex-wrap + justify-end: ป้ายหลายอันไม่ล้นการ์ดบนมือถือ */}
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 min-w-0">
           {isOverdue7Days && (
             <Tag 
               color="error" 
@@ -267,6 +274,12 @@ const StaffClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, layout
               className="border font-normal rounded-md text-[10px] shrink-0"
             >
               ค้างเกิน 7 วัน
+            </Tag>
+          )}
+          {/* [FLOW-FIX 2026-10-31] เตือนเคลมที่ยังไม่ได้มอบหมาย พขร. (Processing / Rejected) */}
+          {claim?.needsDriverAssign && (
+            <Tag color="warning" style={{ margin: 0 }} className="font-normal rounded-full shrink-0">
+              รอมอบหมาย พขร.
             </Tag>
           )}
           <ClaimStatusTag status={status} role="staff" />

@@ -17,6 +17,9 @@ import dayjs from "dayjs";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import { FILTER_OPTIONS, CUSTOMER_FILTER_TABS, CUSTOMER_STATUS_GROUPS, getStatusName, getStatusId } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
+import deliveryService from "../../services/deliveryService"; // [FLOW-FIX 2026-10-31]
+import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow"; // [FLOW-FIX 2026-10-31]
+import { runAutoConfirms } from "../../hooks/useAutoConfirm"; // [DOC-FIX 2026-10-31]
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
@@ -70,7 +73,7 @@ const StaffClaimList = () => {
     if (showLoading) setLoading(true);
     try {
       const activeUser = currentUserRef.current;
-      const [resClaim, resItems, resAgents, resUsers, resLogs] = await Promise.all([
+      const [resClaim, resItems, resAgents, resUsers, resLogs, resDeliveries] = await Promise.all([
         claimService.getClaim().catch((err) => {
           console.error("Fetch claims error:", err);
           return { status: false, data: [] };
@@ -79,6 +82,8 @@ const StaffClaimList = () => {
         agentService.getAgent().catch(() => ({ data: [] })),
         userService.getUsers().catch(() => ({ data: [] })),
         claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
+        // [FLOW-FIX 2026-10-31] ใช้ตรวจว่าเคลมไหนยังไม่ได้มอบหมาย พขร.
+        deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
 
       const aMap = {};
@@ -172,7 +177,34 @@ const StaffClaimList = () => {
         })
       );
 
-      setClaims(claimsWithItems);
+      // [FLOW-FIX 2026-10-31] ติดธง needsDriverAssign ให้การ์ดแสดงป้าย "รอมอบหมาย พขร."
+      const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
+      const claimsWithFlags = claimsWithItems.map((claim) => ({
+        ...claim,
+        needsDriverAssign: needsDriverAssignment(
+          getStatusName(claim.current_status || claim.status),
+          getDriverAssignments(deliveriesData, claim.claim_id).length > 0
+        ),
+      }));
+
+      setClaims(claimsWithFlags);
+
+      // [DOC-FIX 2026-10-31] ยืนยันส่งเคลม/รับสินค้าแทนลูกค้าเมื่อครบกำหนด (ทำงานเบื้องหลัง ครั้งละไม่เกิน 20 เคลม)
+      // เพื่อให้เอกสารใบเคลมมีเวลายืนยันครบ แม้ไม่มีใครเปิดหน้ารายละเอียดเคลมนั้น
+      const allLogs = Array.isArray(logsData) ? logsData : [];
+      const staffId = activeUser?.user_id || activeUser?.id;
+      claimsWithFlags.slice(0, 200).reduce(async (prev, claim) => {
+        const count = await prev;
+        if (count >= 20) return count;
+        const written = await runAutoConfirms({
+          claim,
+          logs: allLogs.filter((l) => String(l.claim_id) === String(claim.claim_id)),
+          deliveries: deliveriesData,
+          statusName: getStatusName(claim.current_status || claim.status),
+          updateBy: staffId,
+        }).catch(() => 0);
+        return count + written;
+      }, Promise.resolve(0));
     } catch (error) {
       console.error("fetchClaimsAndItems Error:", error);
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
@@ -609,10 +641,11 @@ const StaffClaimList = () => {
       <div className="w-full flex flex-col gap-5">
         
         {/* Header Section */}
-        <header className="flex flex-row justify-between items-start md:items-center gap-4 w-full">
+        {/* [UI-FIX 2026-10-31 R2] เพิ่ม flex-wrap + ย่อหัวข้อ/ปุ่ม ให้ไม่ล้นบนจอแคบ */}
+        <header className="flex flex-row flex-wrap justify-between items-start md:items-center gap-4 w-full">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0">
-              การจัดการคำร้องขอเคลมสินค้า (Staff Control)
+              จัดการคำร้องขอเคลม
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 m-0 mt-1">
               ตรวจสอบ กรองข้อมูลการเคลม และบริหารจัดการสถานะประจำวัน
@@ -626,7 +659,7 @@ const StaffClaimList = () => {
                 className="border-blue-500 text-blue-600 hover:bg-blue-50 rounded-xl h-10 px-4 font-medium shadow-xs inline-flex items-center gap-1.5"
                 onClick={handleExportLog}
               >
-                Export Log
+                ส่งออก Log
               </Button>
             )}
             <Button
@@ -635,7 +668,7 @@ const StaffClaimList = () => {
               className="bg-blue-600 hover:bg-blue-700 border-none rounded-xl h-10 px-5 shadow-xs font-medium inline-flex items-center gap-1.5"
               onClick={handleExportReport}
             >
-              Export Report
+              ส่งออกรายงาน
             </Button>
           </div>
         </header>
@@ -705,7 +738,7 @@ const StaffClaimList = () => {
               onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-blue-600 transition-colors cursor-pointer border-none bg-transparent p-0 whitespace-nowrap shrink-0"
             >
-              <span>ตัวกรองเพิ่มเติม (Advanced Filters)</span>
+              <span>ตัวกรองเพิ่มเติม</span>
               {activeAdvancedFilterCount > 0 && (
                 <span className="text-xs font-semibold text-blue-600">
                   ({activeAdvancedFilterCount})
@@ -725,7 +758,7 @@ const StaffClaimList = () => {
                 className="inline-flex items-center gap-1 text-xs font-normal bg-transparent border-none cursor-pointer p-0 whitespace-nowrap ml-auto transition-colors hover:opacity-80"
               >
                 <ClearOutlined className="text-xs" style={{ color: '#3b82f6' }} />
-                <span style={{ color: '#3b82f6' }}>ล้างตัวกรองเสริม</span>
+                <span style={{ color: '#3b82f6' }}>ล้างตัวกรอง</span>
               </button>
             )}
           </div>

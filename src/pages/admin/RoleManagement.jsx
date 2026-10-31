@@ -173,7 +173,7 @@ export default function RoleManagement() {
                 รีเฟรช
               </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()} style={{ paddingLeft: 16, paddingRight: 16 }}>
-                เพิ่ม Role ใหม่
+                เพิ่ม Role
               </Button>
             </Space>
           </div>

@@ -26,6 +26,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 
 import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { getUserAgentScope, canAccessClaim } from "../../utils/claimAccess"; // [QA-FIX 2026-10-31]
 import ClaimStatusTag from "../../components/ClaimStatusTag";
 import ClaimPrintModal from "../../components/ClaimPrintModal";
 import ClaimTimeline from "../../components/claim/ClaimTimeline";
@@ -235,11 +236,24 @@ const CustomerClaimDetail = () => {
         if (rawClaims.length > 0) {
           const targetId = String(claimId || "").trim();
 
-          const currentClaim = rawClaims.find((item) => {
+          const foundClaim = rawClaims.find((item) => {
             const itemClaimId = String(item.claim_id || "").trim();
             const itemClaimNo = String(item.claim_no || "").trim();
             return itemClaimId === targetId || itemClaimNo === targetId;
           });
+
+          // [QA-FIX 2026-10-31] Test Case 1.1 (IDOR) — เดิมเปิดเคลมของ Agent ใดก็ได้ด้วยการพิมพ์เลขใน URL
+          // ตอนนี้ตรวจว่าเคลมเป็นของ Agent ที่ผู้ใช้ดูแล หรือผู้ใช้เป็นผู้สร้าง ถ้าไม่ใช่ → แสดง "ไม่พบข้อมูลรายการเคลม"
+          // ⚠️ ป้องกันฝั่งหน้าเว็บเท่านั้น: API /getClaim ยังส่งข้อมูลทุกใบ (ต้องแก้ backend — นอกขอบเขต)
+          const accessScope = getUserAgentScope(user, agentsData);
+          const currentClaim = foundClaim && canAccessClaim(foundClaim, accessScope) ? foundClaim : null;
+          if (foundClaim && !currentClaim) {
+            setData(null);
+            setStatusLogs([]);
+            setChatMessages([]);
+            setAllImages([]);
+            return;
+          }
 
           if (currentClaim) {
             const logsData = resLogs?.data || resLogs || [];

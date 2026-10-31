@@ -4,14 +4,19 @@ import dayjs from "dayjs";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
-import { RightOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined, AlertOutlined } from "@ant-design/icons";
-import { getStatusName, getStatusId } from "../../constants/claimStatus";
+import { RightOutlined, ClockCircleOutlined, WarningOutlined, CheckCircleOutlined, FileAddOutlined } from "@ant-design/icons";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
+// [QA-FIX 2026-10-31] Test Case 1.1 / 4.1 / 4.2 — ใช้ตัวช่วยกลาง (ตรวจสิทธิ์เคลม / สรุปการ์ด / เรียง 8 รายการล่าสุด / cache รายการสินค้า)
+import { filterClaimsForUser } from "../../utils/claimAccess";
+import { getDashboardSummary, getLatestClaims, enrichClaimsWithItems } from "../../utils/claimDashboard";
+
+// [QA-FIX 2026-10-31] Socket แจ้งการเปลี่ยนสถานะทันทีแล้ว — polling เหลือไว้เป็นทางสำรอง (เดิม 5 วินาที)
+const POLL_INTERVAL_MS = 15000;
 
 const CustomerHome = () => {
   const navigate = useNavigate();
@@ -28,62 +33,16 @@ const CustomerHome = () => {
     userRef.current = user;
   }, [user]);
 
-  // 🟢 ตรวจสอบสถานะ Delivered
-  const checkIsDelivered = useCallback((item) => {
-    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
-    const statusName = String(getStatusName(rawStatus, "customer") || "").trim().toLowerCase();
-    const statusId = String(getStatusId ? getStatusId(rawStatus) : rawStatus);
+  // [QA-FIX 2026-10-31] Test Case 4.2 — ยอดการ์ดคำนวณจากตัวช่วยกลาง (กลุ่มไม่ทับซ้อน: ใหม่ + ดำเนินการ + สำเร็จ = ทั้งหมด)
+  // เดิมมีการ์ด "กำลังดำเนินการ" (รวม Pending) / "จัดส่งแล้ว" / "ค้างเกิน 3 วัน" / "ค้างเกิน 7 วัน" ไม่มี "รายการใหม่" ตามสเปก
+  const summary = getDashboardSummary(allClaims);
 
-    return (
-      ["10", "delivered", "จัดส่งสำเร็จ", "จัดส่งสินค้าเคลมสำเร็จ"].includes(rawStatus) ||
-      ["10", "delivered", "จัดส่งสำเร็จ", "จัดส่งสินค้าเคลมสำเร็จ"].includes(statusName) ||
-      statusId === "10"
-    );
-  }, []);
-
-  // 🟢 1. รายการกำลังดำเนินการ (Pending, Approved, Rejected, Processing, Shipping)
-  const processingClaims = allClaims.filter((item) => {
-    const rawStatus = String(item?.current_status || item?.status_id || item?.status || "").trim().toLowerCase();
-    const statusName = String(getStatusName(rawStatus, "customer") || "").trim().toLowerCase();
-    const statusId = String(getStatusId ? getStatusId(rawStatus) : rawStatus);
-
-    const isProcessing = [
-      "1", "5", "6", "7", "8", "9",
-      "pending", "approved", "rejected", "processing", "shipping",
-      "สร้างรายการเคลม", "รอการพิจารณา", "มีสิทธิ์เคลม", "ไม่มีสิทธิ์เคลม", 
-      "อนุมัติเคลมสินค้า", "ไม่อนุมัติเคลมสินค้า", "กำลังดำเนินการ", "อยู่ระหว่างจัดส่ง"
-    ].some((s) => s === rawStatus || s === statusName || s === statusId);
-
-    return isProcessing && !checkIsDelivered(item);
-  });
-
-  // 🟢 2. รายการที่จัดส่งแล้ว (Delivered)
-  const deliveredClaims = allClaims.filter(checkIsDelivered);
-
-  // 🟢 3. รายการค้างเกิน 3 วัน
-  const overdue3DaysClaims = allClaims.filter((item) => {
-    if (checkIsDelivered(item)) return false;
-    const createdDate = item?.created_at || item?.claim_date || item?.createdDate;
-    if (!createdDate) return false;
-    const parsedDate = dayjs(createdDate);
-    if (!parsedDate.isValid()) return false;
-    return dayjs().diff(parsedDate, "day") >= 3;
-  });
-
-  // 🟢 4. รายการค้างเกิน 7 วัน
-  const overdue7DaysClaims = allClaims.filter((item) => {
-    if (checkIsDelivered(item)) return false;
-    const createdDate = item?.created_at || item?.claim_date || item?.createdDate;
-    if (!createdDate) return false;
-    const parsedDate = dayjs(createdDate);
-    if (!parsedDate.isValid()) return false;
-    return dayjs().diff(parsedDate, "day") >= 7;
-  });
+  // [QA-FIX 2026-10-31] cache claim_items ต่อเคลม (เดิมยิง /getClaimItems ทุกใบทุกครั้งที่ polling)
+  const itemsCacheRef = useRef(new Map());
 
   const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
     const activeUser = userRef.current;
     const activeRole = activeUser?.role || activeUser?.user_type;
-    const activeUserId = activeUser?.user_id || activeUser?.id;
 
     if (activeRole === "staff" || activeRole === "admin") {
       navigate("/staff", { replace: true });
@@ -106,76 +65,21 @@ const CustomerHome = () => {
         setItemsMap(map);
       }
 
-      const userAgentIdentifiers = [];
-      if (Array.isArray(activeUser?.agent_ids)) {
-        activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
-      }
-      if (activeUser?.agent_id) {
-        userAgentIdentifiers.push(String(activeUser.agent_id));
-      }
-
+      // [QA-FIX 2026-10-31] Test Case 1.1 — กรองสิทธิ์ด้วยตัวช่วยกลาง (แก้ created_by เทียบ String กับ Number และ agent_id ชน agent_code)
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
-      const allowedClaims = rawClaims.filter((claim) => {
-        const claimAgentIdStr = String(claim.agent_id || "");
-        const claimAgentCodeStr = String(claim.agent_code || "");
-        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+      const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
 
-        const isAgentMatch =
-          userAgentIdentifiers.length > 0 &&
-          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = activeUserId && claimCreatedByStr === activeUserId;
+      const claimsWithItems = await enrichClaimsWithItems(
+        allowedClaims,
+        (id) => claimService.getClaimItems(id),
+        itemsCacheRef.current
+      );
 
-        return isAgentMatch || isUserMatch;
-      });
-
-      if (allowedClaims.length > 0) {
-        const claimsWithItems = await Promise.all(
-          allowedClaims.map(async (claim) => {
-            try {
-              const resItems = await claimService.getClaimItems(claim.claim_id);
-              const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
-              if (rawItems.length > 0) {
-                const firstItem = rawItems[0];
-                return {
-                  ...claim,
-                  item_id: firstItem.item_id,
-                  qty: firstItem.qty,
-                  remark: firstItem.remark,
-                  lot_no: firstItem.lot_no,
-                  items: rawItems,
-                };
-              }
-            } catch (err) {
-              console.error(`Error fetching items for claim ${claim.claim_id}`, err);
-            }
-            return claim;
-          })
-        );
-
-        setAllClaims(claimsWithItems);
-
-        const sortedClaims = [...claimsWithItems].sort((a, b) => {
-          const dateA = dayjs(a.claim_date || a.created_at);
-          const dateB = dayjs(b.claim_date || b.created_at);
-          return dateA.valueOf() - dateB.valueOf();
-        });
-
-        setLatestClaims(sortedClaims.slice(0, 8));
-      } else {
-        setAllClaims([]);
-        setLatestClaims([]);
-      }
+      setAllClaims(claimsWithItems);
+      // [QA-FIX 2026-10-31] Test Case 4.2 — เดิมเรียงเก่า → ใหม่แล้วตัด 8 = ได้ 8 รายการ "เก่าสุด"
+      // ตอนนี้เรียงตาม Priority สถานะ (Pending ก่อน) แล้วตามวันที่สร้าง ใหม่ → เก่า
+      setLatestClaims(getLatestClaims(claimsWithItems, 8));
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
     } finally {
@@ -183,18 +87,24 @@ const CustomerHome = () => {
     }
   }, [navigate]);
 
+  // [QA-FIX 2026-10-31] Test Case 3.1 — join ห้องของทุกเคลมที่แสดง แล้วรีเฟรชทันทีเมื่อมี Log เปลี่ยนสถานะ
+  // (backend ไม่ส่ง "claim:status_updated" แต่ส่ง "claim:comment_created" ทุกครั้งที่เปลี่ยนสถานะ)
   useClaimRealtime({
     isStaff: false,
     userId: currentUserId,
+    claimIds: allClaims.map((c) => c.claim_id),
     onCreated: () => fetchClaimsAndItems(false),
     onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
   });
 
   useEffect(() => {
     fetchClaimsAndItems(true);
     const interval = setInterval(() => {
       fetchClaimsAndItems(false);
-    }, 5000);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchClaimsAndItems]);
 
@@ -226,80 +136,73 @@ const CustomerHome = () => {
         </header>
 
         {/* Dashboard 4 Summary Cards */}
+        {/* [QA-FIX 2026-10-31] Test Case 4.2 — การ์ดตามสเปก: รายการใหม่ / กำลังดำเนินการ / สำเร็จ / ค้างเกิน 3 วัน
+            (เคลมค้างเกิน 7 วันยังเน้นกรอบแดงบนการ์ดเคลมเหมือนเดิม และเปิดดูได้ที่ /customer/list-claim?filter=overdue7)
+            Responsive: padding การ์ดใช้ class (เดิม inline 24px 28px ทำให้เนื้อหาเหลือ ~100px บนจอ 360px) */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          
-          {/* Card 1: รายการกำลังดำเนินการ */}
-          <div
-            onClick={() => navigate("/customer/list-claim?filter=processing")}
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-amber-300 transition-all"
-            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการกำลังดำเนินการ</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-amber-600 font-sans tracking-tight">
-                {processingClaims.length}
-              </span>
-              <span className="text-xs text-amber-500 font-medium">Pending ➔ Shipping</span>
+          {[
+            {
+              key: "new",
+              to: "/customer/list-claim?filter=new",
+              label: "รายการใหม่",
+              value: summary.new,
+              hint: "Pending รอพิจารณา",
+              icon: <FileAddOutlined />,
+              tone: { text: "text-blue-600", sub: "text-blue-500", bg: "bg-blue-50", hover: "hover:border-blue-300" },
+            },
+            {
+              key: "processing",
+              to: "/customer/list-claim?filter=processing",
+              label: "กำลังดำเนินการ",
+              value: summary.processing,
+              hint: "Approved ➔ Shipping",
+              icon: <ClockCircleOutlined />,
+              tone: { text: "text-amber-600", sub: "text-amber-500", bg: "bg-amber-50", hover: "hover:border-amber-300" },
+            },
+            {
+              key: "delivered",
+              to: "/customer/list-claim?filter=delivered",
+              label: "สำเร็จ",
+              value: summary.delivered,
+              hint: "Delivered แล้ว",
+              icon: <CheckCircleOutlined />,
+              tone: { text: "text-emerald-600", sub: "text-emerald-500", bg: "bg-emerald-50", hover: "hover:border-emerald-300" },
+            },
+            {
+              key: "overdue3",
+              to: "/customer/list-claim?filter=overdue3",
+              label: "ค้างเกิน 3 วัน",
+              value: summary.overdue3,
+              hint: `ยังไม่ Delivered (เกิน 7 วัน ${summary.overdue7})`,
+              icon: <WarningOutlined />,
+              tone: { text: "text-rose-600", sub: "text-rose-500", bg: "bg-rose-50", hover: "hover:border-rose-300" },
+            },
+          ].map((card) => (
+            <div
+              key={card.key}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(card.to)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") navigate(card.to);
+              }}
+              className={`bg-white p-4 sm:px-7 sm:py-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-2 cursor-pointer hover:shadow-md ${card.tone.hover} transition-all min-w-0`}
+              style={{ boxSizing: "border-box", overflow: "hidden" }}
+            >
+              <div className="flex flex-col gap-1 min-w-0">
+                <span className="text-xs sm:text-sm font-medium text-gray-500 truncate">{card.label}</span>
+                <span className={`text-3xl sm:text-4xl font-extrabold ${card.tone.text} font-sans tracking-tight`}>
+                  {card.value}
+                </span>
+                <span className={`text-[11px] sm:text-xs ${card.tone.sub} font-medium leading-snug`}>{card.hint}</span>
+              </div>
+              <div
+                className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl ${card.tone.bg} ${card.tone.text} flex items-center justify-center text-base sm:text-xl shrink-0`}
+              >
+                {card.icon}
+              </div>
             </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <ClockCircleOutlined />
-            </div>
-          </div>
-
-          {/* Card 2: รายการที่จัดส่งแล้ว */}
-          <div
-            onClick={() => navigate("/customer/list-claim?filter=delivered")}
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-emerald-300 transition-all"
-            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการที่จัดส่งแล้ว</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-emerald-600 font-sans tracking-tight">
-                {deliveredClaims.length}
-              </span>
-              <span className="text-xs text-emerald-500 font-medium">Delivered แล้ว</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <CheckCircleOutlined />
-            </div>
-          </div>
-
-          {/* Card 3: รายการค้างเกิน 3 วัน */}
-          <div
-            onClick={() => navigate("/customer/list-claim?filter=overdue3")}
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-rose-300 transition-all"
-            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการค้างเกิน 3 วัน</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 font-sans tracking-tight">
-                {overdue3DaysClaims.length}
-              </span>
-              <span className="text-xs text-rose-500 font-medium">ยังไม่ Delivered ใน 3 วัน</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <WarningOutlined />
-            </div>
-          </div>
-
-          {/* Card 4: รายการค้างเกิน 7 วัน */}
-          <div
-            onClick={() => navigate("/customer/list-claim?filter=overdue7")}
-            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-red-400 transition-all"
-            style={{ boxSizing: "border-box", padding: "24px 28px", overflow: "hidden" }}
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-xs sm:text-sm font-medium text-gray-500">รายการค้างเกิน 7 วัน</span>
-              <span className="text-3xl sm:text-4xl font-extrabold text-red-600 font-sans tracking-tight">
-                {overdue7DaysClaims.length}
-              </span>
-              <span className="text-xs text-red-500 font-medium">ยังไม่ Delivered ใน 7 วัน</span>
-            </div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-lg sm:text-xl shrink-0">
-              <AlertOutlined />
-            </div>
-          </div>
-
+          ))}
         </div>
 
         <section className="flex flex-col gap-4">
@@ -350,6 +253,8 @@ const CustomerHome = () => {
                     onDelete={handleDeleteClaim}
                     hideDeleteWhenDisabled={true}
                     layout="horizontal"
+                    /* [QA-FIX 2026-10-31] ส่ง Master สินค้าให้การ์ด (เดิมการ์ดทุกใบเรียก /getitem เอง) */
+                    itemsMap={itemsMap}
                   />
                 );
               })}

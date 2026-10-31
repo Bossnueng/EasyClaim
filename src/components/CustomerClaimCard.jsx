@@ -9,6 +9,7 @@ import ClaimStatusTag from "./ClaimStatusTag";
 import { getStatusName } from "../constants/claimStatus";
 import loginService from "../services/loginService";
 import itemService from "../services/itemService";
+import { getDisplayQty, getLotLabel } from "../utils/claimDashboard"; // [QA-FIX 2026-10-31]
 
 const NON_DELETABLE_STATUSES = [
   "ไม่มีสิทธิ์เคลม",
@@ -101,14 +102,17 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
   })();
 
   // 🟢 จัดการจำนวนสินค้า
+  // [QA-FIX 2026-10-31] Test Case 4.1 — เดิม `qtyreceived ?? qtychang ?? qty` แต่ backend บันทึก qtyreceived = 0 (ไม่ใช่ NULL)
+  // ตอนสร้างเคลม → การ์ดแสดง "0" ทุกใบ; ตอนนี้ใช้ค่าแรกที่ > 0 (รับจริง → อนุมัติเปลี่ยน → จำนวนที่แจ้ง)
   const qtyDisplay = (() => {
     if (Array.isArray(claim?.items) && claim.items.length > 0) {
-      return claim.items
-        .map((i) => i.qtyreceived ?? i.qtychang ?? i.qty ?? 0)
-        .join(", ");
+      return claim.items.map((i) => getDisplayQty(i)).join(", ");
     }
-    return claim?.qtyreceived ?? claim?.qtychang ?? claim?.qty ?? 0;
+    return getDisplayQty(claim);
   })();
+
+  // [QA-FIX 2026-10-31] Test Case 4.1 — แสดง Lot ของสินค้า (เดิมไม่แสดงบนการ์ด)
+  const lotLabel = getLotLabel(claim);
 
   const isOverdue7Days = (() => {
     const statusStr = String(rawStatus || "").trim().toLowerCase();
@@ -227,6 +231,8 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
 
             <div className="break-words">ประเภทการเคลม : {claimType}</div>
 
+            {lotLabel && <div className="break-words">Lot: {lotLabel}</div>}
+
             <div>
               จำนวน: <b className="text-emerald-700 font-bold">{qtyDisplay}</b> ขวด/กระป๋อง
             </div>
@@ -295,6 +301,8 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
           )}
 
           <div className="break-words">ประเภทการเคลม : {claimType}</div>
+
+          {lotLabel && <div className="break-words">Lot: {lotLabel}</div>}
         </div>
       </div>
 

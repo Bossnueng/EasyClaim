@@ -187,6 +187,8 @@ export default function RoleManagement() {
             rowKey="role_id"
             loading={loading}
             pagination={false}
+            /* [QA-FIX 2026-10-31] Responsive — ตารางกว้าง ~480px เลื่อนแนวนอนได้บนจอมือถือ 360px */
+            scroll={{ x: "max-content" }}
           />
         </Card>
 

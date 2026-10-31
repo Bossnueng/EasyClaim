@@ -52,6 +52,7 @@ import { getAgentNameByUserId } from "../../utils/agentHelper";
 import { parseDateSafely } from "../../utils/dateUtils";
 import { getRejectReasonText } from "../../utils/logPaser";
 import { useAutoConfirm } from "../../hooks/useAutoConfirm"; // [DOC-FIX 2026-10-31]
+import { canApproveClaim } from "../../constants/roles"; // [QA-FIX 2026-10-31]
 // [FLOW-FIX 2026-10-31] ตัวช่วยกลางคำนวณสถานะ/ไทม์ไลน์/การมอบหมาย พขร.
 import {
   sortLogs,
@@ -173,6 +174,9 @@ const StaffClaimUpdate = () => {
   const userRoleId = Number(currentUser?.role_id);
 
   const canRevertOrEdit = [1, 4].includes(userRoleId);
+  // [QA-FIX 2026-10-31] Test Case 1.2 — อนุมัติ/ไม่อนุมัติ (Pending → Approved/Rejected) ได้เฉพาะ Role ใน APPROVER_ROLE_IDS
+  // เดิม Staff ทุก Role (รวมคลังสินค้า) กดอนุมัติได้ ⚠️ backend /Claimapproves ยังไม่ตรวจสิทธิ์ (นอกขอบเขต)
+  const canApprove = canApproveClaim(currentUser);
 
   const [formData, setFormData] = useState({
     status: "Approved",
@@ -445,6 +449,8 @@ const StaffClaimUpdate = () => {
 
     switch (normalized) {
       case "Pending":
+        // [QA-FIX 2026-10-31] Warehouse Staff ไม่เห็นตัวเลือกอนุมัติ → ปุ่ม "อัปเดตสถานะ" ถูกซ่อนในขั้นนี้
+        if (!canApprove) return [];
         return [
           { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
           { value: "Rejected", label: "2. Rejected (ไม่อนุมัติ)" },
@@ -703,6 +709,12 @@ const StaffClaimUpdate = () => {
     // [FLOW-FIX 2026-10-31] กันการบันทึกสถานะที่ไม่ใช่ขั้นถัดไป (เช่น กดบันทึกสถานะเดิมซ้ำ)
     if (!targetStatusName || !allowedTargets.includes(targetStatusName)) {
       message.error("กรุณาเลือกสถานะถัดไปที่ถูกต้อง");
+      return;
+    }
+
+    // [QA-FIX 2026-10-31] กันซ้ำอีกชั้น — ผู้ไม่มีสิทธิ์อนุมัติ ห้ามบันทึก Approved/Rejected
+    if (["Approved", "Rejected"].includes(targetStatusName) && !canApprove) {
+      message.error("คุณไม่มีสิทธิ์อนุมัติ/ไม่อนุมัติเคลม (เฉพาะผู้ดูแลระบบ)");
       return;
     }
 
@@ -1076,6 +1088,13 @@ const StaffClaimUpdate = () => {
               >
                 ถอยสถานะ
               </Button>
+            )}
+
+            {/* [QA-FIX 2026-10-31] แจ้ง Staff ที่ไม่มีสิทธิ์อนุมัติว่าเคลมนี้รอผู้ดูแลระบบพิจารณา */}
+            {!canApprove && getStatusName(statusName) === "Pending" && (
+              <span className="text-xs sm:text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                รอผู้ดูแลระบบพิจารณาอนุมัติ
+              </span>
             )}
 
             {/* [FLOW-FIX 2026-10-31] ค่าเริ่มต้น = สถานะถัดไปตัวแรก และซ่อนปุ่มเมื่อไม่มีสถานะถัดไป (Delivered) */}

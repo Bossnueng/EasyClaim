@@ -10,7 +10,8 @@ import {
   FilterOutlined,
   DownOutlined,
   UpOutlined,
-  ClearOutlined
+  ClearOutlined,
+  CloseOutlined
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import CustomerClaimCard from "../../components/CustomerClaimCard";
@@ -18,21 +19,35 @@ import {
   CUSTOMER_FILTER_TABS, 
   CUSTOMER_STATUS_GROUPS,
   getStatusName,
-  getStatusId
 } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
 import loginService from "../../services/loginService";
 import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
+// [QA-FIX 2026-10-31] Test Case 1.1 / 4.3 — ตัวช่วยกลาง (ตรวจสิทธิ์เคลม / ค้นหา / กลุ่มสถานะของการ์ดหน้า Home / cache รายการสินค้า)
+import { filterClaimsForUser } from "../../utils/claimAccess";
+import { enrichClaimsWithItems, matchesClaimSearch, getClaimGroup, isOverdueClaim } from "../../utils/claimDashboard";
+
+// [QA-FIX 2026-10-31] Socket แจ้งการเปลี่ยนสถานะทันทีแล้ว — polling เหลือไว้เป็นทางสำรอง (เดิม 5 วินาที)
+const POLL_INTERVAL_MS = 15000;
+
+// [QA-FIX 2026-10-31] ตัวกรองที่มาจากการ์ดหน้า Home ซึ่งไม่ตรงกับแท็บสถานะใดแท็บเดียว
+const CARD_FILTER_LABELS = {
+  processing: "กำลังดำเนินการ (Approved ➔ Shipping)",
+  overdue3: "ค้างเกิน 3 วัน",
+  overdue7: "ค้างเกิน 7 วัน",
+};
+// การ์ดที่ตรงกับแท็บสถานะ → ตั้งค่า dropdown ให้เลย
+const CARD_FILTER_TO_TAB = { new: "Pending", delivered: "Delivered" };
 import { parseExtraDataFromLogs } from "../../utils/logPaser";
 
 const CustomerClaimList = () => {
   const navigate = useNavigate();
   const location = useLocation(); // 🟢 อ่าน Query parameter จาก URL
   const searchParams = new URLSearchParams(location.search);
-  const cardFilterParam = searchParams.get("filter");
+  const urlFilterParam = searchParams.get("filter");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("ทั้งหมด");
@@ -47,16 +62,33 @@ const CustomerClaimList = () => {
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-  // 🟢 ตั้งค่า Filter เมื่อคลิกมาจาก Card หน้า Home
+  // [QA-FIX 2026-10-31] Test Case 4.3 — ตัวกรองจากการ์ดหน้า Home
+  // เดิม: อ่าน ?filter= จาก URL ตรงๆ ในทุกการกรอง → เลือก dropdown สถานะอื่นแล้วไม่มีผล (URL ยังชนะ)
+  //       และตั้ง selectedStatus เป็น "อยู่ระหว่างจัดการ"/"จัดส่งสำเร็จ" ซึ่งไม่มีใน dropdown (แสดงค่าแปลก, count 0)
+  // ใหม่: new/delivered → ตั้ง dropdown เป็น Pending/Delivered; processing/overdue → เก็บใน cardFilter
+  //       แสดงเป็นป้ายที่กดล้างได้ และล้างทันทีเมื่อผู้ใช้เลือก dropdown เอง
+  const [cardFilter, setCardFilter] = useState(null);
   useEffect(() => {
-    if (cardFilterParam === "processing") {
-      setSelectedStatus("อยู่ระหว่างจัดการ");
-    } else if (cardFilterParam === "delivered") {
-      setSelectedStatus("จัดส่งสำเร็จ");
-    } else if (cardFilterParam === "overdue3" || cardFilterParam === "overdue7") {
+    if (CARD_FILTER_TO_TAB[urlFilterParam]) {
+      setSelectedStatus(CARD_FILTER_TO_TAB[urlFilterParam]);
+      setCardFilter(null);
+    } else if (CARD_FILTER_LABELS[urlFilterParam]) {
       setSelectedStatus("ทั้งหมด");
+      setCardFilter(urlFilterParam);
+    } else {
+      setCardFilter(null);
     }
-  }, [cardFilterParam]);
+  }, [urlFilterParam]);
+
+  const clearCardFilter = () => {
+    setCardFilter(null);
+    if (urlFilterParam) navigate(location.pathname, { replace: true });
+  };
+
+  const handleStatusChange = (val) => {
+    setSelectedStatus(val);
+    clearCardFilter();
+  };
 
   const user = loginService.getCurrentUser();
   const currentUserId = user?.user_id || user?.id;
@@ -66,10 +98,11 @@ const CustomerClaimList = () => {
     userRef.current = user;
   }, [user]);
 
+  const itemsCacheRef = useRef(new Map()); // [QA-FIX 2026-10-31]
+
   const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
     const activeUser = userRef.current;
     const activeRole = activeUser?.role || activeUser?.user_type;
-    const activeUserId = activeUser?.user_id || activeUser?.id;
 
     if (activeRole === "staff" || activeRole === "admin") {
       navigate("/staff", { replace: true });
@@ -110,60 +143,16 @@ const CustomerClaimList = () => {
         setItemsMap(map);
       }
 
-      const userAgentIdentifiers = [];
-      if (Array.isArray(activeUser?.agent_ids)) {
-        activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
-      }
-      if (activeUser?.agent_id) {
-        userAgentIdentifiers.push(String(activeUser.agent_id));
-      }
-
+      // [QA-FIX 2026-10-31] Test Case 1.1 — กรองสิทธิ์ด้วยตัวช่วยกลาง (แก้ created_by เทียบ String กับ Number และ agent_id ชน agent_code)
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
-      const allowedClaims = rawClaims.filter((claim) => {
-        const claimAgentIdStr = String(claim.agent_id || "");
-        const claimAgentCodeStr = String(claim.agent_code || "");
-        const claimCreatedByStr = String(claim.created_by || claim.user_id || "");
+      const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
 
-        const isAgentMatch =
-          userAgentIdentifiers.length > 0 &&
-          (userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr));
-        const isUserMatch = activeUserId && claimCreatedByStr === activeUserId;
-
-        return isAgentMatch || isUserMatch;
-      });
-
-      const claimsWithItems = await Promise.all(
-        allowedClaims.map(async (claim) => {
-          try {
-            const resItems = await claimService.getClaimItems(claim.claim_id);
-            const rawItems = Array.isArray(resItems) ? resItems : resItems?.data || [];
-            if (rawItems.length > 0) {
-              const firstItem = rawItems[0];
-              return {
-                ...claim,
-                item_id: firstItem.item_id,
-                qty: firstItem.qty,
-                remark: firstItem.remark,
-                lot_no: firstItem.lot_no,
-                items: rawItems,
-              };
-            }
-          } catch (err) {
-            console.error(`Error fetching items for claim ${claim.claim_id}`, err);
-          }
-          return claim;
-        })
+      // [QA-FIX 2026-10-31] ดึงรายการสินค้าแบบมี cache (เดิมยิง /getClaimItems ทุกใบทุกครั้งที่ polling)
+      const claimsWithItems = await enrichClaimsWithItems(
+        allowedClaims,
+        (id) => claimService.getClaimItems(id),
+        itemsCacheRef.current
       );
 
       setClaims(claimsWithItems);
@@ -174,18 +163,23 @@ const CustomerClaimList = () => {
     }
   }, [navigate]);
 
+  // [QA-FIX 2026-10-31] Test Case 3.1 — join ห้องของทุกเคลมในรายการ แล้วรีเฟรชทันทีเมื่อมี Log เปลี่ยนสถานะ
   useClaimRealtime({
     isStaff: false,
     userId: currentUserId,
+    claimIds: claims.map((c) => c.claim_id),
     onCreated: () => fetchClaimsAndItems(false),
     onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
   });
 
   useEffect(() => {
     fetchClaimsAndItems(true);
     const interval = setInterval(() => {
       fetchClaimsAndItems(false);
-    }, 5000);
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchClaimsAndItems]);
 
@@ -353,46 +347,19 @@ const CustomerClaimList = () => {
   .filter((claim) => {
     const rawStatus = claim.current_status || claim.status;
     const nameStatus = getStatusName(rawStatus, "customer");
-    const statusId = String(getStatusId ? getStatusId(rawStatus) : rawStatus);
     let matchesStatus = false;
 
-    // 🟢 1. เช็คเคสที่กด Card "Delivered" หรือเลือก Dropdown "จัดส่งสำเร็จ"
-    if (cardFilterParam === "delivered" || selectedStatus === "จัดส่งสำเร็จ") {
-      matchesStatus = 
-        statusId === "10" || 
-        nameStatus === "Delivered" || 
-        nameStatus === "จัดส่งสำเร็จ" || 
-        nameStatus === "จัดส่งสินค้าเคลมสำเร็จ" ||
-        rawStatus === "10" ||
-        rawStatus === "Delivered";
-    } 
-    // 🟢 2. เช็คเคสที่กด Card "Processing" หรือเลือก Dropdown "อยู่ระหว่างจัดการ"
-    else if (cardFilterParam === "processing" || selectedStatus === "อยู่ระหว่างจัดการ") {
-      const isNotDelivered = 
-        statusId !== "10" && 
-        nameStatus !== "Delivered" && 
-        nameStatus !== "จัดส่งสำเร็จ" && 
-        nameStatus !== "จัดส่งสินค้าเคลมสำเร็จ";
-      matchesStatus = isNotDelivered;
-    } 
-    // 🟢 3. เช็คเคสค้างส่ง เกิน 3 วัน หรือ 7 วัน
-    else if (cardFilterParam === "overdue3" || cardFilterParam === "overdue7") {
-      const isNotDelivered = 
-        statusId !== "10" && 
-        nameStatus !== "Delivered" && 
-        nameStatus !== "จัดส่งสำเร็จ" && 
-        nameStatus !== "จัดส่งสินค้าเคลมสำเร็จ";
-      const createdDate = claim?.created_at || claim?.claim_date || claim?.createdDate;
-      const targetDays = cardFilterParam === "overdue7" ? 7 : 3;
-      const isOverdue = createdDate && dayjs().diff(dayjs(createdDate), "day") >= targetDays;
-      
-      matchesStatus = isNotDelivered && isOverdue;
-    } 
-    // 🟢 4. เลือก "ทั้งหมด"
+    // [QA-FIX 2026-10-31] Test Case 4.3 — ตัวกรองจากการ์ดหน้า Home (ใช้กลุ่มเดียวกับที่การ์ดนับ ยอดจึงตรงกัน)
+    if (cardFilter === "processing") {
+      matchesStatus = getClaimGroup(claim) === "processing";
+    } else if (cardFilter === "overdue3" || cardFilter === "overdue7") {
+      matchesStatus = isOverdueClaim(claim, cardFilter === "overdue7" ? 7 : 3);
+    }
+    // เลือก "ทั้งหมด"
     else if (selectedStatus === "ทั้งหมด") {
       matchesStatus = true;
-    } 
-    // 🟢 5. กรณีเลือกสถานะอื่นๆ ใน Dropdown
+    }
+    // เลือกสถานะใน Dropdown
     else if (CUSTOMER_STATUS_GROUPS && CUSTOMER_STATUS_GROUPS[selectedStatus]) {
       const allowedStatuses = CUSTOMER_STATUS_GROUPS[selectedStatus] || [];
       matchesStatus =
@@ -403,14 +370,9 @@ const CustomerClaimList = () => {
       matchesStatus = rawStatus === selectedStatus || nameStatus === selectedStatus;
     }
 
-    // --- ส่วนการค้นหา Search และ Date ---
-    const searchLower = searchTerm.toLowerCase();
-    const itemName = itemsMap[claim.item_id] || claim.item_name || "";
-    const matchesProduct = itemName.toString().toLowerCase().includes(searchLower);
-    const matchesId = (claim.claim_no || claim.claim_id || "")
-      .toString()
-      .toLowerCase()
-      .includes(searchLower);
+    // [QA-FIX 2026-10-31] Test Case 4.3 — ค้นหาแบบไม่สนตัวพิมพ์ครอบคลุม claim_no + claim_id + สินค้าทุกรายการในใบเคลม + lot
+    // (เดิมค้นหาเฉพาะสินค้ารายการแรก และค้น claim_id ไม่ได้เมื่อเคลมมี claim_no)
+    const matchesSearch = matchesClaimSearch(claim, searchTerm, itemsMap);
 
     let matchesDate = true;
     if (startDate || endDate) {
@@ -429,7 +391,7 @@ const CustomerClaimList = () => {
       }
     }
 
-    return matchesStatus && (matchesProduct || matchesId) && matchesDate;
+    return matchesStatus && matchesSearch && matchesDate;
   })
     .sort((a, b) => {
       const dateA = dayjs(a.claim_date || a.created_at);
@@ -528,7 +490,8 @@ const CustomerClaimList = () => {
             <div className="lg:col-span-4">
               <Select
                 value={selectedStatus}
-                onChange={(val) => setSelectedStatus(val)}
+                /* [QA-FIX 2026-10-31] เลือกเองแล้วล้างตัวกรองจากการ์ดหน้า Home */
+                onChange={handleStatusChange}
                 className="w-full h-10 text-sm rounded-xl shadow-2xs"
                 style={{
                   paddingLeft: '12px',
@@ -568,6 +531,24 @@ const CustomerClaimList = () => {
               />
             </div>
           </div>
+
+          {/* [QA-FIX 2026-10-31] ป้ายตัวกรองที่มาจากการ์ดหน้า Home — กด × เพื่อล้าง */}
+          {cardFilter && (
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full pl-3 pr-1 py-1 max-w-full">
+                <span className="truncate">ตัวกรองจากหน้าแรก: {CARD_FILTER_LABELS[cardFilter]}</span>
+                <button
+                  type="button"
+                  onClick={clearCardFilter}
+                  aria-label="ล้างตัวกรองจากหน้าแรก"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-full border-none bg-transparent text-blue-600 hover:bg-blue-100 cursor-pointer shrink-0"
+                >
+                  <CloseOutlined className="text-[10px]" />
+                </button>
+              </span>
+              <span className="text-xs text-gray-500">{filteredClaims.length} รายการ</span>
+            </div>
+          )}
 
           {/* Row 2: Collapsible Toggle Button */}
           <div className="flex flex-wrap justify-between items-center gap-2 px-1 pt-1">
@@ -676,6 +657,8 @@ const CustomerClaimList = () => {
                 onDelete={handleDeleteClaim}
                 hideDeleteWhenDisabled={true}
                 layout="horizontal"
+                /* [QA-FIX 2026-10-31] ส่ง Master สินค้าให้การ์ด (เดิมการ์ดทุกใบเรียก /getitem เอง) */
+                itemsMap={itemsMap}
               />
             ))}
           </div>

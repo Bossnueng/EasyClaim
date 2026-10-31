@@ -15,7 +15,7 @@ import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
-import { useClaimRealtime } from "../../hooks/useClaimRealtime";
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime"; // [QA-FIX 2026-10-31]
 
 const StaffHome = () => {
   const navigate = useNavigate();
@@ -30,11 +30,17 @@ const StaffHome = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
 
+  // [QA-FIX 2026-10-31] Test Case 3.2 — backend ส่ง "claim:comment_created" เข้าห้อง claim:<id> เท่านั้น (ไม่ส่งห้อง staff)
+  // → join ห้องของทุกเคลมในรายการ และรีเฟรชเมื่อมี Log เปลี่ยนสถานะ (ข้อความแชท [MSG] ไม่ต้องรีเฟรช)
   useClaimRealtime({
     isStaff: true,
     userId: currentUserId,
+    claimIds: allClaims.map((c) => c.claim_id),
     onCreated: () => fetchClaimsAndItems(false),
     onStatusUpdated: () => fetchClaimsAndItems(false),
+    onCommentCreated: (log) => {
+      if (isStatusChangeEvent(log)) fetchClaimsAndItems(false);
+    },
   });
 
   useEffect(() => {

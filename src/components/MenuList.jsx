@@ -3,7 +3,6 @@ import {
   ShopOutlined,
   SafetyCertificateOutlined,
   HomeOutlined,
-  FileAddOutlined,
   HistoryOutlined,
   WechatOutlined,
   SettingFilled,
@@ -11,6 +10,7 @@ import {
   FormOutlined, // [DOC-FIX 2026-10-31] เมนูลายเซ็นผู้สอบทาน
 } from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
+import { isStaffUser, isAdminUser, CUSTOMER_ROLE_ID } from "../constants/roles"; // [QA-FIX 2026-10-31]
 
 const MenuList = () => {
   const location = useLocation();
@@ -20,8 +20,10 @@ const MenuList = () => {
   const user = savedUser ? JSON.parse(savedUser) : null;
   const role = user?.role_id; // role_id ของผู้ใช้
 
-  const isStaffRole = [1, 4, 5].includes(role);
-  const isAdminRole = Number(role) === 1; // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
+  // [QA-FIX 2026-10-31] Test Case 1.2 — เดิม [1, 4, 5] ไม่มี role 3 (เจ้าหน้าที่) → role 3 ได้เมนูว่าง
+  // และเทียบแบบ strict กับ role_id ที่อาจเป็น String → ใช้ค่ากลางจาก constants/roles.js
+  const isStaffRole = isStaffUser(user);
+  const isAdminRole = isAdminUser(user); // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
 
   const getSelectedKey = () => {
     // Customer
@@ -98,7 +100,6 @@ const MenuList = () => {
           {/* 🟢 4. แสดงเมนูนี้เฉพาะผู้ที่มี role_id === 1 เท่านั้น */}
           {isAdminRole && (
             <>
-            
 
               <Menu.Item key="staff-users" icon={<UserOutlined />}>
                 <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
@@ -126,31 +127,13 @@ const MenuList = () => {
       )}
 
       {/* ==================== CUSTOMER MENUS ==================== */}
-      {role == 2 && (
+      {Number(role) === CUSTOMER_ROLE_ID && (
         <>
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
             <NavLink to="/customer">หน้าแรก</NavLink>
           </Menu.Item>
-          {/**
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-           * 
-           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
-          </Menu.Item>
-           * 
-           * 
-=======
-           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
-          </Menu.Item>
->>>>>>> Stashed changes
-=======
-           <Menu.Item key="customer-create-claim" icon={<FileAddOutlined />}>
-            <NavLink to="/customer/new-claim">สร้างรายการเคลม</NavLink>
-          </Menu.Item>
->>>>>>> Stashed changes
-           */}
+          {/* [QA-FIX 2026-10-31] ลบ merge-conflict marker ที่ค้างอยู่ใน comment
+              เมนู "สร้างรายการเคลม" (/customer/new-claim) ยังปิดไว้เหมือนเดิม เพราะยังไม่มีหน้า/route นี้ในเว็บ */}
           
           <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>
             <NavLink to="/customer/list-claim">รายการเคลม</NavLink>

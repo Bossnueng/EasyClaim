@@ -17,15 +17,15 @@ import dayjs from "dayjs";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import { FILTER_OPTIONS, CUSTOMER_FILTER_TABS, CUSTOMER_STATUS_GROUPS, getStatusName, getStatusId } from "../../constants/claimStatus";
 import claimService from "../../services/claimService";
-import deliveryService from "../../services/deliveryService"; // [FLOW-FIX 2026-10-31]
-import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow"; // [FLOW-FIX 2026-10-31]
-import { runAutoConfirms } from "../../hooks/useAutoConfirm"; // [DOC-FIX 2026-10-31]
+import deliveryService from "../../services/deliveryService";
+import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow";
+import { runAutoConfirms } from "../../hooks/useAutoConfirm";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
-import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime"; // [QA-FIX 2026-10-31]
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 import { parseExtraDataFromLogs } from "../../utils/logPaser";
 
 const StaffClaimList = () => {
@@ -82,7 +82,6 @@ const StaffClaimList = () => {
         agentService.getAgent().catch(() => ({ data: [] })),
         userService.getUsers().catch(() => ({ data: [] })),
         claimService.getClaimStatusLogs().catch(() => ({ data: [] })),
-        // [FLOW-FIX 2026-10-31] ใช้ตรวจว่าเคลมไหนยังไม่ได้มอบหมาย พขร.
         deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
 
@@ -177,7 +176,6 @@ const StaffClaimList = () => {
         })
       );
 
-      // [FLOW-FIX 2026-10-31] ติดธง needsDriverAssign ให้การ์ดแสดงป้าย "รอมอบหมาย พขร."
       const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
       const claimsWithFlags = claimsWithItems.map((claim) => ({
         ...claim,
@@ -189,8 +187,6 @@ const StaffClaimList = () => {
 
       setClaims(claimsWithFlags);
 
-      // [DOC-FIX 2026-10-31] ยืนยันส่งเคลม/รับสินค้าแทนลูกค้าเมื่อครบกำหนด (ทำงานเบื้องหลัง ครั้งละไม่เกิน 20 เคลม)
-      // เพื่อให้เอกสารใบเคลมมีเวลายืนยันครบ แม้ไม่มีใครเปิดหน้ารายละเอียดเคลมนั้น
       const allLogs = Array.isArray(logsData) ? logsData : [];
       const staffId = activeUser?.user_id || activeUser?.id;
       claimsWithFlags.slice(0, 200).reduce(async (prev, claim) => {
@@ -213,8 +209,6 @@ const StaffClaimList = () => {
     }
   }, []);
 
-  // [QA-FIX 2026-10-31] Test Case 3.2 — backend ส่ง "claim:comment_created" เข้าห้อง claim:<id> เท่านั้น (ไม่ส่งห้อง staff)
-  // → join ห้องของทุกเคลมในรายการ และรีเฟรชเมื่อมี Log เปลี่ยนสถานะ (ข้อความแชท [MSG] ไม่ต้องรีเฟรช)
   useClaimRealtime({
     isStaff: true,
     userId: currentUserId,
@@ -647,7 +641,6 @@ const StaffClaimList = () => {
       <div className="w-full flex flex-col gap-5">
         
         {/* Header Section */}
-        {/* [UI-FIX 2026-10-31 R2] เพิ่ม flex-wrap + ย่อหัวข้อ/ปุ่ม ให้ไม่ล้นบนจอแคบ */}
         <header className="flex flex-row flex-wrap justify-between items-start md:items-center gap-4 w-full">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0">

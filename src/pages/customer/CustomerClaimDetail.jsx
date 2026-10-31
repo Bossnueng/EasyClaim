@@ -26,7 +26,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
 
 import { useClaimRealtime } from "../../hooks/useClaimRealtime";
-import { getUserAgentScope, canAccessClaim } from "../../utils/claimAccess"; // [QA-FIX 2026-10-31]
+import { getUserAgentScope, canAccessClaim } from "../../utils/claimAccess";
 import ClaimStatusTag from "../../components/ClaimStatusTag";
 import ClaimPrintModal from "../../components/ClaimPrintModal";
 import ClaimTimeline from "../../components/claim/ClaimTimeline";
@@ -39,7 +39,6 @@ import agentService from "../../services/agentService";
 import { parseDateSafely } from "../../utils/dateUtils";
 import { parseExtraDataFromLogs, getRejectReasonText } from "../../utils/logPaser";
 import deliveryService from "../../services/deliveryService";
-// [DOC-FIX 2026-10-31] ยืนยันส่งเคลม/รับสินค้า + ยืนยันอัตโนมัติเมื่อครบกำหนด
 import { useAutoConfirm } from "../../hooks/useAutoConfirm";
 import {
   CONFIRM_KIND,
@@ -48,7 +47,6 @@ import {
   describeRemaining,
   buildManualConfirmPayload,
 } from "../../utils/claimConfirm";
-// [FLOW-FIX 2026-10-31] ตัวช่วยกลางคำนวณสถานะ/ไทม์ไลน์ (ใช้ร่วมกับฝั่ง Staff)
 import {
   sortLogs,
   getStatusStampDate,
@@ -100,14 +98,14 @@ const CustomerClaimDetail = () => {
   const [approveLogs, setApproveLogs] = useState([]);
   const [usersMap, setUsersMap] = useState({});
   const [agentsMap, setAgentsMap] = useState({});
-  const [agentsList, setAgentsList] = useState([]); // [DOC-FIX R4] ใช้หา User ตัวแทน Agent ในเอกสาร
-  const [usersList, setUsersList] = useState([]); // [DOC-FIX R2] ใช้หา User ตัวแทน Agent ในเอกสาร
+  const [agentsList, setAgentsList] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [allImages, setAllImages] = useState([]);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [deliveryDataList, setDeliveryDataList] = useState([]); // [FLOW-FIX 2026-10-31]
+  const [deliveryDataList, setDeliveryDataList] = useState([]);
 
-  // State ตรวจสอบว่าลูกค้ายืนยันส่งเคลม/รับสินค้าแล้วหรือยัง
+  // State ตรวจสอบว่าลูกค้ายืนยันแล้วหรือยัง
   const [hasConfirmedSubmit, setHasConfirmedSubmit] = useState(false);
   const [hasConfirmedDelivery, setHasConfirmedDelivery] = useState(false);
 
@@ -123,7 +121,6 @@ const CustomerClaimDetail = () => {
     userRef.current = user;
   }, [user]);
 
-  // [DOC-FIX 2026-10-31] ลูกค้ากดยืนยันเอง — บันทึก User + เวลา ใช้ในเอกสารใบเคลม (ข้อ 4 และ 5)
   const confirmByCustomer = async (kind) => {
     try {
       const userId = user?.user_id || user?.id || "";
@@ -181,7 +178,6 @@ const CustomerClaimDetail = () => {
           claimService.getclaimapproves().catch(() => ({ data: [] })),
           userService.getUsers().catch(() => ({ data: [] })),
           agentService.getAgent().catch(() => ({ data: [] })),
-          // [FLOW-FIX 2026-10-31] ใช้วันที่ Shipping/Delivered ที่ พขร. อัปเดตจากอีกแพลตฟอร์ม
           deliveryService.getDelivery().catch(() => ({ data: [] })),
         ]);
         const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
@@ -212,7 +208,7 @@ const CustomerClaimDetail = () => {
             if (aCode) aMap[aCode] = agent.agent_name || agent.name;
           });
           setAgentsMap(aMap);
-          setAgentsList(agentsData); // [DOC-FIX R4]
+          setAgentsList(agentsData);
         }
 
         const usersData = resUsers?.data || resUsers || [];
@@ -242,9 +238,6 @@ const CustomerClaimDetail = () => {
             return itemClaimId === targetId || itemClaimNo === targetId;
           });
 
-          // [QA-FIX 2026-10-31] Test Case 1.1 (IDOR) — เดิมเปิดเคลมของ Agent ใดก็ได้ด้วยการพิมพ์เลขใน URL
-          // ตอนนี้ตรวจว่าเคลมเป็นของ Agent ที่ผู้ใช้ดูแล หรือผู้ใช้เป็นผู้สร้าง ถ้าไม่ใช่ → แสดง "ไม่พบข้อมูลรายการเคลม"
-          // ⚠️ ป้องกันฝั่งหน้าเว็บเท่านั้น: API /getClaim ยังส่งข้อมูลทุกใบ (ต้องแก้ backend — นอกขอบเขต)
           const accessScope = getUserAgentScope(user, agentsData);
           const currentClaim = foundClaim && canAccessClaim(foundClaim, accessScope) ? foundClaim : null;
           if (foundClaim && !currentClaim) {
@@ -257,7 +250,6 @@ const CustomerClaimDetail = () => {
 
           if (currentClaim) {
             const logsData = resLogs?.data || resLogs || [];
-            // [FLOW-FIX 2026-10-31] เรียง Log เก่า → ใหม่
             const filteredLogs = Array.isArray(logsData)
               ? sortLogs(logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id)))
               : [];
@@ -353,8 +345,6 @@ const CustomerClaimDetail = () => {
               setApproveLogs(approvesData.filter((app) => String(app.claim_id) === String(currentClaim.claim_id)));
             }
 
-            // 🟢 เช็คเฉพาะ Log ที่ลูกค้ายืนยันแล้วจริงๆ (ไม่นับ Log สร้างรายการของระบบ)
-            // [DOC-FIX 2026-10-31] รองรับทั้งกดเอง / อัตโนมัติแบบเดิม (10 วินาที) / อัตโนมัติแบบใหม่
             const isSubmitStamped = Boolean(findConfirmLog(filteredLogs, CONFIRM_KIND.SUBMIT));
             const isDeliveryStamped = Boolean(findConfirmLog(filteredLogs, CONFIRM_KIND.RECEIVE));
 
@@ -387,9 +377,6 @@ const CustomerClaimDetail = () => {
     [claimId]
   );
 
-  // [DOC-FIX 2026-10-31] ยืนยันอัตโนมัติเมื่อครบกำหนด (ตั้งเวลาได้ใน .env — ดู constants/autoConfirm.js)
-  // เดิม: นับ 10 วินาทีจากตอนเปิดหน้า เฉพาะเมื่อสถานะยังเป็น Pending/Delivered และลูกค้าต้องเปิดหน้าค้างไว้
-  // ใหม่: นับจากเวลาแจ้งเคลม / เวลาส่งสำเร็จ, ทำงานได้ทั้งหน้า Customer และ Staff, เวลาในเอกสาร = เวลาครบกำหนด
   useAutoConfirm({
     claim: data,
     logs: statusLogs,
@@ -404,8 +391,6 @@ const CustomerClaimDetail = () => {
     isStaff: false,
     onStatusUpdated: () => fetchClaimDetail(false),
     onCommentCreated: (newLog) => {
-      // [FLOW-FIX 2026-10-31] backend ไม่ได้ส่ง event "claim:status_updated" แต่ทุกการเปลี่ยนสถานะจะสร้าง Log
-      // และส่ง "claim:comment_created" → ถ้าไม่ใช่ข้อความแชท ให้รีเฟรชทันที (เดิมต้องรอ polling 3–5 วินาที)
       if (newLog && !String(newLog.remark || "").startsWith("[MSG]")) {
         fetchClaimDetail(false);
         return;
@@ -457,9 +442,6 @@ const CustomerClaimDetail = () => {
   const rawStatusVal = String(data?.current_status || data?.status || data?.status_id || "");
   const currentStatusInDB = convertstatusClaim(rawStatusVal);
 
-  // [FLOW-FIX 2026-10-31] ใช้ตัวช่วยกลาง (เหมือนฝั่ง Staff) — คิดจากสถานะปัจจุบัน + Log เปลี่ยนสถานะจริงเท่านั้น
-  // เดิม: เวลา Pending ถูกทับด้วยเวลาที่ลูกค้ากดยืนยัน/ส่งข้อความ, เคยมี Log Rejected = แดงตลอด,
-  //       และเคลม Rejected ไม่แสดงการข้ามขั้น Processing
   const statusName = getStatusName(rawStatusVal || "5");
   const rejectedFlow = isRejectedFlow(statusName, statusLogs);
   const latestDecision = getLatestDecision(statusLogs);
@@ -478,7 +460,6 @@ const CustomerClaimDetail = () => {
   const stepItems = [
     {
       title: "1. Pending",
-      // เวลาที่ พขร. แจ้งเคลมเข้าระบบ
       description: formatDate(data?.claim_date || data?.created_at),
     },
     {
@@ -533,8 +514,6 @@ const CustomerClaimDetail = () => {
               <ClaimStatusTag status={data.current_status || data.status} />
             </div>
 
-            {/* [DOC-FIX 2026-10-31] พิมพ์เอกสารได้ทุกสถานะ Pending → Delivered (เดิมเฉพาะ Shipping ขึ้นไป)
-                ข้อมูลที่ยังไม่ถึงขั้นจะเว้นว่างในเอกสาร */}
             <Button
               type="default"
               icon={<PrinterOutlined />}
@@ -544,7 +523,6 @@ const CustomerClaimDetail = () => {
               พิมพ์เอกสาร
             </Button>
 
-            {/* 🟢 ยืนยันการส่งเคลม — แสดงจนกว่าจะยืนยัน (กดเอง หรือระบบยืนยันเมื่อครบกำหนด) */}
             {!hasConfirmedSubmit && (
               <div className="flex flex-col items-start md:items-end gap-1">
                 <Popconfirm
@@ -564,7 +542,7 @@ const CustomerClaimDetail = () => {
               </div>
             )}
 
-            {/* 🟢 ยืนยันรับสินค้าเคลม — เฉพาะ Delivered และยังไม่ยืนยัน */}
+            {/* 🟢 ปุ่มยืนยันรับสินค้าเคลม (เมื่อสถานะเป็น Delivered และยังไม่ถูกยืนยัน) */}
             {statusName === "Delivered" && !hasConfirmedDelivery && (
               <div className="flex flex-col items-start md:items-end gap-1">
                 <Popconfirm
@@ -587,7 +565,6 @@ const CustomerClaimDetail = () => {
         </div>
       </Card>
 
-      {/* [DOC-FIX 2026-10-31] เอกสารใบเคลม (ใช้ข้อมูลจริงทั้งหมด — ดู utils/claimDocument.js) */}
       <ClaimPrintModal
         open={isPreviewModalOpen}
         onClose={() => setIsPreviewModalOpen(false)}
@@ -761,7 +738,7 @@ const CustomerClaimDetail = () => {
       </div>
 
       <Modal
-        title="ประวัติสถานะทั้งหมด" /* [UI-FIX 2026-10-31 R2] เดิม "ประวัติการบันทึกสถานะทั้งหมด (Log History)" */
+        title="ประวัติสถานะทั้งหมด"
         open={isLogModalOpen}
         onCancel={() => setIsLogModalOpen(false)}
         footer={[<Button key="close" onClick={() => setIsLogModalOpen(false)}>ปิด</Button>]}

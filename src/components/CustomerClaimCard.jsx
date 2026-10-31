@@ -9,7 +9,7 @@ import ClaimStatusTag from "./ClaimStatusTag";
 import { getStatusName } from "../constants/claimStatus";
 import loginService from "../services/loginService";
 import itemService from "../services/itemService";
-import { getDisplayQty, getLotLabel } from "../utils/claimDashboard"; // [QA-FIX 2026-10-31]
+import { getDisplayQty, getLotLabel } from "../utils/claimDashboard";
 
 const NON_DELETABLE_STATUSES = [
   "ไม่มีสิทธิ์เคลม",
@@ -102,8 +102,6 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
   })();
 
   // 🟢 จัดการจำนวนสินค้า
-  // [QA-FIX 2026-10-31] Test Case 4.1 — เดิม `qtyreceived ?? qtychang ?? qty` แต่ backend บันทึก qtyreceived = 0 (ไม่ใช่ NULL)
-  // ตอนสร้างเคลม → การ์ดแสดง "0" ทุกใบ; ตอนนี้ใช้ค่าแรกที่ > 0 (รับจริง → อนุมัติเปลี่ยน → จำนวนที่แจ้ง)
   const qtyDisplay = (() => {
     if (Array.isArray(claim?.items) && claim.items.length > 0) {
       return claim.items.map((i) => getDisplayQty(i)).join(", ");
@@ -111,7 +109,6 @@ const CustomerClaimCard = ({ claim, onDelete, hideDeleteWhenDisabled = true, lay
     return getDisplayQty(claim);
   })();
 
-  // [QA-FIX 2026-10-31] Test Case 4.1 — แสดง Lot ของสินค้า (เดิมไม่แสดงบนการ์ด)
   const lotLabel = getLotLabel(claim);
 
   const isOverdue7Days = (() => {

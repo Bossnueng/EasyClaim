@@ -2,11 +2,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Mitr:wght@200;300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
-/* 🟢 บังคับใช้ฟอนต์ Mitr ทั่วทั้งเว็บ
-   [UI-FIX 2026-10-31] เดิม rule นี้ใส่ margin:0 / padding:0 ให้ * และ .ant-btn ฯลฯ แบบ "ไม่อยู่ใน @layer"
-   ทำให้ชนะ padding ของ Ant Design (ปุ่ม/Input/Select) และชนะ Tailwind utility ทุกตัว (p-*, px-*, m-*)
-   → ข้อความในปุ่มชิดขอบ และ class padding ของ Tailwind ไม่ทำงานทั้งเว็บ
-   แก้: เหลือเฉพาะ font-family ไว้นอก layer ส่วน reset ย้ายไปไว้ใน @layer base */
 *,
 body,
 button,
@@ -42,9 +37,7 @@ textarea,
 }
 
 /* ============================================================ */
-/* [UI-FIX] ปุ่ม (Button) ทั้งระบบ: ระยะห่างข้อความจากขอบ + จัดไอคอนกึ่งกลาง  */
 /* ============================================================ */
-/* หมายเหตุ: ไม่กำหนด display ที่นี่ เพื่อไม่ให้ทับ class แสดง/ซ่อนของ Tailwind เช่น lg:hidden */
 .ant-btn {
   align-items: center;
   justify-content: center;
@@ -64,12 +57,10 @@ textarea,
   padding-inline: 24px;
 }
 
-/* ปุ่มแบบ link (เช่น "ดูทั้งหมด") ให้มีพื้นที่กดเล็กน้อยแต่ไม่ดูเป็นกล่อง */
 .ant-btn.ant-btn-link {
   padding-inline: 6px;
 }
 
-/* ปุ่มไอคอนอย่างเดียว ให้เป็นสี่เหลี่ยมจัตุรัสพื้นที่กดพอดีนิ้ว */
 .ant-btn.ant-btn-icon-only {
   padding-inline: 0;
 }
@@ -79,11 +70,10 @@ textarea,
 }
 
 .ant-btn:focus-visible {
-  outline: 2px solid #93c5fd !important; /* blue-300 */
+  outline: 2px solid #93c5fd !important;
   outline-offset: 2px;
 }
 
-/* ปุ่ม HTML ธรรมดา (<button>) ที่ไม่ใช่ของ AntD ให้มีพื้นที่กดและ focus ring */
 button:not(.ant-btn):focus-visible {
   outline: 2px solid #93c5fd;
   outline-offset: 2px;
@@ -91,7 +81,6 @@ button:not(.ant-btn):focus-visible {
 }
 
 /* ============================================================ */
-/* [UI-FIX] Modal / Popconfirm: หัว-ท้ายมีระยะ ปุ่มท้ายเว้นช่องไฟสม่ำเสมอ        */
 /* ============================================================ */
 .ant-modal .ant-modal-container {
   border-radius: 16px;
@@ -101,14 +90,14 @@ button:not(.ant-btn):focus-visible {
 .ant-modal .ant-modal-header {
   padding-bottom: 14px;
   margin-bottom: 18px;
-  border-bottom: 1px solid #f1f5f9; /* slate-100 */
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .ant-modal .ant-modal-title {
   font-weight: 500;
   color: #1e293b;
   line-height: 1.5;
-  padding-inline-end: 32px; /* กันชื่อหัวข้อทับปุ่มปิด (X) */
+  padding-inline-end: 32px;
 }
 
 .ant-modal .ant-modal-footer {
@@ -122,7 +111,7 @@ button:not(.ant-btn):focus-visible {
 }
 
 .ant-modal .ant-modal-footer > .ant-btn + .ant-btn {
-  margin-inline-start: 0 !important; /* ใช้ gap แทน margin เดิมของ AntD */
+  margin-inline-start: 0 !important;
 }
 
 .ant-modal .ant-modal-close {
@@ -141,15 +130,12 @@ button:not(.ant-btn):focus-visible {
 }
 
 /* ============================================================ */
-/* [UI-FIX] Card / Tag / Table ให้อ่านง่ายขึ้น                       */
 /* ============================================================ */
 .ant-card .ant-card-head-title {
   font-size: 15px;
   line-height: 1.5;
 }
 
-/* [UI-FIX 2026-10-31 R2] หัวการ์ดเดิมของ AntD เป็น nowrap + ellipsis ทำให้หัวข้อ/ปุ่มในหัวการ์ดถูกตัดขาดบนจอแคบ
-   → ให้ตัดบรรทัดได้ และหัวการ์ดสูงตามเนื้อหา */
 .ant-card .ant-card-head {
   min-height: 54px;
   height: auto;
@@ -167,7 +153,6 @@ button:not(.ant-btn):focus-visible {
   padding-block: 12px;
 }
 
-/* ปุ่มยาวบนมือถือ: ยอมให้ข้อความขึ้นบรรทัดใหม่แทนการล้นออกนอกจอ (ไม่กระทบปุ่มไอคอนอย่างเดียว) */
 @media (max-width: 480px) {
   .ant-btn:not(.ant-btn-icon-only) {
     white-space: normal;
@@ -186,7 +171,7 @@ button:not(.ant-btn):focus-visible {
 
 .ant-table-wrapper .ant-table-thead > tr > th {
   font-weight: 500;
-  color: #475569; /* slate-600 */
+  color: #475569;
 }
 
 .sidebar {
@@ -218,11 +203,10 @@ button:not(.ant-btn):focus-visible {
   gap: 6px;
   font-size: 0.95rem;
   position: relative;
-  padding-inline: 12px !important; /* [UI-FIX] เมนูไม่ชิดขอบ Sidebar */
+  padding-inline: 12px !important;
   border-inline-end: none !important;
 }
 
-/* [UI-FIX] รายการเมนูด้านข้าง: ระยะข้อความจากขอบ + มุมโค้ง + สถานะ hover/active ชัดเจน */
 .menu-bar.ant-menu .ant-menu-item {
   height: 44px;
   line-height: 44px;

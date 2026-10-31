@@ -1,9 +1,3 @@
-// src/pages/admin/SignatureManagement.jsx
-// [DOC-FIX 2026-10-31] จัดการไฟล์ลายเซ็น "ผู้สอบทาน" รายคลังสินค้า (เฉพาะ Admin)
-// ลายเซ็นนี้จะแสดงในช่อง "ผู้สอบทาน" ของใบรับ-เบิก-ส่ง สินค้าแตก ตามคลัง (claims.warehouse) ของเคลม
-// เปลี่ยนผู้สอบทาน = อัปโหลดไฟล์ใหม่ทับของเดิม (เอกสารที่พิมพ์หลังจากนั้นจะใช้ลายเซ็นใหม่)
-// ⚠️ ต้องมี API ฝั่ง backend ตาม BACKEND_SIGNATURE_API.md — ระหว่างนี้หน้าจะแสดงสถานะ "ยังไม่พร้อมใช้งาน"
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -33,7 +27,7 @@ import loginService from "../../services/loginService";
 const { Title, Text } = Typography;
 
 const MAX_FILE_MB = 2;
-const AUTO_REFRESH_MS = 15000; // [DOC-FIX R2] ดึงรายชื่อคลังใหม่อัตโนมัติทุก 15 วินาที
+const AUTO_REFRESH_MS = 15000;
 const ACCEPT_TYPES = ["image/png", "image/jpeg"];
 
 export default function SignatureManagement() {
@@ -52,7 +46,6 @@ export default function SignatureManagement() {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
 
-  // [DOC-FIX R2] จำคลังที่เห็นตอนเปิดหน้า → คลังที่โผล่มาภายหลังติดป้าย "ใหม่"
   const knownWarehousesRef = useRef(null);
   const [newWarehouseKeys, setNewWarehouseKeys] = useState(() => new Set());
   const modalOpenRef = useRef(false);
@@ -70,7 +63,6 @@ export default function SignatureManagement() {
       setReady(sigRes.ready);
       setRows(sigRes.data);
 
-      // รายชื่อคลังจากตารางเคลม (claims.warehouse) ไม่ซ้ำกัน
       const claims = Array.isArray(claimRes?.data) ? claimRes.data : [];
       const names = new Map();
       claims.forEach((c) => {
@@ -79,7 +71,6 @@ export default function SignatureManagement() {
       });
       setWarehouses([...names.values()].sort((a, b) => a.localeCompare(b, "th")));
 
-      // [DOC-FIX R2] แจ้งเมื่อมีคลังใหม่เข้ามาในระบบ (มาจากเคลมที่ พขร. แจ้งเข้ามา)
       const keys = [...names.keys()];
       if (knownWarehousesRef.current === null) {
         knownWarehousesRef.current = new Set(keys);
@@ -102,7 +93,6 @@ export default function SignatureManagement() {
     fetchData();
   }, [fetchData]);
 
-  // [DOC-FIX R2] รีเฟรชเบื้องหลังทุก 15 วินาที และเมื่อกลับมาที่หน้าต่างนี้ (ไม่รีเฟรชขณะเปิดหน้าต่างแก้ไข)
   useEffect(() => {
     const refresh = () => {
       if (!modalOpenRef.current && document.visibilityState === "visible") fetchData({ silent: true });
@@ -117,7 +107,6 @@ export default function SignatureManagement() {
     };
   }, [fetchData]);
 
-  // แสดงทุกคลัง: คลังที่มีในเคลม + คลังที่มีลายเซ็นแล้ว
   const tableData = useMemo(() => {
     const map = new Map();
     warehouses.forEach((w) => map.set(normalizeWarehouse(w), { warehouse: w, signature: null }));
@@ -125,7 +114,6 @@ export default function SignatureManagement() {
       const key = normalizeWarehouse(r.warehouse);
       map.set(key, { warehouse: map.get(key)?.warehouse || r.warehouse, signature: r });
     });
-    // [DOC-FIX R2] คลังที่ยังไม่มีลายเซ็นขึ้นก่อน แล้วเรียงตามชื่อ
     return [...map.values()]
       .map((r) => ({ ...r, key: normalizeWarehouse(r.warehouse) }))
       .sort((a, b) => Number(Boolean(a.signature)) - Number(Boolean(b.signature)) || a.warehouse.localeCompare(b.warehouse, "th"));
@@ -162,7 +150,7 @@ export default function SignatureManagement() {
     if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
     setFile(f);
     setPreviewUrl(URL.createObjectURL(f));
-    return false; // ไม่อัปโหลดทันที รอกดบันทึก
+    return false;
   };
 
   const handleSubmit = async () => {
@@ -301,7 +289,6 @@ export default function SignatureManagement() {
         </div>
       </Card>
 
-      {/* [DOC-FIX R2] สรุปคลังที่ยังไม่มีลายเซ็น */}
       {ready && missingCount > 0 && (
         <Alert
           type="warning"

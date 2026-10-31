@@ -8,13 +8,12 @@ import CustomerHome from "../pages/customer/CustomerHome";
 import CustomerClaimDatail from "../pages/customer/CustomerClaimDetail";
 import AgentManagement from "../pages/admin/AgentManagement";
 import RoleManagement from "../pages/admin/RoleManagement";
-// [QA-FIX 2026-10-31] ไฟล์จริงชื่อ login.jsx (ตัวเล็ก) — import "Login" ใช้ได้แค่บน Windows, build บน Linux/CI จะล้ม
 import Login from "../pages/auth/login";
 import UserSettings from "../pages/auth/UserSettings";
 import UserManagement from "../pages/admin/UserManagement";
-import SignatureManagement from "../pages/admin/SignatureManagement"; // [DOC-FIX 2026-10-31]
+import SignatureManagement from "../pages/admin/SignatureManagement";
 import loginService from "../services/loginService";
-import { isStaffUser, isAdminUser } from "../constants/roles"; // [QA-FIX 2026-10-31]
+import { isStaffUser, isAdminUser } from "../constants/roles";
 
 // 🟢 ดึงข้อมูลผู้ใช้ และตรวจสอบสถานะ Authentication ที่ถูกต้อง
 const getValidUser = () => {
@@ -32,7 +31,6 @@ const getValidUser = () => {
 };
 
 // 🟢 เช็กว่าเป็น Staff/Admin (รองรับ role_id 1, 3, 4, 5)
-// [QA-FIX 2026-10-31] ใช้ค่ากลางจาก constants/roles.js (เดิมเขียนเลข Role ซ้ำในหลายไฟล์และไม่ตรงกัน)
 const isStaff = (user) => isStaffUser(user);
 
 // 1. ตรวจสอบ Login
@@ -53,8 +51,6 @@ const StaffRoute = () => {
   return <Outlet />;
 };
 
-// [QA-FIX 2026-10-31] Test Case 1.2 — หน้า Admin (จัดการผู้ใช้/Agent/Role/ลายเซ็น) เดิมซ่อนแค่เมนู
-// แต่ Staff ทั่วไปพิมพ์ URL เข้าได้ → เพิ่ม Guard ให้เฉพาะ Admin (role_id 1)
 const AdminRoute = () => {
   const user = getValidUser();
   if (!isAdminUser(user)) {
@@ -112,12 +108,10 @@ function AppRouter() {
      
           
           <Route path="/staff/setting" element={<UserSettings />} />
-          {/* [QA-FIX 2026-10-31] หน้า Admin อยู่หลัง AdminRoute (เดิมอยู่ใต้ StaffRoute อย่างเดียว) + ลบ route /staff/users ที่ประกาศซ้ำ */}
           <Route element={<AdminRoute />}>
             <Route path="/staff/users" element={<UserManagement />} />
             <Route path="/staff/agents" element={<AgentManagement />} />
             <Route path="/staff/roles" element={<RoleManagement />} />
-            {/* [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลัง (Admin) */}
             <Route path="/staff/signatures" element={<SignatureManagement />} />
           </Route>
           

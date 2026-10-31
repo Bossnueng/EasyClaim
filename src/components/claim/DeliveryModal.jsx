@@ -9,22 +9,21 @@ const DeliveryModal = ({
   deliveryForm,
   setDeliveryForm,
   claimId,
-  isReassign = false, // [FLOW-FIX 2026-10-31] true = เปลี่ยน พขร. ที่มอบหมายไว้แล้ว
+  isReassign = false,
 }) => {
   return (
     <Modal
-      title={<span className="font-medium text-slate-800">มอบหมาย พขร. / บันทึกการจัดส่ง</span>} /* [UI-FIX 2026-10-31 R2] เดิม "มอบหมายงาน พขร. (บันทึกข้อมูลจัดส่งสินค้าเคลม)" */
+      title={<span className="font-medium text-slate-800">มอบหมาย พขร. / บันทึกการจัดส่ง</span>}
       open={open}
       onOk={onSave}
       confirmLoading={submitting}
       onCancel={() => !submitting && onCancel()}
-      okText="บันทึก" /* [UI-FIX 2026-10-31 R2] เดิม "บันทึก Delivery" */
+      okText="บันทึก"
       cancelText="ยกเลิก"
       okButtonProps={{ className: "bg-blue-600 hover:bg-blue-700 font-normal" }}
       width={500}
     >
       <div className="flex flex-col gap-4 py-3">
-        {/* [FLOW-FIX 2026-10-31] อธิบายผลของการมอบหมาย ให้ Staff เข้าใจว่าทำไมต้องทำขั้นนี้ */}
         <div className="text-xs sm:text-sm leading-relaxed text-blue-800 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
           {isReassign
             ? "การเปลี่ยน พขร. จะยกเลิกงานของ พขร. คนเดิม และส่งงานให้ พขร. คนใหม่แทน"

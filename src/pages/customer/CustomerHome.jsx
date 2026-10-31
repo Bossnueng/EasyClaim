@@ -11,11 +11,9 @@ import claimService from "../../services/claimService";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
-// [QA-FIX 2026-10-31] Test Case 1.1 / 4.1 / 4.2 — ใช้ตัวช่วยกลาง (ตรวจสิทธิ์เคลม / สรุปการ์ด / เรียง 8 รายการล่าสุด / cache รายการสินค้า)
 import { filterClaimsForUser } from "../../utils/claimAccess";
 import { getDashboardSummary, getLatestClaims, enrichClaimsWithItems } from "../../utils/claimDashboard";
 
-// [QA-FIX 2026-10-31] Socket แจ้งการเปลี่ยนสถานะทันทีแล้ว — polling เหลือไว้เป็นทางสำรอง (เดิม 5 วินาที)
 const POLL_INTERVAL_MS = 15000;
 
 const CustomerHome = () => {
@@ -33,11 +31,8 @@ const CustomerHome = () => {
     userRef.current = user;
   }, [user]);
 
-  // [QA-FIX 2026-10-31] Test Case 4.2 — ยอดการ์ดคำนวณจากตัวช่วยกลาง (กลุ่มไม่ทับซ้อน: ใหม่ + ดำเนินการ + สำเร็จ = ทั้งหมด)
-  // เดิมมีการ์ด "กำลังดำเนินการ" (รวม Pending) / "จัดส่งแล้ว" / "ค้างเกิน 3 วัน" / "ค้างเกิน 7 วัน" ไม่มี "รายการใหม่" ตามสเปก
   const summary = getDashboardSummary(allClaims);
 
-  // [QA-FIX 2026-10-31] cache claim_items ต่อเคลม (เดิมยิง /getClaimItems ทุกใบทุกครั้งที่ polling)
   const itemsCacheRef = useRef(new Map());
 
   const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
@@ -60,12 +55,13 @@ const CustomerHome = () => {
       if (resItems?.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[String(item.item_id)] = item.item_name;
+          const name = item.item_name;
+          if (item.item_id !== null && item.item_id !== undefined) map[String(item.item_id).trim()] = name;
+          if (item.item_code) map[String(item.item_code).trim()] = name;
         });
         setItemsMap(map);
       }
 
-      // [QA-FIX 2026-10-31] Test Case 1.1 — กรองสิทธิ์ด้วยตัวช่วยกลาง (แก้ created_by เทียบ String กับ Number และ agent_id ชน agent_code)
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
       const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
@@ -77,8 +73,6 @@ const CustomerHome = () => {
       );
 
       setAllClaims(claimsWithItems);
-      // [QA-FIX 2026-10-31] Test Case 4.2 — เดิมเรียงเก่า → ใหม่แล้วตัด 8 = ได้ 8 รายการ "เก่าสุด"
-      // ตอนนี้เรียงตาม Priority สถานะ (Pending ก่อน) แล้วตามวันที่สร้าง ใหม่ → เก่า
       setLatestClaims(getLatestClaims(claimsWithItems, 8));
     } catch (error) {
       message.error("ไม่สามารถดึงข้อมูลได้: " + (error.message || "เกิดข้อผิดพลาด"));
@@ -87,8 +81,6 @@ const CustomerHome = () => {
     }
   }, [navigate]);
 
-  // [QA-FIX 2026-10-31] Test Case 3.1 — join ห้องของทุกเคลมที่แสดง แล้วรีเฟรชทันทีเมื่อมี Log เปลี่ยนสถานะ
-  // (backend ไม่ส่ง "claim:status_updated" แต่ส่ง "claim:comment_created" ทุกครั้งที่เปลี่ยนสถานะ)
   useClaimRealtime({
     isStaff: false,
     userId: currentUserId,
@@ -136,9 +128,6 @@ const CustomerHome = () => {
         </header>
 
         {/* Dashboard 4 Summary Cards */}
-        {/* [QA-FIX 2026-10-31] Test Case 4.2 — การ์ดตามสเปก: รายการใหม่ / กำลังดำเนินการ / สำเร็จ / ค้างเกิน 3 วัน
-            (เคลมค้างเกิน 7 วันยังเน้นกรอบแดงบนการ์ดเคลมเหมือนเดิม และเปิดดูได้ที่ /customer/list-claim?filter=overdue7)
-            Responsive: padding การ์ดใช้ class (เดิม inline 24px 28px ทำให้เนื้อหาเหลือ ~100px บนจอ 360px) */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[
             {
@@ -253,7 +242,6 @@ const CustomerHome = () => {
                     onDelete={handleDeleteClaim}
                     hideDeleteWhenDisabled={true}
                     layout="horizontal"
-                    /* [QA-FIX 2026-10-31] ส่ง Master สินค้าให้การ์ด (เดิมการ์ดทุกใบเรียก /getitem เอง) */
                     itemsMap={itemsMap}
                   />
                 );

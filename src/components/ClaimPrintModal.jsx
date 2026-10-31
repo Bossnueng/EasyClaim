@@ -1,8 +1,3 @@
-// src/components/ClaimPrintModal.jsx
-// [DOC-FIX 2026-10-31] เขียนใหม่: ใช้ข้อมูลจริงจากระบบทั้งหมด (เดิมมีค่าตายตัว เช่น คลัง "RDC ขอนแก่น",
-// ผู้อนุมัติ "อารียา, สุรศักดิ์, ยุทธพงษ์", เลขที่ใบส่งของ = เลขเคลม) — กติกาข้อมูลดูที่ utils/claimDocument.js
-// ใช้ได้ทั้ง Staff (ต้นฉบับ) และ Customer (สำเนา)
-
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Modal, Button } from "antd";
 import { PrinterOutlined } from "@ant-design/icons";
@@ -10,7 +5,7 @@ import { useReactToPrint } from "react-to-print";
 import { buildClaimDocument } from "../utils/claimDocument";
 import signatureService from "../services/signatureService";
 
-const PAPER_WIDTH_PX = 756; // 200mm @ 96dpi — ใช้คำนวณย่อขนาดบนจอเล็ก (ไม่กระทบตอนพิมพ์)
+const PAPER_WIDTH_PX = 756;
 
 const cell = { border: "1px solid #000" };
 
@@ -20,9 +15,6 @@ const Dotted = ({ children, className = "", style }) => (
   </span>
 );
 
-/** บรรทัดลงชื่อ + เวลา (เว้นว่างถ้ายังไม่มีข้อมูล) */
-// [DOC-FIX R5] ข้อมูลที่ระบบกรอกในเอกสารใช้สีเดียว: น้ำเงินเข้มแบบหมึกปากกา (#1e3a8a = text-blue-900)
-// เดิมปนกันหลายสี (แดง/น้ำเงิน/ชมพู) — สีเดียวดูเป็นทางการ แยกจากหัวข้อ/ป้ายกำกับ (สีดำ) ได้ชัด และพิมพ์ขาวดำยังอ่านง่าย
 const SignLine = ({ no, signer, role, colorClass = "text-blue-900", plate }) => (
   <div className="flex flex-col gap-0.5">
     <div className="flex items-baseline min-w-0">
@@ -66,8 +58,8 @@ const ClaimPrintModal = ({
   approveLogs = [],
   deliveries = [],
   usersMap = {},
-  users = [], // [DOC-FIX R2] ใช้หา User ตัวแทน Agent สำหรับลงชื่อช่อง 4 และ 5
-  agents = [], // [DOC-FIX R4] ตาราง agents ใช้แปลง agent_code ↔ agent_id
+  users = [],
+  agents = [],
   agentName = "",
 }) => {
   const printRef = useRef(null);
@@ -77,8 +69,6 @@ const ClaimPrintModal = ({
   const [signature, setSignature] = useState(null);
   const [signatureReady, setSignatureReady] = useState(true);
 
-  // โหลดลายเซ็นผู้สอบทานของคลังนี้เมื่อเปิดเอกสาร
-  // [DOC-FIX R3] ฝั่งลูกค้าไม่ต้องโหลดลายเซ็น (สำเนาลูกค้าไม่แสดงผู้สอบทาน)
   useEffect(() => {
     if (!open || !isStaff || !claim?.warehouse) return undefined;
     let alive = true;
@@ -108,12 +98,11 @@ const ClaimPrintModal = ({
         agents,
         agentName,
         signature,
-        forCustomer: !isStaff, // [DOC-FIX R3]
+        forCustomer: !isStaff,
       }),
     [claim, items, statusLogs, approveLogs, deliveries, usersMap, users, agents, agentName, signature, isStaff]
   );
 
-  // Responsive: ย่อเอกสารให้พอดีจอมือถือ (ตอนพิมพ์ใช้ขนาดจริง)
   useLayoutEffect(() => {
     if (!open) return undefined;
     const update = () => {
@@ -170,7 +159,7 @@ const ClaimPrintModal = ({
               className="w-[200mm] min-h-[138mm] bg-white p-3.5 text-slate-900 text-[10px] leading-tight shadow-md box-border flex flex-col justify-start gap-1.5"
               style={{ border: "1.5px solid #000" }}
             >
-              {/* ===== Header ===== */}
+              {/* Header */}
               <div className="flex justify-between items-start mb-0.5">
                 <div className="w-1/4" />
                 <div className="w-2/4 text-center">
@@ -185,13 +174,12 @@ const ClaimPrintModal = ({
                 </div>
               </div>
 
-              {/* ===== เอเย่นต์ ===== */}
               <div className="flex items-center gap-1 mb-0.5">
                 <span className="font-bold shrink-0">เอเย่นต์ ชื่อ :</span>
                 <span className="border-b border-dotted border-slate-800 flex-1 font-bold px-1 truncate text-blue-900">{doc.agentName}</span>
               </div>
 
-              {/* ===== ประเภทการแตก & วันที่ ===== */}
+              {/* ประเภทการแตก & วันที่ */}
               <div className="flex justify-between items-center mb-0.5 text-[9.5px] gap-2">
                 <div className="flex items-center gap-3">
                   {[
@@ -215,7 +203,6 @@ const ClaimPrintModal = ({
                 </div>
               </div>
 
-              {/* ===== ตารางสินค้า (1 รายการ = 1 บรรทัด) ===== */}
               <table className="w-full text-center text-[9.5px] my-0.5" style={{ borderCollapse: "collapse", border: "1.5px solid #000" }}>
                 <thead>
                   <tr className="bg-slate-50">
@@ -254,7 +241,7 @@ const ClaimPrintModal = ({
                 </tbody>
               </table>
 
-              {/* ===== ผู้อนุมัติ / ผู้สอบทาน ===== */}
+              {/* ผู้อนุมัติ */}
               <div className="text-[9px] mt-auto pt-1 leading-relaxed">
                 <div className="flex flex-col items-end pr-1 pt-2 pb-2 gap-2">
                   <div className="flex items-end text-[8.5px]">
@@ -264,7 +251,6 @@ const ClaimPrintModal = ({
                     </div>
                     <span className="font-bold pl-1 whitespace-nowrap">ผู้อนุมัติ</span>
                     <span className="text-gray-500 text-[8px] pl-1 whitespace-nowrap">(หัวหน้าคลังสินค้า)</span>
-                    {/* [DOC-FIX R2] ไม่แสดงวันที่ของผู้อนุมัติ */}
                   </div>
 
                   <div className="flex items-end text-[8.5px]">
@@ -282,7 +268,6 @@ const ClaimPrintModal = ({
                   </div>
                 </div>
 
-                {/* ===== ลงชื่อ 1–5 ===== */}
                 <div className="px-4 py-3 text-[8.5px] leading-loose" style={{ border: "1.5px solid #000" }}>
                   <div className="grid grid-cols-12 gap-3 items-stretch">
                     <div className="col-span-7 flex flex-col justify-between pr-4 gap-1.5" style={{ borderRight: "1px solid #64748b" }}>

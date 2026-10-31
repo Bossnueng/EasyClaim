@@ -26,20 +26,16 @@ import itemService from "../../services/itemService";
 import userService from "../../services/userService";
 import agentService from "../../services/agentService";
 import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
-// [QA-FIX 2026-10-31] Test Case 1.1 / 4.3 — ตัวช่วยกลาง (ตรวจสิทธิ์เคลม / ค้นหา / กลุ่มสถานะของการ์ดหน้า Home / cache รายการสินค้า)
 import { filterClaimsForUser } from "../../utils/claimAccess";
 import { enrichClaimsWithItems, matchesClaimSearch, getClaimGroup, isOverdueClaim } from "../../utils/claimDashboard";
 
-// [QA-FIX 2026-10-31] Socket แจ้งการเปลี่ยนสถานะทันทีแล้ว — polling เหลือไว้เป็นทางสำรอง (เดิม 5 วินาที)
 const POLL_INTERVAL_MS = 15000;
 
-// [QA-FIX 2026-10-31] ตัวกรองที่มาจากการ์ดหน้า Home ซึ่งไม่ตรงกับแท็บสถานะใดแท็บเดียว
 const CARD_FILTER_LABELS = {
   processing: "กำลังดำเนินการ (Approved ➔ Shipping)",
   overdue3: "ค้างเกิน 3 วัน",
   overdue7: "ค้างเกิน 7 วัน",
 };
-// การ์ดที่ตรงกับแท็บสถานะ → ตั้งค่า dropdown ให้เลย
 const CARD_FILTER_TO_TAB = { new: "Pending", delivered: "Delivered" };
 import { parseExtraDataFromLogs } from "../../utils/logPaser";
 
@@ -62,11 +58,6 @@ const CustomerClaimList = () => {
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-  // [QA-FIX 2026-10-31] Test Case 4.3 — ตัวกรองจากการ์ดหน้า Home
-  // เดิม: อ่าน ?filter= จาก URL ตรงๆ ในทุกการกรอง → เลือก dropdown สถานะอื่นแล้วไม่มีผล (URL ยังชนะ)
-  //       และตั้ง selectedStatus เป็น "อยู่ระหว่างจัดการ"/"จัดส่งสำเร็จ" ซึ่งไม่มีใน dropdown (แสดงค่าแปลก, count 0)
-  // ใหม่: new/delivered → ตั้ง dropdown เป็น Pending/Delivered; processing/overdue → เก็บใน cardFilter
-  //       แสดงเป็นป้ายที่กดล้างได้ และล้างทันทีเมื่อผู้ใช้เลือก dropdown เอง
   const [cardFilter, setCardFilter] = useState(null);
   useEffect(() => {
     if (CARD_FILTER_TO_TAB[urlFilterParam]) {
@@ -98,7 +89,7 @@ const CustomerClaimList = () => {
     userRef.current = user;
   }, [user]);
 
-  const itemsCacheRef = useRef(new Map()); // [QA-FIX 2026-10-31]
+  const itemsCacheRef = useRef(new Map());
 
   const fetchClaimsAndItems = useCallback(async (showLoading = true) => {
     const activeUser = userRef.current;
@@ -138,17 +129,17 @@ const CustomerClaimList = () => {
       if (resItems?.data) {
         const map = {};
         resItems.data.forEach((item) => {
-          map[String(item.item_id)] = item.item_name;
+          const name = item.item_name;
+          if (item.item_id !== null && item.item_id !== undefined) map[String(item.item_id).trim()] = name;
+          if (item.item_code) map[String(item.item_code).trim()] = name;
         });
         setItemsMap(map);
       }
 
-      // [QA-FIX 2026-10-31] Test Case 1.1 — กรองสิทธิ์ด้วยตัวช่วยกลาง (แก้ created_by เทียบ String กับ Number และ agent_id ชน agent_code)
       const agentsData = Array.isArray(resAgents) ? resAgents : resAgents?.data || [];
       const rawClaims = resClaim?.data || (Array.isArray(resClaim) ? resClaim : []);
       const allowedClaims = filterClaimsForUser(rawClaims, activeUser, agentsData);
 
-      // [QA-FIX 2026-10-31] ดึงรายการสินค้าแบบมี cache (เดิมยิง /getClaimItems ทุกใบทุกครั้งที่ polling)
       const claimsWithItems = await enrichClaimsWithItems(
         allowedClaims,
         (id) => claimService.getClaimItems(id),
@@ -163,7 +154,6 @@ const CustomerClaimList = () => {
     }
   }, [navigate]);
 
-  // [QA-FIX 2026-10-31] Test Case 3.1 — join ห้องของทุกเคลมในรายการ แล้วรีเฟรชทันทีเมื่อมี Log เปลี่ยนสถานะ
   useClaimRealtime({
     isStaff: false,
     userId: currentUserId,
@@ -349,17 +339,14 @@ const CustomerClaimList = () => {
     const nameStatus = getStatusName(rawStatus, "customer");
     let matchesStatus = false;
 
-    // [QA-FIX 2026-10-31] Test Case 4.3 — ตัวกรองจากการ์ดหน้า Home (ใช้กลุ่มเดียวกับที่การ์ดนับ ยอดจึงตรงกัน)
     if (cardFilter === "processing") {
       matchesStatus = getClaimGroup(claim) === "processing";
     } else if (cardFilter === "overdue3" || cardFilter === "overdue7") {
       matchesStatus = isOverdueClaim(claim, cardFilter === "overdue7" ? 7 : 3);
     }
-    // เลือก "ทั้งหมด"
     else if (selectedStatus === "ทั้งหมด") {
       matchesStatus = true;
     }
-    // เลือกสถานะใน Dropdown
     else if (CUSTOMER_STATUS_GROUPS && CUSTOMER_STATUS_GROUPS[selectedStatus]) {
       const allowedStatuses = CUSTOMER_STATUS_GROUPS[selectedStatus] || [];
       matchesStatus =
@@ -370,8 +357,6 @@ const CustomerClaimList = () => {
       matchesStatus = rawStatus === selectedStatus || nameStatus === selectedStatus;
     }
 
-    // [QA-FIX 2026-10-31] Test Case 4.3 — ค้นหาแบบไม่สนตัวพิมพ์ครอบคลุม claim_no + claim_id + สินค้าทุกรายการในใบเคลม + lot
-    // (เดิมค้นหาเฉพาะสินค้ารายการแรก และค้น claim_id ไม่ได้เมื่อเคลมมี claim_no)
     const matchesSearch = matchesClaimSearch(claim, searchTerm, itemsMap);
 
     let matchesDate = true;
@@ -452,7 +437,6 @@ const CustomerClaimList = () => {
       <div className="w-full flex flex-col gap-5">
         
         {/* Header Section */}
-        {/* [UI-FIX 2026-10-31 R2] เพิ่ม flex-wrap ให้ปุ่มลงบรรทัดใหม่บนจอแคบ */}
         <header className="flex flex-row flex-wrap justify-between items-start md:items-center gap-4 w-full">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800 m-0">
@@ -490,7 +474,6 @@ const CustomerClaimList = () => {
             <div className="lg:col-span-4">
               <Select
                 value={selectedStatus}
-                /* [QA-FIX 2026-10-31] เลือกเองแล้วล้างตัวกรองจากการ์ดหน้า Home */
                 onChange={handleStatusChange}
                 className="w-full h-10 text-sm rounded-xl shadow-2xs"
                 style={{
@@ -532,7 +515,6 @@ const CustomerClaimList = () => {
             </div>
           </div>
 
-          {/* [QA-FIX 2026-10-31] ป้ายตัวกรองที่มาจากการ์ดหน้า Home — กด × เพื่อล้าง */}
           {cardFilter && (
             <div className="flex flex-wrap items-center gap-2 px-1">
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full pl-3 pr-1 py-1 max-w-full">
@@ -657,7 +639,6 @@ const CustomerClaimList = () => {
                 onDelete={handleDeleteClaim}
                 hideDeleteWhenDisabled={true}
                 layout="horizontal"
-                /* [QA-FIX 2026-10-31] ส่ง Master สินค้าให้การ์ด (เดิมการ์ดทุกใบเรียก /getitem เอง) */
                 itemsMap={itemsMap}
               />
             ))}

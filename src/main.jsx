@@ -6,23 +6,20 @@ import './index.css'
 import App from "./App";
 import "antd/dist/reset.css";
 
-// [UI-FIX 2026-10-31] ธีมกลางของ Ant Design ให้ทุกหน้าใช้สี/ขนาด/ระยะห่างเดียวกัน
-// - ปุ่ม: เว้นระยะข้อความจากขอบ (paddingInline) + ความสูงที่กดง่าย
-// - Modal / Card / Menu / Layout: มุมโค้งและสีให้เข้ากับโทน slate + blue ที่ใช้ทั้งระบบ
 const appTheme = {
   token: {
     fontFamily: '"Mitr", sans-serif',
     fontSize: 14,
-    colorPrimary: "#2563eb", // blue-600 (ตรงกับ class bg-blue-600 ที่ใช้ในหน้าต่างๆ)
+    colorPrimary: "#2563eb",
     colorInfo: "#2563eb",
-    colorSuccess: "#059669", // emerald-600
-    colorWarning: "#d97706", // amber-600
-    colorError: "#dc2626", // red-600
-    colorText: "#1e293b", // slate-800
-    colorTextSecondary: "#64748b", // slate-500
-    colorBorder: "#cbd5e1", // slate-300
-    colorBorderSecondary: "#e2e8f0", // slate-200
-    colorBgLayout: "#f8fafc", // slate-50
+    colorSuccess: "#059669",
+    colorWarning: "#d97706",
+    colorError: "#dc2626",
+    colorText: "#1e293b",
+    colorTextSecondary: "#64748b",
+    colorBorder: "#cbd5e1",
+    colorBorderSecondary: "#e2e8f0",
+    colorBgLayout: "#f8fafc",
     borderRadius: 10,
     borderRadiusLG: 16,
     borderRadiusSM: 8,
@@ -51,9 +48,9 @@ const appTheme = {
       headerHeight: 54,
     },
     Menu: {
-      darkItemBg: "#0f172a", // slate-900
+      darkItemBg: "#0f172a",
       darkSubMenuItemBg: "#0f172a",
-      darkItemColor: "rgba(226, 232, 240, 0.78)", // slate-200
+      darkItemColor: "rgba(226, 232, 240, 0.78)",
       darkItemHoverBg: "rgba(148, 163, 184, 0.14)",
       darkItemHoverColor: "#ffffff",
       darkItemSelectedBg: "#2563eb",

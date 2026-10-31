@@ -9,13 +9,13 @@ import { getStatusName } from "../../constants/claimStatus";
 import StaffClaimCard from "../../components/StaffClaimCard";
 import loginService from "../../services/loginService";
 import claimService from "../../services/claimService";
-import deliveryService from "../../services/deliveryService"; // [FLOW-FIX 2026-10-31]
-import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow"; // [FLOW-FIX 2026-10-31]
+import deliveryService from "../../services/deliveryService";
+import { getDriverAssignments, needsDriverAssignment } from "../../utils/claimFlow";
 import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
-import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime"; // [QA-FIX 2026-10-31]
+import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 
 const StaffHome = () => {
   const navigate = useNavigate();
@@ -30,8 +30,6 @@ const StaffHome = () => {
   const [agentsMap, setAgentsMap] = useState({});
   const [usersList, setUsersList] = useState([]);
 
-  // [QA-FIX 2026-10-31] Test Case 3.2 — backend ส่ง "claim:comment_created" เข้าห้อง claim:<id> เท่านั้น (ไม่ส่งห้อง staff)
-  // → join ห้องของทุกเคลมในรายการ และรีเฟรชเมื่อมี Log เปลี่ยนสถานะ (ข้อความแชท [MSG] ไม่ต้องรีเฟรช)
   useClaimRealtime({
     isStaff: true,
     userId: currentUserId,
@@ -113,7 +111,6 @@ const StaffHome = () => {
         itemService.getItems(),
         agentService.getAgent(),
         userService.getUsers(),
-        // [FLOW-FIX 2026-10-31] ใช้ตรวจว่าเคลมไหนยังไม่ได้มอบหมาย พขร. (ไม่ให้หน้าแรกพังถ้าโหลดไม่ได้)
         deliveryService.getDelivery().catch(() => ({ data: [] })),
       ]);
       const deliveriesData = Array.isArray(resDeliveries?.data) ? resDeliveries.data : Array.isArray(resDeliveries) ? resDeliveries : [];
@@ -185,7 +182,6 @@ const StaffHome = () => {
 
             return {
               ...claim,
-              // [FLOW-FIX 2026-10-31] ธงสำหรับป้าย "รอมอบหมาย พขร." บนการ์ด
               needsDriverAssign: needsDriverAssignment(
                 getStatusName(claim.current_status || claim.status),
                 getDriverAssignments(deliveriesData, claim.claim_id).length > 0

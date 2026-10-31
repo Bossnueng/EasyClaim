@@ -33,8 +33,6 @@ function App() {
 
         <Content
           style={{
-            // [UI-FIX 2026-10-31] เดิม 24px — ตอนนี้แต่ละหน้ามี padding ของตัวเอง (p-4 sm:p-6 md:p-8)
-            // ที่กลับมาทำงานแล้ว จึงตั้งเป็น 0 เพื่อไม่ให้ระยะขอบซ้อนกันสองชั้น
             padding: 0,
             background: "#f8fafc",
             overflowY: "auto",

@@ -10,7 +10,7 @@ const claimRoute = require("./src/routes/claimRoute");
 const agentRoute = require("./src/routes/agentRoute");
 const loginRoute = require("./src/routes/loginRoute");
 const deliveryRoute = require("./src/routes/deliveryRoute");
-const signatureRoute = require("./src/routes/signatureRoute"); // [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลัง
+const signatureRoute = require("./src/routes/signatureRoute"); 
 
 const app = express();
 
@@ -42,7 +42,7 @@ app.use("/api", claimRoute);
 app.use("/api", agentRoute);
 app.use("/api", loginRoute);
 app.use("/api", deliveryRoute);
-app.use("/api", signatureRoute); // [DOC-FIX 2026-10-31]
+app.use("/api", signatureRoute);
 
 const PORT = process.env.PORT || 3001;
 /*

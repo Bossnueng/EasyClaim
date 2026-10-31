@@ -14,9 +14,6 @@ function HeaderBar({ collapsed, setCollapsed }) {
 
   return (
     <Header className="!bg-white grid grid-cols-[1fr_auto_1fr] items-center !px-3 sm:!px-6 h-16 shadow-sm border-b border-slate-100">
-      {/* ฝั่งซ้าย: ปุ่ม Hamburger
-          [UI-FIX 2026-10-31] ขยายพื้นที่กดเป็น 42x42px ไอคอน 20px อยู่กึ่งกลาง มีระยะจากขอบปุ่ม
-          + hover/active state + aria-label (เดิม: ไอคอน 24px อัดในปุ่ม 32px และ -ml-2 ชิดขอบจอ) */}
       <div className="flex items-center justify-start">
         <Button
           type="text"

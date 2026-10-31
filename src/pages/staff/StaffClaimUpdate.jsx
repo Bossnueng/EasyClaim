@@ -27,10 +27,10 @@ import {
   HistoryOutlined,
   PlusOutlined,
   ArrowLeftOutlined,
-  CheckCircleFilled, // [UI-FIX 2026-10-31] ใช้ในการ์ดประวัติการพิจารณาอนุมัติ
-  CloseCircleFilled, // [UI-FIX 2026-10-31] ใช้ในการ์ดประวัติการพิจารณาอนุมัติ
-  AuditOutlined, // [UI-FIX 2026-10-31] ไอคอนหัวการ์ด/สถานะว่าง
-  CarOutlined, // [FLOW-FIX 2026-10-31] แจ้งเตือนมอบหมาย พขร.
+  CheckCircleFilled,
+  CloseCircleFilled,
+  AuditOutlined,
+  CarOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -51,9 +51,8 @@ import agentService from "../../services/agentService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
 import { parseDateSafely } from "../../utils/dateUtils";
 import { getRejectReasonText } from "../../utils/logPaser";
-import { useAutoConfirm } from "../../hooks/useAutoConfirm"; // [DOC-FIX 2026-10-31]
-import { canApproveClaim } from "../../constants/roles"; // [QA-FIX 2026-10-31]
-// [FLOW-FIX 2026-10-31] ตัวช่วยกลางคำนวณสถานะ/ไทม์ไลน์/การมอบหมาย พขร.
+import { useAutoConfirm } from "../../hooks/useAutoConfirm";
+import { canApproveClaim } from "../../constants/roles";
 import {
   sortLogs,
   getStatusStampDate,
@@ -121,8 +120,6 @@ const parseExtraDataFromLogs = (logs) => {
   return {};
 };
 
-// [FLOW-FIX 2026-10-31] เพิ่มพารามิเตอร์ rejectedFlow: เคลมที่ไม่อนุมัติ (Rejected → Shipping)
-// เมื่อถอยจาก Shipping ต้องกลับไป "Rejected" ไม่ใช่ "Processing"
 const getPreviousStatusName = (currentStatus, rejectedFlow = false) => {
   const normalizedCurrent = getStatusName(currentStatus);
 
@@ -148,7 +145,7 @@ const StaffClaimUpdate = () => {
   const [approveLogs, setApproveLogs] = useState([]);
   const [usersMap, setUsersMap] = useState({});
   const [agentsMap, setAgentsMap] = useState({});
-  const [agentsList, setAgentsList] = useState([]); // [DOC-FIX R4] ใช้หา User ตัวแทน Agent ในเอกสาร
+  const [agentsList, setAgentsList] = useState([]);
   const [usersList, setUsersList] = useState([]);
 
   const [chatMessages, setChatMessages] = useState([]);
@@ -174,8 +171,6 @@ const StaffClaimUpdate = () => {
   const userRoleId = Number(currentUser?.role_id);
 
   const canRevertOrEdit = [1, 4].includes(userRoleId);
-  // [QA-FIX 2026-10-31] Test Case 1.2 — อนุมัติ/ไม่อนุมัติ (Pending → Approved/Rejected) ได้เฉพาะ Role ใน APPROVER_ROLE_IDS
-  // เดิม Staff ทุก Role (รวมคลังสินค้า) กดอนุมัติได้ ⚠️ backend /Claimapproves ยังไม่ตรวจสิทธิ์ (นอกขอบเขต)
   const canApprove = canApproveClaim(currentUser);
 
   const [formData, setFormData] = useState({
@@ -253,7 +248,7 @@ const StaffClaimUpdate = () => {
           if (aCode) aMap[aCode] = agent.agent_name || agent.name;
         });
         setAgentsMap(aMap);
-        setAgentsList(agentsData); // [DOC-FIX R4]
+        setAgentsList(agentsData);
       }
 
       const usersData = resUsers?.data || resUsers || [];
@@ -292,7 +287,6 @@ const StaffClaimUpdate = () => {
           setDeliveryDataList(matchedDeliveries);
 
           const logsData = resLogs?.data || resLogs || [];
-          // [FLOW-FIX 2026-10-31] เรียง Log เก่า → ใหม่ (API ไม่ได้ ORDER BY ทำให้ "Log ล่าสุด" ผิดตัวได้)
           const filteredLogs = Array.isArray(logsData)
             ? sortLogs(logsData.filter((log) => String(log.claim_id) === String(currentClaim.claim_id)))
             : [];
@@ -399,7 +393,6 @@ const StaffClaimUpdate = () => {
 
           if (!isModalOpenRef.current) {
             setFormData({
-              // [FLOW-FIX 2026-10-31] ค่าเริ่มต้น = สถานะถัดไปตัวแรก (เดิมใช้สถานะปัจจุบัน ทำให้กดบันทึกซ้ำสถานะเดิมได้)
               status: getNextStatusOptions(currentStatusName)[0]?.value || "",
               rejectReason: currentClaim.reject_reason || "",
               driverName: mergedClaimData.driver_name,
@@ -436,20 +429,11 @@ const StaffClaimUpdate = () => {
     }
   }, [claimId]);
 
-  // 🟢 ตัวเลือกสถานะถัดไป
-  // [FLOW-FIX 2026-10-31] ปรับให้ตรงกับกระบวนการ:
-  //   Pending → Approved / Rejected
-  //   Approved → Processing
-  //   Rejected → Shipping (ข้าม Processing ทันที)
-  //   Processing → Shipping, Shipping → Delivered (ปกติ พขร. เปลี่ยนจากอีกแพลตฟอร์ม — เก็บไว้เป็นทางสำรองให้ Staff)
-  // เดิม: Approved/Processing/Shipping เลือก Rejected ได้ และ Rejected เลือก Processing/Approved ได้ (ผิดลำดับ)
-  //       หากต้องการแก้ไขการพิจารณา ให้ใช้ปุ่ม "ถอยสถานะ" แทน
   function getNextStatusOptions(currentStatus) {
     const normalized = getStatusName(currentStatus);
 
     switch (normalized) {
       case "Pending":
-        // [QA-FIX 2026-10-31] Warehouse Staff ไม่เห็นตัวเลือกอนุมัติ → ปุ่ม "อัปเดตสถานะ" ถูกซ่อนในขั้นนี้
         if (!canApprove) return [];
         return [
           { value: "Approved", label: "2. Approved (อนุมัติเคลม)" },
@@ -468,7 +452,6 @@ const StaffClaimUpdate = () => {
     }
   }
 
-  // [DOC-FIX 2026-10-31] ยืนยันส่งเคลม/รับสินค้าแทนลูกค้าเมื่อครบกำหนด แม้ลูกค้าไม่เปิดหน้าเว็บ
   useAutoConfirm({
     claim: data,
     logs: statusLogs,
@@ -483,8 +466,6 @@ const StaffClaimUpdate = () => {
     isStaff: true,
     onStatusUpdated: () => fetchClaimDetail(false),
     onCommentCreated: (newLog) => {
-      // [FLOW-FIX 2026-10-31] backend ไม่ได้ส่ง event "claim:status_updated" แต่ทุกการเปลี่ยนสถานะจะสร้าง Log
-      // และส่ง "claim:comment_created" → ถ้าไม่ใช่ข้อความแชท ให้รีเฟรชทันที (เดิมต้องรอ polling 3–5 วินาที)
       if (newLog && !String(newLog.remark || "").startsWith("[MSG]")) {
         fetchClaimDetail(false);
         return;
@@ -521,7 +502,6 @@ const StaffClaimUpdate = () => {
   }, [claimId, fetchClaimDetail]);
 
   const handleSaveDelivery = async () => {
-    // [FLOW-FIX 2026-10-31] ตัดช่องว่าง + ตรวจค่าว่าง
     const driverId = String(deliveryForm.driver_id || "").trim();
     const truckPlate = String(deliveryForm.truck_plate || "").trim();
     if (!driverId || !truckPlate) {
@@ -533,8 +513,6 @@ const StaffClaimUpdate = () => {
     try {
       const statusBefore = getStatusName(data?.current_status || "5");
 
-      // [FLOW-FIX 2026-10-31] เปลี่ยน พขร.: ลบรายการมอบหมายเดิม (สถานะ 8) ของเคลมนี้ก่อน
-      // เดิมสร้างแถวใหม่ซ้อน → พขร. คนเดิมยังเห็นงานในแอปของตัวเอง
       const oldAssignments = getDriverAssignments(deliveryDataList, data.claim_id);
       for (const old of oldAssignments) {
         if (old.delivery_id) {
@@ -553,8 +531,6 @@ const StaffClaimUpdate = () => {
         truck_plate: truckPlate,
       });
 
-      // [FLOW-FIX 2026-10-31] backend /createDelivery (สถานะ 8) จะเขียน current_status = "Processing" เสมอ
-      // ถ้าเคลมนี้ "Rejected" (รอส่งคืนสินค้า) ต้องคืนสถานะเป็น Rejected ไม่ให้กลายเป็น Processing
       if (statusBefore === "Rejected") {
         await claimService.updateClaimDate({
           claim_id: data.claim_id,
@@ -567,7 +543,6 @@ const StaffClaimUpdate = () => {
       await claimService.createClaimStatusLogs({
         claim_id: String(data.claim_id),
         status: String(getStatusId(rawStatusVal)),
-        // ⚠️ รูปแบบข้อความนี้ถูก parse ใน getLatestDeliveryFromLogs — ห้ามเปลี่ยน
         remark: `มอบหมายงาน พขร. (Delivery): Driver ID ${driverId}, ทะเบียนรถ ${truckPlate}`,
         update_by: String(currentUserId),
         user_id: String(currentUserId),
@@ -608,7 +583,6 @@ const StaffClaimUpdate = () => {
     }
   };
 
-  // [FLOW-FIX 2026-10-31] เปิดหน้าต่างมอบหมาย พขร. พร้อมเติมข้อมูล พขร. เดิม (ถ้ามี)
   const openDeliveryModal = () => {
     const current = getDriverAssignments(deliveryDataList, data?.claim_id)[0];
     setDeliveryForm({
@@ -675,9 +649,6 @@ const StaffClaimUpdate = () => {
       const realClaimId = data.claim_id;
       const statusId = String(getStatusId(targetStatus));
 
-      // [FLOW-FIX 2026-10-31] เดิมเรียก claimService.updateClaim({...data}) ซึ่ง backend /updateClaim
-      // อัปเดตเฉพาะรายการสินค้าและต้องมี items → ตอบ 400 "items ต้องเป็น Array" ทุกครั้ง (ถอยสถานะไม่ได้เลย)
-      // แก้: ใช้ /updateClaimDate ซึ่งเป็น endpoint เดียวที่เปลี่ยน current_status ได้
       await claimService.updateClaimDate({
         claim_id: realClaimId,
         status: targetStatus,
@@ -706,13 +677,11 @@ const StaffClaimUpdate = () => {
     const statusBefore = getStatusName(data?.current_status || "5");
     const allowedTargets = getNextStatusOptions(statusBefore).map((o) => o.value);
 
-    // [FLOW-FIX 2026-10-31] กันการบันทึกสถานะที่ไม่ใช่ขั้นถัดไป (เช่น กดบันทึกสถานะเดิมซ้ำ)
     if (!targetStatusName || !allowedTargets.includes(targetStatusName)) {
       message.error("กรุณาเลือกสถานะถัดไปที่ถูกต้อง");
       return;
     }
 
-    // [QA-FIX 2026-10-31] กันซ้ำอีกชั้น — ผู้ไม่มีสิทธิ์อนุมัติ ห้ามบันทึก Approved/Rejected
     if (["Approved", "Rejected"].includes(targetStatusName) && !canApprove) {
       message.error("คุณไม่มีสิทธิ์อนุมัติ/ไม่อนุมัติเคลม (เฉพาะผู้ดูแลระบบ)");
       return;
@@ -724,7 +693,6 @@ const StaffClaimUpdate = () => {
       return;
     }
 
-    // [FLOW-FIX 2026-10-31] Processing ต้องกรอกจำนวนที่ใช้เปลี่ยนจริงครบทุกรายการ
     if (targetStatusName === "Processing") {
       const missingQty = claimItems.some((ci) => {
         const v = ci.qty ?? ci.approved_qty;
@@ -736,7 +704,6 @@ const StaffClaimUpdate = () => {
       }
     }
 
-    // [FLOW-FIX 2026-10-31] Shipping (กรณี Staff เปลี่ยนแทน พขร.) ต้องมอบหมาย พขร. ก่อน
     const currentAssignment = getDriverAssignments(deliveryDataList, data?.claim_id)[0];
     if (targetStatusName === "Shipping" && !currentAssignment) {
       message.warning("กรุณามอบหมาย พขร. ก่อนเปลี่ยนเป็น Shipping");
@@ -760,8 +727,6 @@ const StaffClaimUpdate = () => {
         ? `ปฏิเสธรายการเคลม: ${formData.rejectReason.trim()} | DATA:${JSON.stringify(extraData)}`
         : `เปลี่ยนสถานะเป็น ${targetStatusName} | DATA:${JSON.stringify(extraData)}`;
 
-      // [FLOW-FIX 2026-10-31] อัปเดตจำนวนสินค้าเฉพาะตอน Processing (จำนวนเปลี่ยนจริง) และ Rejected (เปลี่ยน = 0)
-      // เดิมเรียกทุกสถานะ ถ้ารายการสินค้ามีค่าว่างจะทำให้การเปลี่ยนสถานะทั้งหมดล้มเหลว
       if (targetStatusName === "Processing" || isRejectedStatus) {
         const updatedClaimItems = claimItems.map((ci) => {
           if (isRejectedStatus) {
@@ -778,9 +743,6 @@ const StaffClaimUpdate = () => {
 
       const targetColumn = STATUS_DATE_COLUMN[targetStatusName] || "approve_date";
 
-      // [FLOW-FIX 2026-10-31] ลบการ "Auto-Stamp Processing" ตอน Rejected
-      // เดิมสร้าง Log สถานะ 8 ปลอม → ไทม์ไลน์ขึ้นว่าผ่าน Processing แล้ว ทั้งที่ Rejected ต้องข้ามไป Shipping
-      // คงไว้เฉพาะการ Stamp คอลัมน์ warehouse_receive_date (รายงานเดิมใช้คอลัมน์นี้) โดยไม่เปลี่ยนสถานะเป็น Processing
       if (isRejectedStatus) {
         try {
           await claimService.updateClaimDate({
@@ -795,7 +757,6 @@ const StaffClaimUpdate = () => {
 
       if (targetStatusName === "Shipping") {
         try {
-          // [FLOW-FIX 2026-10-31] ใช้ พขร. ที่มอบหมายไว้ก่อน (เดิมใช้ driverName = พขร. ที่แจ้งเคลมเข้ามาก่อน ซึ่งผิดคน)
           const activeDriverId = currentAssignment?.driver_id || data?.delivery_driver || formData.deliveryDriver || "";
           const activeTruckPlate = currentAssignment?.truck_plate || data?.delivery_plate || formData.deliveryPlate || "-";
 
@@ -826,7 +787,6 @@ const StaffClaimUpdate = () => {
         user_id: String(currentUserId),
       });
 
-      // [FLOW-FIX 2026-10-31] ประวัติการพิจารณาอนุมัติ Stamp เฉพาะ Approved / Rejected (เดิม Stamp ตอน Processing ด้วย)
       if (isRejectedStatus || targetStatusName === "Approved") {
         await claimService.createClaimapproves({
           claim_id: String(realClaimId),
@@ -840,8 +800,6 @@ const StaffClaimUpdate = () => {
       setIsModalOpen(false);
       await fetchClaimDetail(false);
 
-      // [FLOW-FIX 2026-10-31] ขั้นตอนถัดไปของ Processing / Rejected คือส่งคืนสินค้า → ชวนมอบหมาย พขร. ทันที
-      // (ไม่บังคับ — กดยกเลิกได้ และยังมีแถบเตือนบนหน้าจนกว่าจะมอบหมาย)
       if ((targetStatusName === "Processing" || isRejectedStatus) && !currentAssignment) {
         message.info("ขั้นตอนถัดไป: มอบหมาย พขร. เพื่อส่งสินค้าคืนลูกค้า");
         openDeliveryModal();
@@ -874,8 +832,6 @@ const StaffClaimUpdate = () => {
   const rawStatusVal = String(data?.current_status || data?.status || data?.status_id || "");
   const currentStatusInDB = convertstatusClaim(rawStatusVal);
 
-  // [FLOW-FIX 2026-10-31] คำนวณจาก "สถานะปัจจุบัน" + Log ที่เป็นการเปลี่ยนสถานะจริงเท่านั้น
-  // เดิม: เคยมี Log Rejected ครั้งเดียว = แดงตลอดไป (แม้ถอยสถานะแล้ว) และไทม์ไลน์ดูจาก "เคยมี Log"
   const statusName = getStatusName(rawStatusVal || "5");
   const rejectedFlow = isRejectedFlow(statusName, statusLogs);
   const latestDecision = getLatestDecision(statusLogs);
@@ -885,7 +841,6 @@ const StaffClaimUpdate = () => {
   const isFinalStatus = currentStatusInDB === "Delivered" || currentStatusInDB === "จัดส่งสินค้าเคลมสำเร็จ";
   const previousStatusName = getPreviousStatusName(currentStatusInDB, rejectedFlow);
 
-  // [FLOW-FIX 2026-10-31] การมอบหมาย พขร. (Delivery สถานะ 8) — พขร. จะเห็นงานในแอปก็ต่อเมื่อมีรายการนี้
   const driverAssignments = getDriverAssignments(deliveryDataList, data.claim_id);
   const currentAssignment = driverAssignments[0] || null;
   const mustAssignDriver = needsDriverAssignment(statusName, Boolean(currentAssignment));
@@ -893,8 +848,6 @@ const StaffClaimUpdate = () => {
 
   const currentStep = getStepIndex(statusName);
 
-  // [FLOW-FIX 2026-10-31] เวลา Stamp ของแต่ละขั้น (ไม่นับ Log แชท/มอบหมาย/ลูกค้ายืนยัน)
-  // Shipping / Delivered ที่ พขร. เปลี่ยนจากอีกแพลตฟอร์มจะไม่มี Log → ใช้วันที่จากตาราง Delivery / claims แทน
   const stampOf = (stepIdx, statusIds, ...fallbacks) => {
     if (stepIdx > currentStep) return "-";
     const fromLog = getStatusStampDate(statusLogs, statusIds);
@@ -930,7 +883,6 @@ const StaffClaimUpdate = () => {
     },
     {
       title: "3. Processing",
-      // [FLOW-FIX 2026-10-31] เส้นทาง Rejected ข้ามขั้นนี้
       ...(rejectedFlow ? { status: "wait" } : {}),
       description: rejectedFlow ? stepNote("ข้าม (ไม่อนุมัติ)") : processingStamp,
     },
@@ -1055,7 +1007,6 @@ const StaffClaimUpdate = () => {
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto justify-start md:justify-end">
             <ClaimStatusTag status={currentStatusInDB} />
 
-            {/* [DOC-FIX 2026-10-31] พิมพ์เอกสารได้ทุกสถานะ (เดิมเฉพาะ Shipping ขึ้นไป) — ข้อมูลที่ยังไม่ถึงขั้นจะเว้นว่าง */}
             <Button
               type="default"
               icon={<PrinterOutlined />}
@@ -1090,14 +1041,12 @@ const StaffClaimUpdate = () => {
               </Button>
             )}
 
-            {/* [QA-FIX 2026-10-31] แจ้ง Staff ที่ไม่มีสิทธิ์อนุมัติว่าเคลมนี้รอผู้ดูแลระบบพิจารณา */}
             {!canApprove && getStatusName(statusName) === "Pending" && (
               <span className="text-xs sm:text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                 รอผู้ดูแลระบบพิจารณาอนุมัติ
               </span>
             )}
 
-            {/* [FLOW-FIX 2026-10-31] ค่าเริ่มต้น = สถานะถัดไปตัวแรก และซ่อนปุ่มเมื่อไม่มีสถานะถัดไป (Delivered) */}
             {getNextStatusOptions(statusName).length > 0 && (
               <Button
                 type="primary"
@@ -1116,7 +1065,6 @@ const StaffClaimUpdate = () => {
         </div>
       </Card>
 
-      {/* [FLOW-FIX 2026-10-31] แจ้งเหตุผลการไม่อนุมัติให้ฝั่ง Staff เห็นชัดเจน (ฝั่ง Customer มีอยู่แล้ว) */}
       {rejectedFlow && (
         <Alert
           type="error"
@@ -1127,9 +1075,6 @@ const StaffClaimUpdate = () => {
         />
       )}
 
-      {/* [FLOW-FIX 2026-10-31] เตือนให้มอบหมาย พขร. ก่อนขั้น Shipping
-          พขร. จะเห็นงานในแอปของตัวเอง (และเปลี่ยนเป็น Shipping ได้) ก็ต่อเมื่อถูกมอบหมายแล้วเท่านั้น
-          ไม่ปิดกั้นการทำงานอื่น — แถบนี้หายเองเมื่อมอบหมายแล้ว */}
       {mustAssignDriver && (
         <Alert
           type="warning"
@@ -1181,13 +1126,9 @@ const StaffClaimUpdate = () => {
 
           <Card
             title={
-              /* [UI-FIX 2026-10-31 R2] ย่อหัวการ์ด + ปุ่ม และให้ตัดบรรทัดได้บนจอแคบ (เดิมปุ่มถูกตัดขาด) */
               <div className="flex flex-wrap justify-between items-center w-full gap-2 py-1">
                 <span className="font-medium text-slate-800">ข้อมูลการจัดส่ง</span>
                 
-                {/* [FLOW-FIX 2026-10-31] แสดงได้ทั้ง Processing และ Rejected (ต้องส่งคืนสินค้าทั้งสองกรณี)
-                    เดิมแสดงเฉพาะ Processing ขึ้นไป → เคลมที่ Rejected มอบหมาย พขร. ไม่ได้
-                    และซ่อนเมื่อ Shipping แล้ว (พขร. รับงานไปแล้ว) */}
                 {canAssignDriver && (
                   <Button 
                     type={currentAssignment ? "default" : "primary"} 
@@ -1236,10 +1177,6 @@ const StaffClaimUpdate = () => {
             )}
           </Card>
 
-          {/* [UI-FIX 2026-10-31] ปรับดีไซน์การ์ด "ประวัติการพิจารณาอนุมัติ" ให้เข้ากับธีมหลัก
-              - เดิม: พื้นหลังเขียว/แดงทั้งกล่อง, ตัวอักษร 11px, ฟอนต์ mono, สัญลักษณ์ ✓/✕ แบบข้อความ
-              - ใหม่: การ์ดขาว + เส้นไทม์ไลน์แบบเดียวกับ "ประวัติการบันทึกสถานะ", ไอคอนสถานะสี,
-                Tag แบบ rounded-full, ตัวอักษร 12–13px อ่านง่าย, หมายเหตุอยู่ในกล่องเทาอ่อน */}
           <Card
             title={
               <div className="flex justify-between items-center w-full gap-2">
@@ -1263,7 +1200,6 @@ const StaffClaimUpdate = () => {
 
                   return (
                     <li key={item.approve_id || idx} className="relative flex gap-3">
-                      {/* เส้นเชื่อมไทม์ไลน์ */}
                       {!isLast && (
                         <span
                           aria-hidden="true"
@@ -1271,7 +1207,6 @@ const StaffClaimUpdate = () => {
                         />
                       )}
 
-                      {/* ไอคอนสถานะ */}
                       <span
                         className={`relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-white shrink-0 text-lg leading-none ${
                           isApproved ? "text-emerald-600" : "text-red-500"
@@ -1377,7 +1312,6 @@ const StaffClaimUpdate = () => {
           </Card>
 
           <Button icon={<ArrowLeftOutlined />} className="w-full rounded-xl border-gray-300 h-11" onClick={() => navigate("/staff/list-claim")}>
-            {/* [UI-FIX 2026-10-31 R2] เดิม "กลับหน้ารายการคลังสินค้า" */}
             กลับหน้ารายการเคลม
           </Button>
         </div>
@@ -1397,12 +1331,12 @@ const StaffClaimUpdate = () => {
       {/* 🟢 Modal อัปเดตสถานะ */}
       <Modal
         width={650}
-        title="อัปเดตสถานะเคลม" /* [UI-FIX 2026-10-31 R2] เดิม "อัปเดตสถานะการเคลมสินค้า" */
+        title="อัปเดตสถานะเคลม"
         open={isModalOpen}
         onOk={handleSaveStatus}
         confirmLoading={isSubmitting}
         onCancel={() => !isSubmitting && setIsModalOpen(false)}
-        okText="บันทึกสถานะ" /* [UI-FIX 2026-10-31 R2] เดิม "บันทึกเปลี่ยนสถานะ" */
+        okText="บันทึกสถานะ"
         cancelText="ยกเลิก"
       >
         <div className="flex flex-col gap-4 py-3">
@@ -1417,7 +1351,6 @@ const StaffClaimUpdate = () => {
             />
           </div>
 
-          {/* [FLOW-FIX 2026-10-31] Shipping ต้องมี พขร. ที่มอบหมายแล้ว */}
           {formData.status === "Shipping" && !currentAssignment && (
             <Alert
               type="warning"
@@ -1443,7 +1376,6 @@ const StaffClaimUpdate = () => {
           {["Processing", "กำลังดำเนินการ"].includes(formData.status) && (
             <div className="border border-slate-200 rounded-xl p-3 bg-slate-50">
               <label className="block text-sm font-medium text-slate-800 mb-2">
-                {/* [UI-FIX 2026-10-31 R2] เดิม "ระบุจำนวนสินค้าที่อนุมัติเปลี่ยนเคลมจริง (Processing Qty):" */}
                 จำนวนที่อนุมัติเปลี่ยนจริง:
               </label>
               <Table
@@ -1454,7 +1386,7 @@ const StaffClaimUpdate = () => {
                   { title: "ชื่อสินค้า", dataIndex: "item_name", key: "item_name" },
                   { title: "แจ้งเคลม", dataIndex: "qtychang", key: "qtychang", width: 90, align: "right" },
                   {
-                    title: "อนุมัติ", // [UI-FIX 2026-10-31 R2] เดิม "จำนวนอนุมัติเปลี่ยน"
+                    title: "อนุมัติ",
                     key: "approved_qty",
                     width: 140,
                     align: "center",

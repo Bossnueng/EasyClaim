@@ -7,10 +7,10 @@ import {
   WechatOutlined,
   SettingFilled,
   UserOutlined, // 🟢 1. Import Icon สำหรับจัดการผู้ใช้
-  FormOutlined, // [DOC-FIX 2026-10-31] เมนูลายเซ็นผู้สอบทาน
+  FormOutlined,
 } from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
-import { isStaffUser, isAdminUser, CUSTOMER_ROLE_ID } from "../constants/roles"; // [QA-FIX 2026-10-31]
+import { isStaffUser, isAdminUser, CUSTOMER_ROLE_ID } from "../constants/roles";
 
 const MenuList = () => {
   const location = useLocation();
@@ -20,8 +20,6 @@ const MenuList = () => {
   const user = savedUser ? JSON.parse(savedUser) : null;
   const role = user?.role_id; // role_id ของผู้ใช้
 
-  // [QA-FIX 2026-10-31] Test Case 1.2 — เดิม [1, 4, 5] ไม่มี role 3 (เจ้าหน้าที่) → role 3 ได้เมนูว่าง
-  // และเทียบแบบ strict กับ role_id ที่อาจเป็น String → ใช้ค่ากลางจาก constants/roles.js
   const isStaffRole = isStaffUser(user);
   const isAdminRole = isAdminUser(user); // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
 
@@ -54,7 +52,7 @@ const MenuList = () => {
     }
     if (location.pathname.includes("/staff/agents")) return "staff-agents";
     if (location.pathname.includes("/staff/roles")) return "staff-roles";
-    if (location.pathname.includes("/staff/signatures")) return "staff-signatures"; // [DOC-FIX 2026-10-31]
+    if (location.pathname.includes("/staff/signatures")) return "staff-signatures";
 
     if (location.pathname.includes("/staff/setting")) {
       return "staff-setting";
@@ -113,7 +111,6 @@ const MenuList = () => {
                 <NavLink to="/staff/roles">จัดการสิทธิ์ (Role)</NavLink>
               </Menu.Item>
 
-              {/* [DOC-FIX 2026-10-31] ลายเซ็นผู้สอบทานรายคลัง */}
               <Menu.Item key="staff-signatures" icon={<FormOutlined />}>
                 <NavLink to="/staff/signatures">ลายเซ็นผู้สอบทาน</NavLink>
               </Menu.Item>
@@ -132,8 +129,6 @@ const MenuList = () => {
           <Menu.Item key="customer-home" icon={<HomeOutlined />}>
             <NavLink to="/customer">หน้าแรก</NavLink>
           </Menu.Item>
-          {/* [QA-FIX 2026-10-31] ลบ merge-conflict marker ที่ค้างอยู่ใน comment
-              เมนู "สร้างรายการเคลม" (/customer/new-claim) ยังปิดไว้เหมือนเดิม เพราะยังไม่มีหน้า/route นี้ในเว็บ */}
           
           <Menu.Item key="customer-list-claim" icon={<HistoryOutlined />}>
             <NavLink to="/customer/list-claim">รายการเคลม</NavLink>

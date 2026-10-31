@@ -1,13 +1,7 @@
-// src/hooks/useAutoConfirm.js
-// [DOC-FIX 2026-10-31] ยืนยันการส่งเคลม / รับสินค้าแทนลูกค้าอัตโนมัติเมื่อครบกำหนด
-// ใช้ได้ทั้งหน้า Customer และ Staff → ทำงานเมื่อมีใครก็ได้เปิดหน้าเคลมนั้น (ไม่ต้องรอลูกค้าเปิด)
-// เวลาที่บันทึกในเอกสาร = เวลาครบกำหนดจริง (AUTO_AT) ไม่ใช่เวลาที่เปิดหน้าเว็บ
-
 import { useEffect, useRef } from "react";
 import claimService from "../services/claimService";
 import { getDueAutoConfirms, getConfirmDeadline, findConfirmLog, buildAutoConfirmPayload, CONFIRM_KIND } from "../utils/claimConfirm";
 
-// กันการเขียนซ้ำข้ามหน้า/ข้ามรอบ polling ภายในแท็บเดียวกัน
 const inFlight = new Set();
 
 export const runAutoConfirms = async ({ claim, logs, deliveries, statusName, updateBy }) => {
@@ -25,10 +19,9 @@ export const runAutoConfirms = async ({ claim, logs, deliveries, statusName, upd
       written += 1;
     } catch (err) {
       console.warn("Auto-confirm failed:", err);
-      inFlight.delete(key); // ให้ลองใหม่รอบถัดไป
+      inFlight.delete(key);
       continue;
     }
-    // ค้างไว้สักพักจนกว่าข้อมูลรอบใหม่จะเห็น Log นี้ แล้วค่อยปลดล็อก
     setTimeout(() => inFlight.delete(key), 60 * 1000);
   }
   return written;
@@ -50,7 +43,6 @@ export const useAutoConfirm = ({ claim, logs, deliveries, statusName, updateBy, 
     };
     check();
 
-    // ตั้งเวลาไว้ที่กำหนดถัดไป (ถ้าอยู่ภายใน 1 ชม.) เพื่อให้ยืนยันตรงเวลาแม้หน้าเว็บค้างไว้
     const nextDeadlines = [CONFIRM_KIND.SUBMIT, CONFIRM_KIND.RECEIVE]
       .filter((kind) => !findConfirmLog(logs, kind) && (kind === CONFIRM_KIND.SUBMIT || statusName === "Delivered"))
       .map((kind) => getConfirmDeadline(kind, claim, logs, deliveries))

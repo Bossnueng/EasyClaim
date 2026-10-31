@@ -1,6 +1,8 @@
 .env
 #uploads
 backend/src/uploads/claim*
+backend/src/uploads/claimsreturn
+backend/src/uploads/signatures
 
 #.gitkeep 
 !backend/src/uploads/claim/.gitkeep
@@ -29,3 +31,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+BACKEND_SIGNATURE_API.md
+CHANGELOG_UI.md

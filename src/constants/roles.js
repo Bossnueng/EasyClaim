@@ -17,3 +17,5 @@ export const isStaffUser = (user) => {
 };
 
 export const canApproveClaim = (user) => APPROVER_ROLE_IDS.includes(roleIdOf(user));
+
+export const canRevertClaimStatus = (user) => isAdminUser(user);

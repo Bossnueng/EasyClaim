@@ -1,5 +1,3 @@
-// src/pages/customer/CustomerClaimDetail.jsx
-
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Card,

@@ -1,5 +1,3 @@
-// src/pages/customer/CustomerClaimList.jsx
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom"; // 🟢 เพิ่ม useLocation
 import { Input, Empty, message, DatePicker, Button, Spin, Select } from "antd";

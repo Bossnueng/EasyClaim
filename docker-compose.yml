@@ -34,7 +34,8 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: /api
-        VITE_API_BASE_URL: "${DOCKER_API_BASE_URL:-}"
+        # "/." = รูปเคลมโหลดจากโดเมนเดียวกับหน้าเว็บ (/./uploads/... -> /uploads/...) ใช้ได้ทั้ง LAN, tunnel และ Kubernetes
+        VITE_API_BASE_URL: "${DOCKER_API_BASE_URL:-/.}"
         VITE_AUTO_CONFIRM_SUBMIT_SECONDS: "${VITE_AUTO_CONFIRM_SUBMIT_SECONDS:-86400}"
         VITE_AUTO_CONFIRM_RECEIVE_SECONDS: "${VITE_AUTO_CONFIRM_RECEIVE_SECONDS:-259200}"
     image: easyclaim-frontend:latest

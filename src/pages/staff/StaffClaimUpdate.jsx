@@ -1,5 +1,3 @@
-// src/pages/staff/StaffClaimUpdate.jsx
-
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Card,
@@ -52,7 +50,7 @@ import { getAgentNameByUserId } from "../../utils/agentHelper";
 import { parseDateSafely } from "../../utils/dateUtils";
 import { getRejectReasonText } from "../../utils/logPaser";
 import { useAutoConfirm } from "../../hooks/useAutoConfirm";
-import { canApproveClaim } from "../../constants/roles";
+import { canApproveClaim, canRevertClaimStatus } from "../../constants/roles";
 import {
   sortLogs,
   getStatusStampDate,
@@ -168,9 +166,8 @@ const StaffClaimUpdate = () => {
 
   const currentUser = loginService.getCurrentUser();
   const currentUserId = currentUser?.user_id || currentUser?.id;
-  const userRoleId = Number(currentUser?.role_id);
 
-  const canRevertOrEdit = [1, 4].includes(userRoleId);
+  const canRevertOrEdit = canRevertClaimStatus(currentUser);
   const canApprove = canApproveClaim(currentUser);
 
   const [formData, setFormData] = useState({

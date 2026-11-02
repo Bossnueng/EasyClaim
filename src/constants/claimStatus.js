@@ -1,7 +1,3 @@
-/**
- * src/constants/claimStatus.js
- */
-
 export const CLAIM_STATUS_MAP = {
   "1": { priority: 1, name: "Pending", staffName: "Pending", customerName: "Pending", color: "processing" },
   "5": { priority: 1, name: "Pending", staffName: "Pending", customerName: "Pending", color: "processing" },

@@ -1,3 +1,5 @@
+import { isAdminUser } from "../constants/roles";
+
 const toStr = (v) => (v === null || v === undefined ? "" : String(v).trim());
 
 export const getUserAgentScope = (user, agents = []) => {
@@ -30,6 +32,23 @@ export const canAccessClaim = (claim, scope) => {
   const isCreator = Boolean(scope.userId) && createdBy === scope.userId;
 
   return Boolean(isAgentMatch || isCreator);
+};
+
+export const isClaimInAgentScope = (claim, scope) => {
+  if (!claim || !scope) return false;
+  const claimAgentId = toStr(claim.agent_id);
+  const claimAgentCode = toStr(claim.agent_code);
+  return Boolean(
+    (claimAgentId && (scope.ids.has(claimAgentId) || scope.codes.has(claimAgentId))) ||
+      (claimAgentCode && scope.codes.has(claimAgentCode))
+  );
+};
+
+export const filterClaimsForStaff = (claims = [], user, agents = []) => {
+  const list = Array.isArray(claims) ? claims : [];
+  if (isAdminUser(user)) return list;
+  const scope = getUserAgentScope(user, agents);
+  return list.filter((c) => isClaimInAgentScope(c, scope));
 };
 
 export const filterClaimsForUser = (claims = [], user, agents = []) => {

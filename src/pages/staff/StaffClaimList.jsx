@@ -1,5 +1,3 @@
-// src/pages/staff/StaffClaimList.jsx
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom"; // 🟢 เพิ่ม useLocation
 import { Input, Empty, message, Spin, DatePicker, Button, Select } from "antd";
@@ -25,6 +23,7 @@ import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import loginService from "../../services/loginService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { filterClaimsForStaff } from "../../utils/claimAccess";
 import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 import { parseExtraDataFromLogs } from "../../utils/logPaser";
 import { getClaimReportPeople, getReportQuantities } from "../../utils/claimReport";
@@ -130,30 +129,7 @@ const StaffClaimList = () => {
         ? resClaim
         : [];
 
-      const userAgentIdentifiers = [];
-      if (Array.isArray(activeUser?.agent_ids)) {
-        activeUser.agent_ids.forEach((id) => userAgentIdentifiers.push(String(id)));
-      } else if (activeUser?.agent_id) {
-        userAgentIdentifiers.push(String(activeUser.agent_id));
-      }
-
-      if (Array.isArray(agentsData) && userAgentIdentifiers.length > 0) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
-      const allowedClaims = userAgentIdentifiers.length > 0
-        ? rawClaims.filter((claim) => {
-            const claimAgentIdStr = String(claim.agent_id || "");
-            const claimAgentCodeStr = String(claim.agent_code || "");
-            return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
-          })
-        : rawClaims;
+      const allowedClaims = filterClaimsForStaff(rawClaims, activeUser, agentsData);
 
       const claimsWithItems = await Promise.all(
         allowedClaims.map(async (claim) => {

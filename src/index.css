@@ -1,4 +1,3 @@
-/* src/index.css */
 @import url("https://fonts.googleapis.com/css2?family=Mitr:wght@200;300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
@@ -381,4 +380,33 @@ button:not(.ant-btn):focus-visible {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #94a3b8; /* slate-400 */
+}
+
+.friendly-error-notice.ant-notification-notice {
+  border-radius: 14px;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.22);
+  padding: 14px 18px;
+}
+
+.friendly-error-notice .ant-notification-notice-title {
+  font-size: 15px;
+  line-height: 1.45;
+  margin-bottom: 6px;
+  padding-inline-end: 20px;
+}
+
+@media (max-width: 480px) {
+  .ant-notification-topRight {
+    inset-inline-end: 12px !important;
+    inset-inline-start: 12px !important;
+    margin: 0 !important;
+  }
+
+  .friendly-error-notice.ant-notification-notice,
+  .ant-notification-topRight .ant-notification-notice-wrapper {
+    width: 100% !important;
+    max-width: calc(100vw - 24px);
+  }
 }

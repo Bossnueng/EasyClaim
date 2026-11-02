@@ -1,5 +1,3 @@
-// src/pages/customer/CustomerHome.jsx
-
 import dayjs from "dayjs";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";

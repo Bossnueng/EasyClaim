@@ -1,4 +1,3 @@
-// src/pages/UserManagement.jsx
 import React, { useState, useEffect, useRef } from "react";
 import {
   Table,
@@ -587,7 +586,11 @@ export default function UserManagement() {
               </Col>
 
               <Col xs={24} sm={12}>
-                <Form.Item name="full_name" label="ชื่อ-นามสกุล">
+                <Form.Item
+                  name="full_name"
+                  label="ชื่อ-นามสกุล"
+                  rules={[{ required: true, whitespace: true, message: "กรุณากรอก ชื่อ-นามสกุล" }]}
+                >
                   <Input 
                     prefix={<UserOutlined style={{ color: "#bfbfbf" }} />} 
                     placeholder="ชื่อ-นามสกุล" 

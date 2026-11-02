@@ -1,5 +1,3 @@
-// src/components/StaffClaimCard.jsx
-
 import React, { useState, useEffect } from "react";
 import { Popconfirm, Tag } from "antd";
 import { useNavigate } from "react-router-dom";

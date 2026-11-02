@@ -1,0 +1,85 @@
+# Backend: Node/Express + Socket.IO
+# ค่าลับ (DB_USER, DB_PASSWORD, DB_DATABASE, JWT_SECRET ...) มาจาก Secret "easyclaim-backend-env"
+# ซึ่งสร้างจาก backend/.env ด้วย kubectl (ดู K8S.md) — ไม่เก็บรหัสผ่านไว้ในไฟล์นี้
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: easyclaim-backend-config
+data:
+  PORT: "5001"
+  TZ: Asia/Bangkok
+  NODE_ENV: production
+  # SQL Server บนเครื่อง Windows (Docker Desktop) — เปลี่ยนเป็น IP จริงถ้า DB อยู่เครื่องอื่น
+  DB_SERVER: host.docker.internal
+  DB_PORT: "1434"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: easyclaim-uploads
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: easyclaim-backend
+  labels: { app: easyclaim, tier: backend }
+spec:
+  # 1 replica: ไฟล์อัปโหลดเก็บบนดิสก์ (ReadWriteOnce) และ Socket.IO ยังไม่มี adapter สำหรับหลาย pod
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: easyclaim, tier: backend }
+  template:
+    metadata:
+      labels: { app: easyclaim, tier: backend }
+    spec:
+      containers:
+        - name: backend
+          image: easyclaim-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5001
+          envFrom:
+            - secretRef:
+                name: easyclaim-backend-env
+            # ConfigMap อยู่หลัง Secret -> ค่า PORT / DB_SERVER / DB_PORT ใน ConfigMap ทับค่าจาก backend/.env
+            - configMapRef:
+                name: easyclaim-backend-config
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/src/uploads
+          readinessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: "1",  memory: 512Mi }
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: easyclaim-uploads
+---
+# ชื่อ Service ต้องเป็น "backend" — docker/nginx.conf ส่งต่อไปที่ backend:5001
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels: { app: easyclaim, tier: backend }
+spec:
+  selector: { app: easyclaim, tier: backend }
+  ports:
+    - name: http
+      port: 5001
+      targetPort: http

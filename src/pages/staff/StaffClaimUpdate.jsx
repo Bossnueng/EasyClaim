@@ -1,5 +1,3 @@
-// src/pages/staff/StaffClaimUpdate.jsx
-
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Card,
@@ -52,7 +50,7 @@ import { getAgentNameByUserId } from "../../utils/agentHelper";
 import { parseDateSafely } from "../../utils/dateUtils";
 import { getRejectReasonText } from "../../utils/logPaser";
 import { useAutoConfirm } from "../../hooks/useAutoConfirm";
-import { canApproveClaim } from "../../constants/roles";
+import { canApproveClaim, canRevertClaimStatus } from "../../constants/roles";
 import {
   sortLogs,
   getStatusStampDate,
@@ -168,9 +166,8 @@ const StaffClaimUpdate = () => {
 
   const currentUser = loginService.getCurrentUser();
   const currentUserId = currentUser?.user_id || currentUser?.id;
-  const userRoleId = Number(currentUser?.role_id);
 
-  const canRevertOrEdit = [1, 4].includes(userRoleId);
+  const canRevertOrEdit = canRevertClaimStatus(currentUser);
   const canApprove = canApproveClaim(currentUser);
 
   const [formData, setFormData] = useState({
@@ -624,6 +621,10 @@ const StaffClaimUpdate = () => {
   };
 
   const handleStepBack = () => {
+    if (!canRevertOrEdit) {
+      message.error("คุณไม่มีสิทธิ์ถอยสถานะ (เฉพาะผู้ดูแลระบบ)");
+      return;
+    }
     const previousStatusName = getPreviousStatusName(currentStatusInDB, rejectedFlow);
     if (!previousStatusName) {
       message.warning("อยู่ที่สถานะแรกสุดแล้ว ไม่สามารถถอยได้อีก");
@@ -683,7 +684,7 @@ const StaffClaimUpdate = () => {
     }
 
     if (["Approved", "Rejected"].includes(targetStatusName) && !canApprove) {
-      message.error("คุณไม่มีสิทธิ์อนุมัติ/ไม่อนุมัติเคลม (เฉพาะผู้ดูแลระบบ)");
+      message.error("คุณไม่มีสิทธิ์อนุมัติ/ไม่อนุมัติเคลม (เฉพาะผู้มีสิทธิ์อนุมัติ)");
       return;
     }
 
@@ -1043,7 +1044,7 @@ const StaffClaimUpdate = () => {
 
             {!canApprove && getStatusName(statusName) === "Pending" && (
               <span className="text-xs sm:text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                รอผู้ดูแลระบบพิจารณาอนุมัติ
+                รอผู้มีสิทธิ์อนุมัติพิจารณา
               </span>
             )}
 

@@ -1,4 +1,3 @@
-// src/hooks/useClaimRealtime.js
 import { useEffect, useRef } from "react";
 import socket from "../services/socket";
 

@@ -1,5 +1,3 @@
-// src/components/ClaimStatusTag.jsx
-
 import React from "react";
 import { Tag } from "antd";
 import { getStatusName, getStatusColor } from "../constants/claimStatus";

@@ -1,5 +1,3 @@
-// src/pages/staff/StaffHome.jsx
-
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Empty, message, Spin } from "antd";
@@ -15,12 +13,12 @@ import itemService from "../../services/itemService";
 import agentService from "../../services/agentService";
 import userService from "../../services/userService";
 import { getAgentNameByUserId } from "../../utils/agentHelper";
+import { filterClaimsForStaff } from "../../utils/claimAccess";
 import { useClaimRealtime, isStatusChangeEvent } from "../../hooks/useClaimRealtime";
 
 const StaffHome = () => {
   const navigate = useNavigate();
   const currentUser = loginService.getCurrentUser();
-  const userRoleId = Number(currentUser?.role_id);
   const currentUserId = currentUser?.user_id || currentUser?.id;
 
   const [allClaims, setAllClaims] = useState([]);
@@ -104,8 +102,6 @@ const StaffHome = () => {
     if (showLoading) setLoading(true);
 
     try {
-      let userAgentIdentifiers = [];
-
       const [resClaim, resItems, resAgents, resUsers, resDeliveries] = await Promise.all([
         claimService.getClaim(),
         itemService.getItems(),
@@ -146,31 +142,7 @@ const StaffHome = () => {
 
       const claimData = Array.isArray(resClaim) ? resClaim : resClaim?.data || [];
 
-      if (Array.isArray(currentUser?.agent_ids)) {
-        currentUser.agent_ids.forEach((id) => {
-          userAgentIdentifiers.push(String(id));
-        });
-      } else if (currentUser?.agent_id) {
-        userAgentIdentifiers.push(String(currentUser.agent_id));
-      }
-
-      if (Array.isArray(agentsData)) {
-        agentsData.forEach((agent) => {
-          const aId = String(agent.agent_id || agent.id || "");
-          const aCode = String(agent.agent_code || agent.code || "");
-          if (userAgentIdentifiers.includes(aId) && aCode) {
-            userAgentIdentifiers.push(aCode);
-          }
-        });
-      }
-
-      const allowedClaims = (userRoleId === 1 || userAgentIdentifiers.length === 0)
-        ? claimData
-        : claimData.filter((claim) => {
-            const claimAgentIdStr = String(claim.agent_id || "");
-            const claimAgentCodeStr = String(claim.agent_code || "");
-            return userAgentIdentifiers.includes(claimAgentIdStr) || userAgentIdentifiers.includes(claimAgentCodeStr);
-          });
+      const allowedClaims = filterClaimsForStaff(claimData, currentUser, agentsData);
 
       const claimWithDetails = await Promise.all(
         allowedClaims.map(async (claim) => {

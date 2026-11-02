@@ -621,6 +621,10 @@ const StaffClaimUpdate = () => {
   };
 
   const handleStepBack = () => {
+    if (!canRevertOrEdit) {
+      message.error("คุณไม่มีสิทธิ์ถอยสถานะ (เฉพาะผู้ดูแลระบบ)");
+      return;
+    }
     const previousStatusName = getPreviousStatusName(currentStatusInDB, rejectedFlow);
     if (!previousStatusName) {
       message.warning("อยู่ที่สถานะแรกสุดแล้ว ไม่สามารถถอยได้อีก");
@@ -680,7 +684,7 @@ const StaffClaimUpdate = () => {
     }
 
     if (["Approved", "Rejected"].includes(targetStatusName) && !canApprove) {
-      message.error("คุณไม่มีสิทธิ์อนุมัติ/ไม่อนุมัติเคลม (เฉพาะผู้ดูแลระบบ)");
+      message.error("คุณไม่มีสิทธิ์อนุมัติ/ไม่อนุมัติเคลม (เฉพาะผู้มีสิทธิ์อนุมัติ)");
       return;
     }
 
@@ -1040,7 +1044,7 @@ const StaffClaimUpdate = () => {
 
             {!canApprove && getStatusName(statusName) === "Pending" && (
               <span className="text-xs sm:text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                รอผู้ดูแลระบบพิจารณาอนุมัติ
+                รอผู้มีสิทธิ์อนุมัติพิจารณา
               </span>
             )}
 

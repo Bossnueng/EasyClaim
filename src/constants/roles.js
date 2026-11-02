@@ -3,7 +3,7 @@ export const CUSTOMER_ROLE_ID = 2;
 
 export const STAFF_ROLE_IDS = [1, 3, 4, 5];
 
-export const APPROVER_ROLE_IDS = [1];
+export const APPROVER_ROLE_IDS = [1, 4];
 
 const roleIdOf = (user) => Number(user?.role_id);
 

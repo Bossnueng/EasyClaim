@@ -31,7 +31,8 @@ spec:
             requests: { cpu: 50m,  memory: 32Mi }
             limits:   { cpu: 500m, memory: 128Mi }
 ---
-# Docker Desktop: LoadBalancer เปิดที่ http://localhost:8080 (และ IP เครื่องในวง LAN)
+# Docker Desktop: LoadBalancer เปิดที่ http://localhost:8081 (และ IP เครื่องในวง LAN)
+# ใช้ 8081 เพื่อไม่ชนกับ Docker Compose (8080) — รันพร้อมกันได้
 apiVersion: v1
 kind: Service
 metadata:
@@ -42,5 +43,5 @@ spec:
   selector: { app: easyclaim, tier: frontend }
   ports:
     - name: http
-      port: 8080
+      port: 8081
       targetPort: http

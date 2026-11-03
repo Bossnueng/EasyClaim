@@ -14,3 +14,28 @@ BEGIN
         ON [EasyClaim_Dev].[dbo].[warehouse_signatures] (warehouse);
 END
 GO
+
+-- ประวัติลายเซ็น: เพิ่มแถวใหม่ทุกครั้งที่เพิ่ม/เปลี่ยน/ลบลายเซ็น (image_path = NULL คือถูกลบ)
+-- เอกสารใบเคลมที่ Delivered แล้วใช้เวอร์ชันที่มีผล (effective_from) ณ เวลา Delivered
+IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signature_history]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [EasyClaim_Dev].[dbo].[warehouse_signature_history] (
+        history_id     INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        warehouse      NVARCHAR(100) NOT NULL,
+        reviewer_name  NVARCHAR(100) NULL,
+        image_path     NVARCHAR(255) NULL,
+        effective_from DATETIME NOT NULL CONSTRAINT DF_warehouse_signature_history_effective_from DEFAULT GETDATE(),
+        created_by     INT NULL
+    );
+    CREATE INDEX IX_warehouse_signature_history_warehouse
+        ON [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, effective_from);
+END
+GO
+
+INSERT INTO [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, reviewer_name, image_path, effective_from, created_by)
+SELECT s.warehouse, s.reviewer_name, s.image_path, s.updated_at, s.updated_by
+FROM [EasyClaim_Dev].[dbo].[warehouse_signatures] s
+WHERE NOT EXISTS (
+    SELECT 1 FROM [EasyClaim_Dev].[dbo].[warehouse_signature_history] h WHERE h.warehouse = s.warehouse
+);
+GO

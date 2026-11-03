@@ -1,0 +1,25 @@
+# K8S UAT — Kong (koka-uat.thaibev.com) -> Ingress /bev-claim -> bev-claim-frontend:80
+# สมมติว่า Kong ส่ง path /bev-claim ต่อมาเต็มๆ (strip_path = false)
+# ถ้า Kong ไม่ส่ง Host เดิม (preserve_host = false) ให้แก้ host ด้านล่างเป็นชื่อที่ Kong ใช้ หรือลบบรรทัด host ออก
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bev-claim
+  annotations:
+    # สำหรับ ingress-nginx — ถ้าใช้ controller อื่นให้เปลี่ยนเป็น annotation ของ controller นั้น
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx   # TODO: ยืนยันชื่อ IngressClass ของ cluster
+  rules:
+    - host: koka-uat.thaibev.com
+      http:
+        paths:
+          - path: /bev-claim
+            pathType: Prefix
+            backend:
+              service:
+                name: bev-claim-frontend
+                port:
+                  name: http

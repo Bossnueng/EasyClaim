@@ -4,6 +4,7 @@ const { sql, connectDB } = require("../config/db");
 const { uploadDir } = require("../middleware/uploadSignature");
 
 const TABLE = "[EasyClaim_Dev].[dbo].[warehouse_signatures]";
+const HISTORY_TABLE = "[EasyClaim_Dev].[dbo].[warehouse_signature_history]";
 
 const CREATE_TABLE_SQL = `
 IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signatures]', N'U') IS NULL
@@ -19,6 +20,27 @@ BEGIN
     CREATE UNIQUE INDEX UX_warehouse_signatures_warehouse
         ON [EasyClaim_Dev].[dbo].[warehouse_signatures] (warehouse);
 END
+
+IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signature_history]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [EasyClaim_Dev].[dbo].[warehouse_signature_history] (
+        history_id     INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        warehouse      NVARCHAR(100) NOT NULL,
+        reviewer_name  NVARCHAR(100) NULL,
+        image_path     NVARCHAR(255) NULL,
+        effective_from DATETIME NOT NULL CONSTRAINT DF_warehouse_signature_history_effective_from DEFAULT GETDATE(),
+        created_by     INT NULL
+    );
+    CREATE INDEX IX_warehouse_signature_history_warehouse
+        ON [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, effective_from);
+END
+
+INSERT INTO [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, reviewer_name, image_path, effective_from, created_by)
+SELECT s.warehouse, s.reviewer_name, s.image_path, s.updated_at, s.updated_by
+FROM [EasyClaim_Dev].[dbo].[warehouse_signatures] s
+WHERE NOT EXISTS (
+    SELECT 1 FROM [EasyClaim_Dev].[dbo].[warehouse_signature_history] h WHERE h.warehouse = s.warehouse
+);
 `;
 
 let tableReady = null;
@@ -30,7 +52,7 @@ const ensureSignatureTable = async () => {
       const pool = await connectDB();
       if (!pool) throw new Error("เชื่อมต่อฐานข้อมูลไม่ได้");
       await pool.request().query(CREATE_TABLE_SQL);
-      console.log("✅ warehouse_signatures table ready");
+      console.log("✅ warehouse_signatures + warehouse_signature_history tables ready");
       return pool;
     })().catch((err) => {
       tableReady = null;
@@ -91,6 +113,57 @@ exports.getWarehouseSignatures = async (req, res) => {
   }
 };
 
+// GET /getWarehouseSignatureHistory?warehouse=<optional>
+exports.getWarehouseSignatureHistory = async (req, res) => {
+  try {
+    const warehouse = String(req.query?.warehouse || "").trim();
+    const pool = await getPool();
+    const request = pool.request();
+    let where = "";
+    if (warehouse) {
+      request.input("warehouse", sql.NVarChar(100), warehouse);
+      where = "WHERE warehouse = @warehouse";
+    }
+    const result = await request.query(`
+      SELECT history_id, warehouse, reviewer_name, image_path, effective_from, created_by
+      FROM ${HISTORY_TABLE}
+      ${where}
+      ORDER BY warehouse ASC, effective_from ASC, history_id ASC
+    `);
+    res.json({ status: true, data: result.recordset.map((r) => withUrl(req, r)) });
+  } catch (error) {
+    res.status(500).json({ status: false, message: error.message });
+  }
+};
+
+const runInTransaction = async (pool, work) => {
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    const result = await work(() => new sql.Request(tx));
+    await tx.commit();
+    return result;
+  } catch (err) {
+    try {
+      await tx.rollback();
+    } catch (rollbackErr) {
+      console.warn("rollback ไม่สำเร็จ:", rollbackErr.message);
+    }
+    throw err;
+  }
+};
+
+const insertHistory = (request, { warehouse, reviewerName, imagePath, createdBy }) =>
+  request
+    .input("h_warehouse", sql.NVarChar(100), warehouse)
+    .input("h_reviewer_name", sql.NVarChar(100), reviewerName)
+    .input("h_image_path", sql.NVarChar(255), imagePath)
+    .input("h_created_by", sql.Int, Number.isInteger(Number(createdBy)) ? Number(createdBy) : null)
+    .query(`
+      INSERT INTO ${HISTORY_TABLE} (warehouse, reviewer_name, image_path, effective_from, created_by)
+      VALUES (@h_warehouse, @h_reviewer_name, @h_image_path, GETDATE(), @h_created_by)
+    `);
+
 // POST /warehouseSignature (multipart: warehouse, reviewer_name, updated_by, file)
 exports.saveWarehouseSignature = async (req, res) => {
   const newFilePath = req.file ? `/uploads/signatures/${req.file.filename}` : null;
@@ -118,39 +191,44 @@ exports.saveWarehouseSignature = async (req, res) => {
     const existing = await pool
       .request()
       .input("warehouse", sql.NVarChar(100), warehouse)
-      .query(`SELECT signature_id, image_path FROM ${TABLE} WHERE warehouse = @warehouse`);
+      .query(`SELECT signature_id, reviewer_name, image_path FROM ${TABLE} WHERE warehouse = @warehouse`);
     const current = existing.recordset[0];
 
     if (!current && !newFilePath) {
       return res.status(400).json({ status: false, message: "กรุณาแนบไฟล์ลายเซ็น" });
     }
 
-    const request = pool
-      .request()
-      .input("warehouse", sql.NVarChar(100), warehouse)
-      .input("reviewer_name", sql.NVarChar(100), reviewerName)
-      .input("image_path", sql.NVarChar(255), newFilePath || current?.image_path)
-      .input("updated_by", sql.Int, Number(updatedBy));
+    const imagePath = newFilePath || current?.image_path;
+    const changed =
+      !current || imagePath !== current.image_path || (reviewerName || null) !== (current.reviewer_name || null);
 
-    if (current) {
-      await request.query(`
-        UPDATE ${TABLE}
-        SET reviewer_name = @reviewer_name,
-            image_path = @image_path,
-            updated_by = @updated_by,
-            updated_at = GETDATE()
-        WHERE warehouse = @warehouse
-      `);
-      // เปลี่ยนรูปใหม่ → ลบไฟล์เดิม
-      if (newFilePath && current.image_path && current.image_path !== newFilePath) {
-        removeFileQuietly(current.image_path);
+    await runInTransaction(pool, async (newRequest) => {
+      const request = newRequest()
+        .input("warehouse", sql.NVarChar(100), warehouse)
+        .input("reviewer_name", sql.NVarChar(100), reviewerName)
+        .input("image_path", sql.NVarChar(255), imagePath)
+        .input("updated_by", sql.Int, Number(updatedBy));
+
+      if (current) {
+        await request.query(`
+          UPDATE ${TABLE}
+          SET reviewer_name = @reviewer_name,
+              image_path = @image_path,
+              updated_by = @updated_by,
+              updated_at = GETDATE()
+          WHERE warehouse = @warehouse
+        `);
+      } else {
+        await request.query(`
+          INSERT INTO ${TABLE} (warehouse, reviewer_name, image_path, updated_by, updated_at)
+          VALUES (@warehouse, @reviewer_name, @image_path, @updated_by, GETDATE())
+        `);
       }
-    } else {
-      await request.query(`
-        INSERT INTO ${TABLE} (warehouse, reviewer_name, image_path, updated_by, updated_at)
-        VALUES (@warehouse, @reviewer_name, @image_path, @updated_by, GETDATE())
-      `);
-    }
+
+      if (changed) {
+        await insertHistory(newRequest(), { warehouse, reviewerName, imagePath, createdBy: updatedBy });
+      }
+    });
 
     const saved = await pool
       .request()
@@ -195,12 +273,17 @@ exports.delWarehouseSignature = async (req, res) => {
       return res.status(400).json({ status: false, message: "ไม่พบลายเซ็นของคลังนี้" });
     }
 
-    await pool
-      .request()
-      .input("warehouse", sql.NVarChar(100), warehouse)
-      .query(`DELETE FROM ${TABLE} WHERE warehouse = @warehouse`);
-
-    removeFileQuietly(found.recordset[0].image_path);
+    await runInTransaction(pool, async (newRequest) => {
+      await newRequest()
+        .input("warehouse", sql.NVarChar(100), warehouse)
+        .query(`DELETE FROM ${TABLE} WHERE warehouse = @warehouse`);
+      await insertHistory(newRequest(), {
+        warehouse,
+        reviewerName: null,
+        imagePath: null,
+        createdBy: req.body?.updated_by,
+      });
+    });
 
     res.json({ status: true, message: "ลบลายเซ็นเรียบร้อยแล้ว" });
   } catch (error) {

@@ -5,6 +5,7 @@ import { ConfigProvider, message } from "antd";
 import './index.css'
 import App from "./App";
 import { installFriendlyErrors } from "./components/ErrorNotice";
+import { ROUTER_BASENAME } from "./utils/basePath";
 import "antd/dist/reset.css";
 
 const appTheme = {
@@ -72,7 +73,7 @@ const appTheme = {
 installFriendlyErrors(message);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <BrowserRouter>
+  <BrowserRouter basename={ROUTER_BASENAME}>
     <ConfigProvider theme={appTheme}>
       <App />
     </ConfigProvider>

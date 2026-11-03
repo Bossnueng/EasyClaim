@@ -1,16 +1,18 @@
-# EasyClaim — Frontend (Nginx) + Backend (Node/Express + Socket.IO)
+# bev-claim (EasyClaim) — Frontend (Nginx) + Backend (Node/Express + Socket.IO)
 # ฐานข้อมูล SQL Server อยู่ภายนอก (ตั้งค่าใน backend/.env)
 #
 #   docker compose up -d --build
-#   เปิดเว็บ:  http://<IP เครื่อง>:8080
+#   เปิดเว็บ:  http://<IP เครื่อง>:8080/bev-claim/   (path เดียวกับ UAT/PROD)
+
+name: bev-claim
 
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: easyclaim-backend:latest
-    container_name: easyclaim-backend
+    image: bev-claim-backend:latest
+    container_name: bev-claim-backend
     restart: unless-stopped
     env_file:
       - ./backend/.env
@@ -27,19 +29,23 @@ services:
       - "${BACKEND_PORT:-5001}:5001"
     volumes:
       - ./backend/src/uploads:/app/src/uploads
+    networks:
+      default:
+        aliases:
+          - bev-claim-backend
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: /api
-        # "/." = รูปเคลมโหลดจากโดเมนเดียวกับหน้าเว็บ (/./uploads/... -> /uploads/...) ใช้ได้ทั้ง LAN, tunnel และ Kubernetes
-        VITE_API_BASE_URL: "${DOCKER_API_BASE_URL:-/.}"
+        VITE_BASE_PATH: /bev-claim/
+        VITE_API_URL: /bev-claim/api
+        VITE_API_BASE_URL: /bev-claim
         VITE_AUTO_CONFIRM_SUBMIT_SECONDS: "${VITE_AUTO_CONFIRM_SUBMIT_SECONDS:-86400}"
         VITE_AUTO_CONFIRM_RECEIVE_SECONDS: "${VITE_AUTO_CONFIRM_RECEIVE_SECONDS:-259200}"
-    image: easyclaim-frontend:latest
-    container_name: easyclaim-frontend
+    image: bev-claim-frontend:latest
+    container_name: bev-claim-frontend
     restart: unless-stopped
     depends_on:
       - backend

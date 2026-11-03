@@ -27,6 +27,18 @@ export const signatureService = {
     }
   },
 
+  getHistory: async (warehouse) => {
+    try {
+      const params = warehouse ? { warehouse: String(warehouse).trim() } : undefined;
+      const res = await api.get("/getWarehouseSignatureHistory", { params });
+      const rows = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+      return { ready: true, data: rows.map((r) => ({ ...r, image_url: toFileUrl(r) })) };
+    } catch (error) {
+      if (isNotReady(error)) return { ready: false, data: [] };
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
   getByWarehouse: async (warehouse) => {
     const { ready, data } = await signatureService.getAll();
     const target = normalizeWarehouse(warehouse);
@@ -59,6 +71,32 @@ export const signatureService = {
       throw error.response ? error.response.data : new Error(error.message);
     }
   },
+};
+
+const toTime = (v) => {
+  const t = v ? new Date(v).getTime() : NaN;
+  return Number.isFinite(t) ? t : null;
+};
+
+export const pickSignatureVersion = ({ current = null, history = [], warehouse, deliveredAt }) => {
+  const deliveredTime = toTime(deliveredAt);
+  if (deliveredTime === null) return current;
+
+  const target = normalizeWarehouse(warehouse);
+  const versions = (Array.isArray(history) ? history : [])
+    .filter((v) => normalizeWarehouse(v.warehouse) === target && toTime(v.effective_from) !== null)
+    .sort((a, b) => toTime(a.effective_from) - toTime(b.effective_from) || Number(a.history_id || 0) - Number(b.history_id || 0));
+  if (versions.length === 0) return current;
+
+  const active = versions.filter((v) => toTime(v.effective_from) <= deliveredTime).pop() || versions[0];
+  if (!active.image_path) return null;
+  return {
+    warehouse: active.warehouse,
+    reviewer_name: active.reviewer_name,
+    image_path: active.image_path,
+    image_url: active.image_url,
+    effective_from: active.effective_from,
+  };
 };
 
 export default signatureService;

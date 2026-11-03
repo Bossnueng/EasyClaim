@@ -17,7 +17,7 @@ import {
   Upload,
   message,
 } from "antd";
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 import signatureService, { normalizeWarehouse } from "../../services/signatureService";
@@ -45,6 +45,11 @@ export default function SignatureManagement() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+
+  const [historyTarget, setHistoryTarget] = useState(null);
+  const [historyRows, setHistoryRows] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReady, setHistoryReady] = useState(true);
 
   const knownWarehousesRef = useRef(null);
   const [newWarehouseKeys, setNewWarehouseKeys] = useState(() => new Set());
@@ -195,6 +200,30 @@ export default function SignatureManagement() {
     }
   };
 
+  const openHistory = async (record) => {
+    setHistoryTarget(record);
+    setHistoryRows([]);
+    setHistoryLoading(true);
+    try {
+      const res = await signatureService.getHistory(record.warehouse);
+      setHistoryReady(res.ready);
+      const target = normalizeWarehouse(record.warehouse);
+      setHistoryRows(
+        res.data
+          .filter((v) => normalizeWarehouse(v.warehouse) === target)
+          .sort(
+            (a, b) =>
+              new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime() ||
+              Number(b.history_id || 0) - Number(a.history_id || 0)
+          )
+      );
+    } catch (err) {
+      message.error("โหลดประวัติลายเซ็นไม่สำเร็จ: " + (err.message || "เกิดข้อผิดพลาด"));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const columns = [
     {
       title: "คลังสินค้า",
@@ -235,16 +264,19 @@ export default function SignatureManagement() {
     {
       title: "จัดการ",
       key: "action",
-      width: 200,
+      width: 260,
       render: (_, r) => (
         <Space size="small" wrap>
+          <Button size="small" icon={<HistoryOutlined />} onClick={() => openHistory(r)} disabled={!ready}>
+            ประวัติ
+          </Button>
           <Button size="small" icon={r.signature ? <EditOutlined /> : <UploadOutlined />} onClick={() => openModal(r)} disabled={!ready}>
             {r.signature ? "เปลี่ยน" : "อัปโหลด"}
           </Button>
           {r.signature && (
             <Popconfirm
               title="ลบลายเซ็นของคลังนี้?"
-              description="เอกสารที่พิมพ์หลังจากนี้จะไม่มีลายเซ็นผู้สอบทาน"
+              description="เคลมที่ Delivered แล้วยังใช้ลายเซ็นเดิม · เคลมที่ Delivered หลังจากนี้จะไม่มีลายเซ็นผู้สอบทาน"
               onConfirm={() => handleDelete(r.warehouse)}
               okText="ลบ"
               cancelText="ยกเลิก"
@@ -277,6 +309,9 @@ export default function SignatureManagement() {
               ลายเซ็นผู้สอบทาน
             </Title>
             <Text type="secondary">ไฟล์ลายเซ็นของแต่ละคลัง ใช้ในช่อง "ผู้สอบทาน" ของเอกสารใบเคลม</Text>
+            <Text type="secondary" className="block text-xs mt-1">
+              เปลี่ยนลายเซ็นแล้ว เคลมที่ Delivered ก่อนหน้ายังใช้ลายเซ็นเดิม · เคลมที่ Delivered หลังจากนั้นใช้ลายเซ็นใหม่
+            </Text>
           </div>
           <Space wrap className="ml-auto">
             <Button icon={<ReloadOutlined />} onClick={() => fetchData()} loading={loading}>
@@ -315,10 +350,62 @@ export default function SignatureManagement() {
           dataSource={tableData}
           loading={loading}
           pagination={false}
-          scroll={{ x: 720 }}
+          scroll={{ x: 780 }}
           locale={{ emptyText: <Empty description="ยังไม่มีข้อมูลคลังสินค้า" /> }}
         />
       </Card>
+
+      <Modal
+        title={historyTarget ? `ประวัติลายเซ็น: ${historyTarget.warehouse}` : "ประวัติลายเซ็น"}
+        open={Boolean(historyTarget)}
+        onCancel={() => setHistoryTarget(null)}
+        footer={[
+          <Button key="close" onClick={() => setHistoryTarget(null)}>
+            ปิด
+          </Button>,
+        ]}
+        width={560}
+      >
+        {!historyReady ? (
+          <Alert type="warning" showIcon title="ระบบประวัติลายเซ็นฝั่ง backend ยังไม่พร้อมใช้งาน" className="rounded-xl" />
+        ) : historyLoading ? (
+          <div className="py-8 text-center text-slate-400 text-sm">กำลังโหลด...</div>
+        ) : historyRows.length === 0 ? (
+          <Empty description="ยังไม่มีประวัติลายเซ็น" />
+        ) : (
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+            {historyRows.map((v, idx) => (
+              <div
+                key={v.history_id || idx}
+                className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-xl border border-slate-200 bg-white p-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-medium text-slate-800">
+                      ใช้ตั้งแต่ {dayjs(v.effective_from).isValid() ? dayjs(v.effective_from).format("DD/MM/YYYY HH:mm") : "-"}
+                    </span>
+                    {idx === 0 && (
+                      <Tag color={v.image_path ? "green" : "default"} style={{ margin: 0 }}>
+                        {v.image_path ? "ปัจจุบัน" : "ปัจจุบัน (ไม่มีลายเซ็น)"}
+                      </Tag>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {v.image_path ? `ผู้สอบทาน: ${v.reviewer_name || "-"}` : "ลบลายเซ็น"}
+                  </div>
+                </div>
+                <div className="h-12 w-full sm:w-36 shrink-0 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center p-1">
+                  {v.image_url ? (
+                    <Image src={v.image_url} alt={`ลายเซ็น ${v.warehouse}`} height={40} style={{ objectFit: "contain" }} />
+                  ) : (
+                    <span className="text-xs text-slate-400">-</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
 
       <Modal
         title={editing?.signature ? `เปลี่ยนลายเซ็น: ${editing.warehouse}` : "เพิ่มลายเซ็นผู้สอบทาน"}

@@ -6,6 +6,7 @@ const { singleSignatureFile } = require("../middleware/uploadSignature");
 
 // GET
 router.get("/getWarehouseSignatures", signatureController.getWarehouseSignatures);
+router.get("/getWarehouseSignatureHistory", signatureController.getWarehouseSignatureHistory);
 
 // POST (Upsert ตาม warehouse) — multipart: warehouse, reviewer_name, updated_by, file
 router.post("/warehouseSignature", singleSignatureFile, signatureController.saveWarehouseSignature);

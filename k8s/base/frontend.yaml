@@ -1,0 +1,46 @@
+# Frontend: Nginx เสิร์ฟ React ที่ /bev-claim/ + ส่งต่อ /bev-claim/api, /bev-claim/uploads, /bev-claim/socket.io ไปที่ bev-claim-backend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bev-claim-frontend
+  labels: { app: bev-claim, tier: frontend }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: bev-claim, tier: frontend }
+  template:
+    metadata:
+      labels: { app: bev-claim, tier: frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: bev-claim-frontend
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m,  memory: 32Mi }
+            limits:   { cpu: 500m, memory: 128Mi }
+---
+# ClusterIP — ภายนอกเข้าผ่าน Ingress /bev-claim (overlay uat/prod)
+apiVersion: v1
+kind: Service
+metadata:
+  name: bev-claim-frontend
+  labels: { app: bev-claim, tier: frontend }
+spec:
+  type: ClusterIP
+  selector: { app: bev-claim, tier: frontend }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

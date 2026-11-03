@@ -1,0 +1,35 @@
+# Docker Desktop Kubernetes (ทดสอบในเครื่อง) — namespace koka เหมือน UAT/PROD
+#   docker compose build
+#   kubectl apply -f k8s/overlays/local/namespace.yaml
+#   kubectl -n koka create secret generic bev-claim-backend-env --from-env-file=backend/.env
+#   kubectl apply -k k8s/overlays/local
+#   เปิด http://localhost:8081/bev-claim/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: koka
+resources:
+  - namespace.yaml
+  - ../../base
+configMapGenerator:
+  - name: bev-claim-backend-config
+    behavior: merge
+    literals:
+      - DB_SERVER=host.docker.internal
+      - DB_PORT=1434
+images:
+  - name: bev-claim-frontend
+    newName: bev-claim-frontend
+    newTag: latest
+  - name: bev-claim-backend
+    newName: bev-claim-backend
+    newTag: latest
+patches:
+  # Docker Desktop ไม่มี Ingress controller -> เปิด frontend ผ่าน LoadBalancer port 8081 (ไม่ชนกับ Docker Compose 8080)
+  - target: { kind: Service, name: bev-claim-frontend }
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+      - op: replace
+        path: /spec/ports/0/port
+        value: 8081

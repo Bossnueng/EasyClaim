@@ -1,12 +1,12 @@
-# Docker Desktop Kubernetes (ทดสอบในเครื่อง) — namespace koka เหมือน UAT/PROD
+# Docker Desktop Kubernetes (ทดสอบในเครื่อง) — namespace lrdi เหมือน UAT/PROD
 #   docker compose build
 #   kubectl apply -f k8s/overlays/local/namespace.yaml
-#   kubectl -n koka create secret generic bev-claim-backend-env --from-env-file=backend/.env
+#   kubectl -n lrdi create secret generic bev-claim-backend-env --from-env-file=backend/.env
 #   kubectl apply -k k8s/overlays/local
 #   เปิด http://localhost:8081/bev-claim/
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: koka
+namespace: lrdi
 resources:
   - namespace.yaml
   - ../../base

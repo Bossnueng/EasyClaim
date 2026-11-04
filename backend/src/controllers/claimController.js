@@ -40,7 +40,7 @@ const sendTeamsNotification = async (claimData, agentId) => {
         .input("agent_id", sql.Int, agentId)
         .query(`
           SELECT teams_webhook_url 
-          FROM [EasyClaim_Dev].[dbo].[agents] 
+          FROM [dbo].[agents] 
           WHERE agent_id = @agent_id
         `);
 
@@ -93,7 +93,7 @@ exports.getclaimstatuslog = async (req, res) => {
                       ,[remark]
                       ,[update_by]
                       ,[update_date]
-                FROM [EasyClaim_Dev].[dbo].[claim_status_logs]
+                FROM [dbo].[claim_status_logs]
             `);
 
     res.json({
@@ -123,7 +123,7 @@ exports.createClaimStatusLogs = async (req, res) => {
       .input("remark", sql.NVarChar, remark)
       .input("update_by", sql.Int, update_by)
       .query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
+                INSERT INTO [dbo].[claim_status_logs]
                 (
                     claim_id,
                     status,
@@ -192,7 +192,7 @@ exports.createClaimimage = async (req, res) => {
       .input("claim_id", sql.Int, claim_id)
       .input("image_path", sql.VarChar, relative_path)
       .input("image_type", sql.VarChar, image_type).query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claim_images]
+                INSERT INTO [dbo].[claim_images]
                 (
                     claim_id,
                     image_path,
@@ -234,7 +234,7 @@ exports.deleteClaimimage = async (req, res) => {
     const result = await pool
       .request()
       .input("image_id", sql.Int, image_id).query(`
-                DELETE FROM [EasyClaim_Dev].[dbo].[claim_images]
+                DELETE FROM [dbo].[claim_images]
                 WHERE image_id = @image_id
             `);
 
@@ -277,7 +277,7 @@ exports.delClaimImages = async (req, res) => {
     });
 
     const result = await request.query(`
-            DELETE FROM [EasyClaim_Dev].[dbo].[claim_images]
+            DELETE FROM [dbo].[claim_images]
             WHERE image_id IN (${params.join(",")})
         `);
 
@@ -304,7 +304,7 @@ exports.getclaimapproves = async (req, res) => {
                       ,[approve_status]
                       ,[approve_remark]
                       ,[approve_date]
-                FROM [EasyClaim_Dev].[dbo].[claim_approves]
+                FROM [dbo].[claim_approves]
             `);
 
     res.json({
@@ -331,7 +331,7 @@ exports.getClaimImages = async (req, res) => {
               ,[image_path]
               ,[image_type]
               ,[created_at]
-        FROM [EasyClaim_Dev].[dbo].[claim_images]
+        FROM [dbo].[claim_images]
         WHERE claim_id = @claim_id
         ORDER BY image_id ASC
       `);
@@ -382,7 +382,7 @@ exports.createClaimapproves = async (req, res) => {
       .input("approve_by", sql.NVarChar, approve_by)
       .input("approve_status", sql.NVarChar, parsedApproveStatus) // หรือใช้ sql.Bit หาก DB เป็นประเภท Bit
       .input("approve_remark", sql.NVarChar(sql.MAX), approve_remark).query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claim_approves]
+                INSERT INTO [dbo].[claim_approves]
                 (
                     claim_id,
                     approve_by,
@@ -421,7 +421,7 @@ exports.delClaimApprove = async (req, res) => {
     const result = await pool
       .request()
       .input("approve_id", sql.Int, approve_id).query(`
-                DELETE FROM [EasyClaim_Dev].[dbo].[claim_approves]
+                DELETE FROM [dbo].[claim_approves]
                 WHERE approve_id = @approve_id
             `);
 
@@ -469,11 +469,11 @@ exports.getClaimByAgent = async (req, res) => {
            ,c.[warehouse]
            ,a.[agent_name]
            ,a.[agent_code]
-        FROM [EasyClaim_Dev].[dbo].[claims] c WITH(NOLOCK)
-        LEFT JOIN [EasyClaim_Dev].[dbo].[agents] a WITH(NOLOCK)
+        FROM [dbo].[claims] c WITH(NOLOCK)
+        LEFT JOIN [dbo].[agents] a WITH(NOLOCK)
           ON CAST(c.agent_id AS VARCHAR) = CAST(a.agent_id AS VARCHAR)
           OR CAST(c.agent_id AS VARCHAR) = CAST(a.agent_code AS VARCHAR)
-        LEFT JOIN [EasyClaim_Dev].[dbo].[user_agents] ua WITH(NOLOCK)
+        LEFT JOIN [dbo].[user_agents] ua WITH(NOLOCK)
           ON a.agent_id = ua.agent_id
         WHERE a.agent_id = @agent_id 
            OR ua.agent_id = @agent_id
@@ -506,8 +506,8 @@ exports.getClaim = async (req, res) => {
         c.*, 
         a.agent_name, 
         a.agent_code 
-      FROM [EasyClaim_Dev].[dbo].[claims] c WITH(NOLOCK)
-      LEFT JOIN [EasyClaim_Dev].[dbo].[agents] a WITH(NOLOCK) 
+      FROM [dbo].[claims] c WITH(NOLOCK)
+      LEFT JOIN [dbo].[agents] a WITH(NOLOCK) 
         ON CAST(c.agent_id AS VARCHAR) = CAST(a.agent_id AS VARCHAR)
         OR CAST(c.agent_id AS VARCHAR) = CAST(a.agent_code AS VARCHAR)
     `;
@@ -556,7 +556,7 @@ exports.getClaimreturn = async (req, res) => {
       ,[warehouse]
       ,[truckname]
       ,[shipment]
-  FROM [EasyClaim_Dev].[dbo].[claims]
+  FROM [dbo].[claims]
   where claim_id=@claim_id
             `);
 
@@ -649,7 +649,7 @@ exports.creartClaim = async (req, res) => {
       .input("truckname", sql.NVarChar(10), truckname)
       .input("shipment", sql.NVarChar(50), shipment)
       .query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claims]
+                INSERT INTO [dbo].[claims]
                 (
                     claim_no,
                     agent_id,
@@ -717,7 +717,7 @@ exports.creartClaim = async (req, res) => {
         .input("qtyreceived", sql.Decimal(18, 2), parseFloat(qtyreceived) || 0)
         .input("remark", sql.NVarChar(500), remark || null)
         .query(`
-                    INSERT INTO [EasyClaim_Dev].[dbo].[claim_items]
+                    INSERT INTO [dbo].[claim_items]
                     (
                         claim_id,
                         item_id,
@@ -763,7 +763,7 @@ exports.creartClaim = async (req, res) => {
           .input("image_path", sql.NVarChar(500), file.filename)
           .input("image_type", sql.NVarChar(50), "claim_item")
           .query(`
-                        INSERT INTO [EasyClaim_Dev].[dbo].[claim_images]
+                        INSERT INTO [dbo].[claim_images]
                         (
                             claim_id,
                             claim_item_id,
@@ -793,7 +793,7 @@ exports.creartClaim = async (req, res) => {
       .input("remark", sql.NVarChar(500), "สร้างรายการเคลมสินค้าใหม่ในระบบ")
       .input("update_by", sql.Int, created_by ? parseInt(created_by) : null)
       .query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
+                INSERT INTO [dbo].[claim_status_logs]
                 (
                     claim_id,
                     status,
@@ -820,7 +820,7 @@ exports.creartClaim = async (req, res) => {
       .input("remark_auto", sql.NVarChar(500), "ระบบปรับสถานะเป็นรอการพิจารณาอัตโนมัติ")
       .input("update_by", sql.Int, parseInt(updateBy))
       .query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[claim_status_logs]
+                INSERT INTO [dbo].[claim_status_logs]
                 (
                     claim_id,
                     status,
@@ -914,7 +914,7 @@ exports.delClaim = async (req, res) => {
         .input("claim_id", sql.Int, claim_id)
         .query(`
                     SELECT claim_id
-                    FROM [EasyClaim_Dev].[dbo].[claims]
+                    FROM [dbo].[claims]
                     WHERE claim_id = @claim_id
                 `);
 
@@ -937,7 +937,7 @@ exports.delClaim = async (req, res) => {
                     SELECT 
                         image_id,
                         image_path
-                    FROM [EasyClaim_Dev].[dbo].[claim_images]
+                    FROM [dbo].[claim_images]
                     WHERE claim_id = @claim_id
                 `);
 
@@ -951,7 +951,7 @@ exports.delClaim = async (req, res) => {
       const deleteImages = await transaction.request()
         .input("claim_id", sql.Int, claim_id)
         .query(`
-                    DELETE FROM [EasyClaim_Dev].[dbo].[claim_images]
+                    DELETE FROM [dbo].[claim_images]
                     WHERE claim_id = @claim_id
                 `);
 
@@ -961,7 +961,7 @@ exports.delClaim = async (req, res) => {
       const deleteApproves = await transaction.request()
         .input("claim_id", sql.Int, claim_id)
         .query(`
-                    DELETE FROM [EasyClaim_Dev].[dbo].[claim_approves]
+                    DELETE FROM [dbo].[claim_approves]
                     WHERE claim_id = @claim_id
                 `);
 
@@ -971,7 +971,7 @@ exports.delClaim = async (req, res) => {
       const deleteItems = await transaction.request()
         .input("claim_id", sql.Int, claim_id)
         .query(`
-                    DELETE FROM [EasyClaim_Dev].[dbo].[claim_items]
+                    DELETE FROM [dbo].[claim_items]
                     WHERE claim_id = @claim_id
                 `);
 
@@ -981,7 +981,7 @@ exports.delClaim = async (req, res) => {
       const deleteClaim = await transaction.request()
         .input("claim_id", sql.Int, claim_id)
         .query(`
-                    DELETE FROM [EasyClaim_Dev].[dbo].[claims]
+                    DELETE FROM [dbo].[claims]
                     WHERE claim_id = @claim_id
                 `);
 
@@ -1263,7 +1263,7 @@ exports.getClaimItems = async (req, res) => {
               ,[remark]
               ,[created_at]
               ,[updated_at]
-        FROM [EasyClaim_Dev].[dbo].[claim_items] WITH(NOLOCK)
+        FROM [dbo].[claim_items] WITH(NOLOCK)
         WHERE claim_id = @claim_id
         ORDER BY claim_item_id ASC
       `);

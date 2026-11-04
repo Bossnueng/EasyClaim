@@ -1,8 +1,9 @@
+-- ไม่ระบุชื่อฐานข้อมูลในไฟล์นี้ เพื่อรองรับการเปลี่ยนชื่อฐานข้อมูล: ใน SSMS ให้เลือกฐานข้อมูลที่ต้องการก่อนรัน (เช่น USE [ชื่อฐานข้อมูลใน DB_DATABASE];)
 -- หมายเหตุ: backend จะสร้างตารางนี้ให้อัตโนมัติเมื่อเริ่มทำงาน (signatureController.ensureSignatureTable)
 --          ไฟล์นี้มีไว้สำหรับสร้างด้วยตนเองผ่าน SSMS ได้เช่นกัน (รันซ้ำได้ ไม่สร้างซ้ำ)
-IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signatures]', N'U') IS NULL
+IF OBJECT_ID(N'[dbo].[warehouse_signatures]', N'U') IS NULL
 BEGIN
-    CREATE TABLE [EasyClaim_Dev].[dbo].[warehouse_signatures] (
+    CREATE TABLE [dbo].[warehouse_signatures] (
         signature_id   INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         warehouse      NVARCHAR(100) NOT NULL,
         reviewer_name  NVARCHAR(100) NULL,
@@ -11,15 +12,15 @@ BEGIN
         updated_at     DATETIME NOT NULL CONSTRAINT DF_warehouse_signatures_updated_at DEFAULT GETDATE()
     );
     CREATE UNIQUE INDEX UX_warehouse_signatures_warehouse
-        ON [EasyClaim_Dev].[dbo].[warehouse_signatures] (warehouse);
+        ON [dbo].[warehouse_signatures] (warehouse);
 END
 GO
 
 -- ประวัติลายเซ็น: เพิ่มแถวใหม่ทุกครั้งที่เพิ่ม/เปลี่ยน/ลบลายเซ็น (image_path = NULL คือถูกลบ)
 -- เอกสารใบเคลมที่ Delivered แล้วใช้เวอร์ชันที่มีผล (effective_from) ณ เวลา Delivered
-IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signature_history]', N'U') IS NULL
+IF OBJECT_ID(N'[dbo].[warehouse_signature_history]', N'U') IS NULL
 BEGIN
-    CREATE TABLE [EasyClaim_Dev].[dbo].[warehouse_signature_history] (
+    CREATE TABLE [dbo].[warehouse_signature_history] (
         history_id     INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         warehouse      NVARCHAR(100) NOT NULL,
         reviewer_name  NVARCHAR(100) NULL,
@@ -28,14 +29,14 @@ BEGIN
         created_by     INT NULL
     );
     CREATE INDEX IX_warehouse_signature_history_warehouse
-        ON [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, effective_from);
+        ON [dbo].[warehouse_signature_history] (warehouse, effective_from);
 END
 GO
 
-INSERT INTO [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, reviewer_name, image_path, effective_from, created_by)
+INSERT INTO [dbo].[warehouse_signature_history] (warehouse, reviewer_name, image_path, effective_from, created_by)
 SELECT s.warehouse, s.reviewer_name, s.image_path, s.updated_at, s.updated_by
-FROM [EasyClaim_Dev].[dbo].[warehouse_signatures] s
+FROM [dbo].[warehouse_signatures] s
 WHERE NOT EXISTS (
-    SELECT 1 FROM [EasyClaim_Dev].[dbo].[warehouse_signature_history] h WHERE h.warehouse = s.warehouse
+    SELECT 1 FROM [dbo].[warehouse_signature_history] h WHERE h.warehouse = s.warehouse
 );
 GO

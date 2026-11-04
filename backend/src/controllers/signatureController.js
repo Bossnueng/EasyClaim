@@ -3,13 +3,13 @@ const fs = require("fs");
 const { sql, connectDB } = require("../config/db");
 const { uploadDir } = require("../middleware/uploadSignature");
 
-const TABLE = "[EasyClaim_Dev].[dbo].[warehouse_signatures]";
-const HISTORY_TABLE = "[EasyClaim_Dev].[dbo].[warehouse_signature_history]";
+const TABLE = "[dbo].[warehouse_signatures]";
+const HISTORY_TABLE = "[dbo].[warehouse_signature_history]";
 
 const CREATE_TABLE_SQL = `
-IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signatures]', N'U') IS NULL
+IF OBJECT_ID(N'[dbo].[warehouse_signatures]', N'U') IS NULL
 BEGIN
-    CREATE TABLE [EasyClaim_Dev].[dbo].[warehouse_signatures] (
+    CREATE TABLE [dbo].[warehouse_signatures] (
         signature_id   INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         warehouse      NVARCHAR(100) NOT NULL,
         reviewer_name  NVARCHAR(100) NULL,
@@ -18,12 +18,12 @@ BEGIN
         updated_at     DATETIME NOT NULL CONSTRAINT DF_warehouse_signatures_updated_at DEFAULT GETDATE()
     );
     CREATE UNIQUE INDEX UX_warehouse_signatures_warehouse
-        ON [EasyClaim_Dev].[dbo].[warehouse_signatures] (warehouse);
+        ON [dbo].[warehouse_signatures] (warehouse);
 END
 
-IF OBJECT_ID(N'[EasyClaim_Dev].[dbo].[warehouse_signature_history]', N'U') IS NULL
+IF OBJECT_ID(N'[dbo].[warehouse_signature_history]', N'U') IS NULL
 BEGIN
-    CREATE TABLE [EasyClaim_Dev].[dbo].[warehouse_signature_history] (
+    CREATE TABLE [dbo].[warehouse_signature_history] (
         history_id     INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         warehouse      NVARCHAR(100) NOT NULL,
         reviewer_name  NVARCHAR(100) NULL,
@@ -32,14 +32,14 @@ BEGIN
         created_by     INT NULL
     );
     CREATE INDEX IX_warehouse_signature_history_warehouse
-        ON [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, effective_from);
+        ON [dbo].[warehouse_signature_history] (warehouse, effective_from);
 END
 
-INSERT INTO [EasyClaim_Dev].[dbo].[warehouse_signature_history] (warehouse, reviewer_name, image_path, effective_from, created_by)
+INSERT INTO [dbo].[warehouse_signature_history] (warehouse, reviewer_name, image_path, effective_from, created_by)
 SELECT s.warehouse, s.reviewer_name, s.image_path, s.updated_at, s.updated_by
-FROM [EasyClaim_Dev].[dbo].[warehouse_signatures] s
+FROM [dbo].[warehouse_signatures] s
 WHERE NOT EXISTS (
-    SELECT 1 FROM [EasyClaim_Dev].[dbo].[warehouse_signature_history] h WHERE h.warehouse = s.warehouse
+    SELECT 1 FROM [dbo].[warehouse_signature_history] h WHERE h.warehouse = s.warehouse
 );
 `;
 
@@ -94,7 +94,7 @@ const isAdminUser = async (pool, userId) => {
   const result = await pool
     .request()
     .input("user_id", sql.Int, id)
-    .query(`SELECT role_id FROM [EasyClaim_Dev].[dbo].[users] WHERE user_id = @user_id`);
+    .query(`SELECT role_id FROM [dbo].[users] WHERE user_id = @user_id`);
   return Number(result.recordset[0]?.role_id) === 1;
 };
 

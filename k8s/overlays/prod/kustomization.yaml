@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lrdi
+resources:
+  - ../../base
+  - ingress.yaml
+configMapGenerator:
+  - name: bev-claim-backend-config
+    behavior: merge
+    literals:
+      - DB_SERVER=CHANGE_ME_DB_HOST
+      - DB_PORT=1433
+      - BASE_URL=https://lrdi.thaibev.com/bev-claim
+images:
+  - name: bev-claim-frontend
+    newName: CHANGE_ME_REGISTRY/lrdi/bev-claim-frontend
+    newTag: "1.0.0"
+  - name: bev-claim-backend
+    newName: CHANGE_ME_REGISTRY/lrdi/bev-claim-backend
+    newTag: "1.0.0"

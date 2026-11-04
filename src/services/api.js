@@ -1,6 +1,7 @@
 // src/services/api.js
 
 import axios from "axios";
+import { appUrl } from "../utils/basePath";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 const api = axios.create({
@@ -35,12 +36,12 @@ api.interceptors.response.use(
       localStorage.removeItem("user");
 
       // Redirect เฉพาะเมื่อไม่ได้อยู่ที่หน้า /login เพื่อป้องกัน Loop Reload
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+      if (window.location.pathname !== appUrl("/login")) {
+        window.location.href = appUrl("/login");
       }
     }
     return Promise.reject(error);
   }
 );
 
-export default api;
+export default api;

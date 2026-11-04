@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import socket from "../services/socket";
+import { appUrl } from "../utils/basePath";
 
 export const useClaimRealtime = ({ claimId, claimIds, isStaff, userId, onCreated, onStatusUpdated, onCommentCreated }) => {
   // 🟢 ใช้ useRef เพื่อเก็บ callback ล่าสุด ป้องกันปัญหา Listener หลุดเวลา Re-render
@@ -46,7 +47,7 @@ export const useClaimRealtime = ({ claimId, claimIds, isStaff, userId, onCreated
       alert("ข้อมูลสังกัดของคุณถูกอัปเดต กรุณาเข้าสู่ระบบใหม่อีกครั้ง");
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/login";
+      window.location.href = appUrl("/login");
     };
 
     socket.on("user:updated", handleUserUpdated);

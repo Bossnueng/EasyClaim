@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/name: bev-claim
+      app.kubernetes.io/part-of: lrdi
+resources:
+  - backend.yaml
+  - frontend.yaml
+configMapGenerator:
+  - name: bev-claim-backend-config
+    literals:
+      - PORT=5001
+      - TZ=Asia/Bangkok
+      - NODE_ENV=production

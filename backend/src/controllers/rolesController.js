@@ -18,7 +18,7 @@ exports.getRole = async (req, res) => {
                 SELECT [role_id]
       ,[role_name]
       ,[description]
-  FROM [EasyClaim_Dev].[dbo].[roles]
+  FROM [dbo].[roles]
             `);
 
 
@@ -69,7 +69,7 @@ exports.createRole = async (req, res) => {
 
             .query(`
 
-                INSERT INTO [EasyClaim_Dev].[dbo].[roles]
+                INSERT INTO [dbo].[roles]
                 (
                     role_name,
                     description
@@ -119,7 +119,7 @@ exports.updateRole = async (req, res) => {
 
 
             .query(`
-UPDATE [EasyClaim_Dev].[dbo].[roles]
+UPDATE [dbo].[roles]
 SET 
     role_name=@role_name,
     description=@description
@@ -159,7 +159,7 @@ exports.deleteRole = async (req, res) => {
         const result = await pool.request()
             .input("role_id", sql.Int, role_id)
             .query(`
-                DELETE FROM [EasyClaim_Dev].[dbo].[roles]
+                DELETE FROM [dbo].[roles]
                 WHERE role_id = @role_id
             `);
 

@@ -11,8 +11,8 @@ exports.getAgentsByUserId = async (req, res) => {
             .input("user_id", sql.Int, userId)
             .query(`
                 SELECT a.[agent_id], a.[agent_code], a.[agent_name], a.[status]
-                FROM [EasyClaim_Dev].[dbo].[user_agents] ua
-                INNER JOIN [EasyClaim_Dev].[dbo].[agents] a ON ua.agent_id = a.agent_id
+                FROM [dbo].[user_agents] ua
+                INNER JOIN [dbo].[agents] a ON ua.agent_id = a.agent_id
                 WHERE ua.user_id = @user_id
             `);
 
@@ -35,8 +35,8 @@ exports.getElementsByAgentId = async (req, res) => {
             .input("agent_id", sql.Int, agentId)
             .query(`
                 SELECT u.[user_id], u.[username], u.[full_name], u.[email], u.[phone]
-                FROM [EasyClaim_Dev].[dbo].[user_agents] ua
-                INNER JOIN [EasyClaim_Dev].[dbo].[users] u ON ua.user_id = u.user_id
+                FROM [dbo].[user_agents] ua
+                INNER JOIN [dbo].[users] u ON ua.user_id = u.user_id
                 WHERE ua.agent_id = @agent_id
             `);
 
@@ -70,11 +70,11 @@ exports.assignAgentsToUser = async (req, res) => {
                 .input("agent_id", sql.Int, agentId)
                 .query(`
                     IF NOT EXISTS (
-                        SELECT 1 FROM [EasyClaim_Dev].[dbo].[user_agents] 
+                        SELECT 1 FROM [dbo].[user_agents] 
                         WHERE user_id = @user_id AND agent_id = @agent_id
                     )
                     BEGIN
-                        INSERT INTO [EasyClaim_Dev].[dbo].[user_agents] (user_id, agent_id)
+                        INSERT INTO [dbo].[user_agents] (user_id, agent_id)
                         VALUES (@user_id, @agent_id)
                     END
                 `);
@@ -106,7 +106,7 @@ exports.updateUserAgents = async (req, res) => {
         // Step A: ลบ Mapping เดิมของ User รายนี้ออกทั้งหมด
         await pool.request()
             .input("user_id", sql.Int, user_id)
-            .query(`DELETE FROM [EasyClaim_Dev].[dbo].[user_agents] WHERE user_id = @user_id;`);
+            .query(`DELETE FROM [dbo].[user_agents] WHERE user_id = @user_id;`);
 
         // Step B: เพิ่มรายการใหม่ที่เลือกเข้ามา
         for (const agentId of agent_ids) {
@@ -114,7 +114,7 @@ exports.updateUserAgents = async (req, res) => {
                 .input("user_id", sql.Int, user_id)
                 .input("agent_id", sql.Int, agentId)
                 .query(`
-                    INSERT INTO [EasyClaim_Dev].[dbo].[user_agents] (user_id, agent_id)
+                    INSERT INTO [dbo].[user_agents] (user_id, agent_id)
                     VALUES (@user_id, @agent_id);
                 `);
         }
@@ -138,7 +138,7 @@ exports.removeAgentFromUser = async (req, res) => {
             .input("user_id", sql.Int, user_id)
             .input("agent_id", sql.Int, agent_id)
             .query(`
-                DELETE FROM [EasyClaim_Dev].[dbo].[user_agents]
+                DELETE FROM [dbo].[user_agents]
                 WHERE user_id = @user_id AND agent_id = @agent_id;
             `);
 

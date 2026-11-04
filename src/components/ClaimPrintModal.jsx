@@ -2,8 +2,8 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { Modal, Button } from "antd";
 import { PrinterOutlined } from "@ant-design/icons";
 import { useReactToPrint } from "react-to-print";
-import { buildClaimDocument } from "../utils/claimDocument";
-import signatureService from "../services/signatureService";
+import { buildClaimDocument, getDeliveredAt } from "../utils/claimDocument";
+import signatureService, { pickSignatureVersion } from "../services/signatureService";
 
 const PAPER_WIDTH_PX = 756;
 
@@ -66,24 +66,48 @@ const ClaimPrintModal = ({
   const frameRef = useRef(null);
   const [scale, setScale] = useState(1);
   const [contentHeight, setContentHeight] = useState(0);
-  const [signature, setSignature] = useState(null);
+  const [currentSignature, setCurrentSignature] = useState(null);
+  const [signatureHistory, setSignatureHistory] = useState([]);
   const [signatureReady, setSignatureReady] = useState(true);
 
   useEffect(() => {
     if (!open || !isStaff || !claim?.warehouse) return undefined;
     let alive = true;
-    signatureService
-      .getByWarehouse(claim.warehouse)
-      .then(({ ready, data }) => {
+    Promise.all([
+      signatureService.getByWarehouse(claim.warehouse),
+      signatureService.getHistory(claim.warehouse).catch(() => ({ ready: false, data: [] })),
+    ])
+      .then(([currentRes, historyRes]) => {
         if (!alive) return;
-        setSignatureReady(ready);
-        setSignature(data);
+        setSignatureReady(currentRes.ready);
+        setCurrentSignature(currentRes.data);
+        setSignatureHistory(historyRes.ready ? historyRes.data : []);
       })
-      .catch(() => alive && setSignature(null));
+      .catch(() => {
+        if (!alive) return;
+        setCurrentSignature(null);
+        setSignatureHistory([]);
+      });
     return () => {
       alive = false;
     };
   }, [open, isStaff, claim?.warehouse]);
+
+  const deliveredAt = useMemo(
+    () => getDeliveredAt({ claim: claim || {}, statusLogs, deliveries }),
+    [claim, statusLogs, deliveries]
+  );
+
+  const signature = useMemo(
+    () =>
+      pickSignatureVersion({
+        current: currentSignature,
+        history: signatureHistory,
+        warehouse: claim?.warehouse,
+        deliveredAt,
+      }),
+    [currentSignature, signatureHistory, claim?.warehouse, deliveredAt]
+  );
 
   const doc = useMemo(
     () =>
@@ -295,4 +319,4 @@ const ClaimPrintModal = ({
   );
 };
 
-export default ClaimPrintModal;
+export default ClaimPrintModal;

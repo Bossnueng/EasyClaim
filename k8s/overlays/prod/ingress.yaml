@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bev-claim
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: lrdi.thaibev.com
+      http:
+        paths:
+          - path: /bev-claim
+            pathType: Prefix
+            backend:
+              service:
+                name: bev-claim-frontend
+                port:
+                  name: http

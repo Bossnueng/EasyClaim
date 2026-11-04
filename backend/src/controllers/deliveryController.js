@@ -37,7 +37,7 @@ exports.Delivery = async (req, res) => {
                       ,[delivery_status]
                       ,[receive_date]
                       ,[created_at]
-                FROM [EasyClaim_Dev].[dbo].[Delivery]
+                FROM [dbo].[Delivery]
                 ORDER BY [created_at] DESC
             `);
 
@@ -74,13 +74,13 @@ exports.DeliveryDriver = async (req, res) => {
 				D.truck_plate,
 				c.claim_no,
 				c.shipment
-                FROM [EasyClaim_Dev].[dbo].[Delivery] D
+                FROM [dbo].[Delivery] D
 				left join claims c on c.claim_id=D.claim_id
                 Where D.driver_id=@driver_id and convert(date,D.receive_date)=@receive_date 
                 and D.delivery_status=@delivery_status
                     AND NOT EXISTS (
         SELECT 1
-        FROM [EasyClaim_Dev].[dbo].[Delivery] D2
+        FROM [dbo].[Delivery] D2
         WHERE D2.claim_id = D.claim_id
           AND D2.delivery_status = 9
     )
@@ -127,7 +127,7 @@ exports.createDelivery = async (req, res) => {
             .input("truck_plate", sql.NVarChar(10), truck_plate)
             .input("img_parth", sql.NVarChar(255), uploadedFile)
             .query(`
-                INSERT INTO [EasyClaim_Dev].[dbo].[Delivery]
+                INSERT INTO [dbo].[Delivery]
                 (
                     claim_id,
                     driver_id,
@@ -185,7 +185,7 @@ exports.UpdataDelivery = async (req, res) => {
             .input("driver_id", sql.VarChar, driver_id ? String(driver_id) : null)
             .input("delivery_status", sql.VarChar, delivery_status)
             .query(`
-                UPDATE [EasyClaim_Dev].[dbo].[Delivery]
+                UPDATE [dbo].[Delivery]
                 SET 
                     claim_id = @claim_id,
                     driver_id = @driver_id,
@@ -220,7 +220,7 @@ exports.DelDelivery = async (req, res) => {
         const result = await pool.request()
             .input("delivery_id", sql.Int, delivery_id)
             .query(`
-                DELETE FROM [EasyClaim_Dev].[dbo].[Delivery]
+                DELETE FROM [dbo].[Delivery]
                 WHERE delivery_id=@delivery_id
             `);
 

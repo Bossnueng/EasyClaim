@@ -12,6 +12,25 @@ import {
 } from "./claimFlow";
 import { readConfirm, CONFIRM_KIND } from "./claimConfirm";
 
+export const getDeliveredAt = ({ claim = {}, statusLogs = [], deliveries = [] } = {}) => {
+  const statusName = getStatusName(String(claim.current_status ?? "").trim() || "5");
+  if (getStepIndex(statusName) < 4) return null;
+  const logs = sortLogs(statusLogs);
+  return (
+    getStatusStampDate(logs, ["10"]) ||
+    getDeliveryDateByStatus(deliveries, claim.claim_id, 10) ||
+    claim.receive_finish_date ||
+    null
+  );
+};
+
+const getPlateFromAssignmentLog = (logs = []) => {
+  const list = (Array.isArray(logs) ? logs : []).filter((l) => String(l?.remark || "").includes("มอบหมายงาน พขร. (Delivery):"));
+  const last = list[list.length - 1];
+  const match = last ? String(last.remark).match(/ทะเบียนรถ (.+)/) : null;
+  return match ? match[1].trim() : "";
+};
+
 export const fmtDate = (v) => (v && dayjs(v).isValid() ? dayjs(v).format("DD/MM/YYYY") : "-");
 export const fmtDateTime = (v) => (v && dayjs(v).isValid() ? dayjs(v).format("DD/MM/YYYY HH:mm") : "-");
 
@@ -153,7 +172,7 @@ export const buildClaimDocument = ({
       name,
       at: fmtDateTime(at),
       rawAt: at,
-      plate: row10?.truck_plate || row9?.truck_plate || assignment?.truck_plate || "-",
+      plate: row10?.truck_plate || row9?.truck_plate || assignment?.truck_plate || getPlateFromAssignmentLog(logs) || "-",
     };
   }
 

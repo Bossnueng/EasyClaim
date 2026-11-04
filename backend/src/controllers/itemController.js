@@ -13,7 +13,7 @@ exports.getitem = async (req, res) => {
       ,[status]
       ,[created_at]
       ,[updated_at]
-  FROM [EasyClaim_Dev].[dbo].[items]
+  FROM [dbo].[items]
             `);
 
 
@@ -44,7 +44,7 @@ exports.createitem = async (req, res) => {
             .input("status", sql.NVarChar, status)
             .query(`
 
-                INSERT INTO [EasyClaim_Dev].[dbo].[items]
+                INSERT INTO [dbo].[items]
                 (
                     item_code,
                     item_name,
@@ -131,7 +131,7 @@ exports.delItem = async (req, res) => {
         });
 
         await request.query(`
-            DELETE FROM [EasyClaim_Dev].[dbo].[items]
+            DELETE FROM [dbo].[items]
             WHERE item_id IN (${params.join(",")})
         `);
 

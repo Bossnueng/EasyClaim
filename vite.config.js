@@ -4,7 +4,10 @@ import tailwindcss from '@tailwindcss/vite'
 import svgr from 'vite-plugin-svgr'
 
 // https://vite.dev/config/
+const basePath = `/${(process.env.VITE_BASE_PATH || '/').replace(/^\/+|\/+$/g, '')}/`.replace(/\/+/g, '/')
+
 export default defineConfig({
+  base: basePath,
   plugins: [react(), tailwindcss(),svgr()],
   server: {
     host: '0.0.0.0', // บังคับให้รับ IP ภายนอก (IPv4)

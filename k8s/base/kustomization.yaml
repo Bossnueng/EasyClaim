@@ -1,7 +1,3 @@
-# base ของ bev-claim (k8s/base) — ห้าม apply ตรงๆ ให้ใช้ overlay:
-#   kubectl apply -k k8s/overlays/uat     (K8S UAT,  ns lrdi, https://lrdi-uat.thaibev.com/bev-claim/)
-#   kubectl apply -k k8s/overlays/prod    (K8S PROD, ns lrdi, https://lrdi.thaibev.com/bev-claim/)
-#   kubectl apply -k k8s/overlays/local   (Docker Desktop, http://localhost:8081/bev-claim/)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 labels:

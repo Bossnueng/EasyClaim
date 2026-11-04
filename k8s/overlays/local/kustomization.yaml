@@ -1,9 +1,3 @@
-# Docker Desktop Kubernetes (ทดสอบในเครื่อง) — namespace lrdi เหมือน UAT/PROD
-#   docker compose build
-#   kubectl apply -f k8s/overlays/local/namespace.yaml
-#   kubectl -n lrdi create secret generic bev-claim-backend-env --from-env-file=backend/.env
-#   kubectl apply -k k8s/overlays/local
-#   เปิด http://localhost:8081/bev-claim/
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: lrdi
@@ -24,7 +18,6 @@ images:
     newName: bev-claim-backend
     newTag: latest
 patches:
-  # Docker Desktop ไม่มี Ingress controller -> เปิด frontend ผ่าน LoadBalancer port 8081 (ไม่ชนกับ Docker Compose 8080)
   - target: { kind: Service, name: bev-claim-frontend }
     patch: |-
       - op: replace

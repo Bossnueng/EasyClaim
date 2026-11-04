@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# ---------- Stage 1: build React (Vite) ----------
 FROM node:22-alpine AS build
 WORKDIR /app
 
@@ -11,7 +10,6 @@ COPY index.html vite.config.js ./
 COPY public ./public
 COPY src ./src
 
-# เว็บอยู่ใต้ /bev-claim/ (ต้องตรงกับ docker/nginx.conf และ Ingress)
 ARG VITE_BASE_PATH=/bev-claim/
 ARG VITE_API_URL=/bev-claim/api
 ARG VITE_API_BASE_URL=/bev-claim
@@ -25,7 +23,6 @@ ENV VITE_BASE_PATH=$VITE_BASE_PATH \
 
 RUN npm run build
 
-# ---------- Stage 2: serve with Nginx ----------
 FROM nginx:1.27-alpine
 ENV TZ=Asia/Bangkok
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

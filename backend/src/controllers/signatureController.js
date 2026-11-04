@@ -45,7 +45,6 @@ WHERE NOT EXISTS (
 
 let tableReady = null;
 
-/** สร้างตารางครั้งแรก (ถ้าล้มเหลวจะลองใหม่ในคำขอถัดไป) */
 const ensureSignatureTable = async () => {
   if (!tableReady) {
     tableReady = (async () => {
@@ -62,7 +61,6 @@ const ensureSignatureTable = async () => {
   return tableReady;
 };
 
-// เตรียมตารางตั้งแต่เริ่ม server (ไม่ให้ server ล่มถ้า DB ยังไม่พร้อม)
 ensureSignatureTable().catch((err) => console.error("❌ warehouse_signatures init error:", err.message));
 
 const getPool = async () => {
@@ -87,7 +85,6 @@ const removeFileQuietly = (imagePath) => {
   }
 };
 
-/** ตรวจว่าเป็นผู้ดูแลระบบ (role_id = 1) */
 const isAdminUser = async (pool, userId) => {
   const id = Number(userId);
   if (!Number.isInteger(id) || id <= 0) return false;
@@ -98,7 +95,6 @@ const isAdminUser = async (pool, userId) => {
   return Number(result.recordset[0]?.role_id) === 1;
 };
 
-// GET /getWarehouseSignatures
 exports.getWarehouseSignatures = async (req, res) => {
   try {
     const pool = await getPool();
@@ -113,7 +109,6 @@ exports.getWarehouseSignatures = async (req, res) => {
   }
 };
 
-// GET /getWarehouseSignatureHistory?warehouse=<optional>
 exports.getWarehouseSignatureHistory = async (req, res) => {
   try {
     const warehouse = String(req.query?.warehouse || "").trim();
@@ -164,7 +159,6 @@ const insertHistory = (request, { warehouse, reviewerName, imagePath, createdBy 
       VALUES (@h_warehouse, @h_reviewer_name, @h_image_path, GETDATE(), @h_created_by)
     `);
 
-// POST /warehouseSignature (multipart: warehouse, reviewer_name, updated_by, file)
 exports.saveWarehouseSignature = async (req, res) => {
   const newFilePath = req.file ? `/uploads/signatures/${req.file.filename}` : null;
   try {
@@ -249,7 +243,6 @@ exports.saveWarehouseSignature = async (req, res) => {
   }
 };
 
-// DELETE /delWarehouseSignature  body: { warehouse, updated_by }
 exports.delWarehouseSignature = async (req, res) => {
   try {
     const warehouse = String(req.body?.warehouse || "").trim();
@@ -269,7 +262,6 @@ exports.delWarehouseSignature = async (req, res) => {
       .query(`SELECT image_path FROM ${TABLE} WHERE warehouse = @warehouse`);
 
     if (found.recordset.length === 0) {
-      // ใช้ 400 (ไม่ใช่ 404) เพราะ frontend ถือว่า 404 = ยังไม่มี API
       return res.status(400).json({ status: false, message: "ไม่พบลายเซ็นของคลังนี้" });
     }
 

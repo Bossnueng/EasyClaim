@@ -1,6 +1,3 @@
-# Backend: Node/Express + Socket.IO (ภายใน cluster เท่านั้น — ภายนอกเข้าผ่าน Nginx ของ frontend)
-# ค่าลับ (DB_USER, DB_PASSWORD, DB_DATABASE, JWT_SECRET ...) มาจาก Secret "bev-claim-backend-env"
-# ค่าตาม environment (DB_SERVER, DB_PORT, BASE_URL) มาจาก ConfigMap "bev-claim-backend-config" ใน overlay
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -17,7 +14,6 @@ metadata:
   name: bev-claim-backend
   labels: { app: bev-claim, tier: backend }
 spec:
-  # 1 replica: ไฟล์อัปโหลดเก็บบนดิสก์ (ReadWriteOnce) และ Socket.IO ยังไม่มี adapter สำหรับหลาย pod
   replicas: 1
   strategy:
     type: Recreate
@@ -37,7 +33,6 @@ spec:
           envFrom:
             - secretRef:
                 name: bev-claim-backend-env
-            # ConfigMap อยู่หลัง Secret -> ค่าใน ConfigMap ทับค่าจาก backend/.env
             - configMapRef:
                 name: bev-claim-backend-config
           volumeMounts:
@@ -59,7 +54,6 @@ spec:
           persistentVolumeClaim:
             claimName: bev-claim-uploads
 ---
-# ชื่อ Service ต้องเป็น "bev-claim-backend" — docker/nginx.conf ส่งต่อไปที่ bev-claim-backend:5001
 apiVersion: v1
 kind: Service
 metadata:

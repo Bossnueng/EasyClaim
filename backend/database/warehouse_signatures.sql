@@ -1,6 +1,3 @@
--- ไม่ระบุชื่อฐานข้อมูลในไฟล์นี้ เพื่อรองรับการเปลี่ยนชื่อฐานข้อมูล: ใน SSMS ให้เลือกฐานข้อมูลที่ต้องการก่อนรัน (เช่น USE [ชื่อฐานข้อมูลใน DB_DATABASE];)
--- หมายเหตุ: backend จะสร้างตารางนี้ให้อัตโนมัติเมื่อเริ่มทำงาน (signatureController.ensureSignatureTable)
---          ไฟล์นี้มีไว้สำหรับสร้างด้วยตนเองผ่าน SSMS ได้เช่นกัน (รันซ้ำได้ ไม่สร้างซ้ำ)
 IF OBJECT_ID(N'[dbo].[warehouse_signatures]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[warehouse_signatures] (
@@ -16,8 +13,6 @@ BEGIN
 END
 GO
 
--- ประวัติลายเซ็น: เพิ่มแถวใหม่ทุกครั้งที่เพิ่ม/เปลี่ยน/ลบลายเซ็น (image_path = NULL คือถูกลบ)
--- เอกสารใบเคลมที่ Delivered แล้วใช้เวอร์ชันที่มีผล (effective_from) ณ เวลา Delivered
 IF OBJECT_ID(N'[dbo].[warehouse_signature_history]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[warehouse_signature_history] (

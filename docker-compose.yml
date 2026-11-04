@@ -1,8 +1,3 @@
-# bev-claim (EasyClaim) — Frontend (Nginx) + Backend (Node/Express + Socket.IO)
-# ฐานข้อมูล SQL Server อยู่ภายนอก (ตั้งค่าใน backend/.env)
-#
-#   docker compose up -d --build
-#   เปิดเว็บ:  http://<IP เครื่อง>:8080/bev-claim/   (path เดียวกับ UAT/PROD)
 
 name: bev-claim
 
@@ -19,8 +14,6 @@ services:
     environment:
       PORT: "5001"
       TZ: Asia/Bangkok
-      # ใน container "127.0.0.1 / localhost" คือตัว container เอง -> ชี้ไปที่เครื่อง Windows แทน
-      # (ค่านี้ทับ DB_SERVER / DB_PORT ใน backend/.env เฉพาะตอนรันใน Docker)
       DB_SERVER: "${DOCKER_DB_SERVER:-host.docker.internal}"
       DB_PORT: "${DOCKER_DB_PORT:-1433}"
     extra_hosts:

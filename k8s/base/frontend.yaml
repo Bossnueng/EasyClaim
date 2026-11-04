@@ -1,4 +1,3 @@
-# Frontend: Nginx เสิร์ฟ React ที่ /bev-claim/ + ส่งต่อ /bev-claim/api, /bev-claim/uploads, /bev-claim/socket.io ไปที่ bev-claim-backend
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,7 +30,6 @@ spec:
             requests: { cpu: 50m,  memory: 32Mi }
             limits:   { cpu: 500m, memory: 128Mi }
 ---
-# ClusterIP — ภายนอกเข้าผ่าน Ingress /bev-claim (overlay uat/prod)
 apiVersion: v1
 kind: Service
 metadata:

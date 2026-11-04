@@ -30,7 +30,6 @@ const uploadSignature = multer({
   },
 });
 
-// ห่อ multer เพื่อตอบ 400 พร้อมข้อความภาษาไทยแทน error 500
 const singleSignatureFile = (req, res, next) => {
   uploadSignature.single("file")(req, res, (err) => {
     if (!err) return next();

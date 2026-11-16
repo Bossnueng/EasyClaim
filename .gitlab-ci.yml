@@ -49,7 +49,7 @@ deploy-uat:
     KUBECONFIG: $KUBECONFIG_UAT
   environment:
     name: uat
-    url: https://logisticssandbox-uat.thaibev.com/bev-claim/
+    url: https://logisticssandbox-uat.thaibevapp.com/bev-claim/
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
@@ -62,7 +62,7 @@ deploy-prod:
     KUBECONFIG: $KUBECONFIG_PROD
   environment:
     name: production
-    url: https://logisticssandbox.thaibev.com/bev-claim/
+    url: https://logisticssandbox.thaibevapp.com/bev-claim/
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual

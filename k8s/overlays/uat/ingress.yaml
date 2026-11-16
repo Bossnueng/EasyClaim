@@ -9,7 +9,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: logisticssandbox-uat.thaibev.com
+    - host: logisticssandbox-uat.thaibevapp.com
       http:
         paths:
           - path: /bev-claim

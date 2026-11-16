@@ -10,7 +10,7 @@ configMapGenerator:
     literals:
       - DB_SERVER=CHANGE_ME_DB_HOST
       - DB_PORT=1433
-      - BASE_URL=https://lrdi.thaibev.com/bev-claim
+      - BASE_URL=https://logisticssandbox.thaibev.com/bev-claim
 images:
   - name: bev-claim-frontend
     newName: CHANGE_ME_REGISTRY/lrdi/bev-claim-frontend

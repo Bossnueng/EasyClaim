@@ -1,13 +1,14 @@
-# bev-claim — GitLab CI/CD
-# main  -> build image (tag = commit SHA) -> deploy UAT อัตโนมัติ
-# PROD  -> กดปุ่ม ▶ deploy-prod เอง ใช้ image ตัวเดียวกับที่ผ่าน UAT
-# ต้องตั้ง CI/CD Variables: KUBECONFIG_UAT (File, scope uat), KUBECONFIG_PROD (File, scope production)
+# bev-claim — GitLab CI/CD (UAT)
+# master/main -> build image (tag = commit SHA) -> deploy UAT อัตโนมัติ
+# PROD ทีมอื่นเป็นผู้ deploy: ส่งต่อ image tag (commit SHA) ที่ผ่าน UAT + overlay k8s/overlays/prod
+# ต้องตั้ง CI/CD Variables: CUSTOM_REGISTRY, CUSTOM_REGISTRY_USER, CUSTOM_REGISTRY_PASSWORD,
+#                         KUBECONFIG_UAT (File, scope uat)
 
-stages: [build, deploy-uat, deploy-prod]
+stages: [build, deploy-uat]
 
 variables:
-  IMAGE_FE: $CI_REGISTRY_IMAGE/bev-claim-frontend
-  IMAGE_BE: $CI_REGISTRY_IMAGE/bev-claim-backend
+  IMAGE_FE: $CUSTOM_REGISTRY/lrdi/bev-claim-frontend
+  IMAGE_BE: $CUSTOM_REGISTRY/lrdi/bev-claim-backend
   TAG: $CI_COMMIT_SHORT_SHA
 
 # ถ้าบริษัทกำหนด tag ของ runner ให้เปิดบรรทัดด้านล่างและใส่ชื่อ tag
@@ -23,46 +24,28 @@ build:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - echo "$CUSTOM_REGISTRY_PASSWORD" | docker login -u "$CUSTOM_REGISTRY_USER" --password-stdin "$CUSTOM_REGISTRY"
     - docker build -t "$IMAGE_FE:$TAG" .
     - docker build -t "$IMAGE_BE:$TAG" ./backend
     - docker push "$IMAGE_FE:$TAG"
     - docker push "$IMAGE_BE:$TAG"
 
-.deploy:
+deploy-uat:
+  stage: deploy-uat
   image:
     name: alpine/k8s:1.30.4
     entrypoint: [""]
-  script:
-    - cd k8s/overlays/$OVERLAY
-    - kustomize edit set image bev-claim-frontend=$IMAGE_FE:$TAG bev-claim-backend=$IMAGE_BE:$TAG
-    - kubectl apply -k .
-    - kubectl -n lrdi rollout status deployment/bev-claim-backend --timeout=300s
-    - kubectl -n lrdi rollout status deployment/bev-claim-frontend --timeout=300s
-
-deploy-uat:
-  extends: .deploy
-  stage: deploy-uat
   resource_group: uat
   variables:
-    OVERLAY: uat
     KUBECONFIG: $KUBECONFIG_UAT
   environment:
     name: uat
     url: https://logisticssandbox-uat.thaibevapp.com/bev-claim/
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-deploy-prod:
-  extends: .deploy
-  stage: deploy-prod
-  resource_group: production
-  variables:
-    OVERLAY: prod
-    KUBECONFIG: $KUBECONFIG_PROD
-  environment:
-    name: production
-    url: https://logisticssandbox.thaibevapp.com/bev-claim/
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
+  script:
+    - cd k8s/overlays/uat
+    - kustomize edit set image bev-claim-frontend=$IMAGE_FE:$TAG bev-claim-backend=$IMAGE_BE:$TAG
+    - kubectl apply -k .
+    - kubectl -n lrdi rollout status deployment/bev-claim-backend --timeout=300s
+    - kubectl -n lrdi rollout status deployment/bev-claim-frontend --timeout=300s

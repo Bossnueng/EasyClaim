@@ -8,8 +8,8 @@ configMapGenerator:
   - name: bev-claim-backend-config
     behavior: merge
     literals:
-      - DB_SERVER=CHANGE_ME_DB_HOST
-      - DB_PORT=1433
+      - DB_SERVER=10.7.34.41
+      - DB_PORT=3306
       - BASE_URL=https://logisticssandbox-uat.thaibevapp.com/bev-claim
 images:
   - name: bev-claim-frontend

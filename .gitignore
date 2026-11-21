@@ -35,10 +35,3 @@ BACKEND_SIGNATURE_API.md
 CHANGELOG_UI.md
 DOCKER.md
 K8S.md
-
-# Kubernetes credentials / Secret - ห้ามขึ้น git (ส่ง GitLab Variables / infra แยก)
-k8s/**/k8s*.yaml
-*kubeconfig*
-*.kubeconfig
-*secret*.yaml
-*secrets*.yaml

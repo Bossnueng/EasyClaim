@@ -11,6 +11,13 @@ spec:
     requests:
       storage: 5Gi
 ---
+# api (Node.js + Socket.IO) — แยก deployment จาก web ตามแนวทาง Platform
+#
+# ห้าม scale เกิน 1 replica และต้องใช้ Recreate:
+#   - PVC bev-claim-uploads เป็น ReadWriteOnce (เมานต์ได้ทีละ node)
+#   - Socket.IO เก็บห้อง (staff, claim:<id>) ไว้ในหน่วยความจำของ pod — ถ้ามีหลาย pod
+#     การแจ้งเตือน realtime จะไปไม่ถึงผู้ใช้ที่ต่ออยู่กับ pod อื่น
+# restart ได้ตามปกติ (Argo CD > deploy bev-claim-backend > Restart)
 apiVersion: apps/v1
 kind: Deployment
 metadata:

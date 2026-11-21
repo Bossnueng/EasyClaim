@@ -1,3 +1,5 @@
+# web (nginx เสิร์ฟ React ที่ /bev-claim/ และ proxy /bev-claim/api, /bev-claim/socket.io ไป api)
+# ไม่มี state — scale / restart ได้อิสระ
 apiVersion: apps/v1
 kind: Deployment
 metadata:

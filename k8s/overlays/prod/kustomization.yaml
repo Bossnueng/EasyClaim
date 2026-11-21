@@ -1,20 +1,28 @@
+# PROD: https://logisticssandbox.thaibevapp.com/bev-claim/  (namespace lrdi)
+# Argo CD ดู path นี้บน default branch — CI (update_manifest) จะแก้ images[].newTag ให้เองเมื่อ push tag
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 namespace: lrdi
+
 resources:
-  - ../../base
-  - ingress.yaml
+- ../../base
+- ingress.yaml
+- external-secret.yaml
+
+# ค่าที่ไม่ลับ — ค่าลับ (DB_SERVER, DB_USER, DB_PASSWORD, DB_DATABASE, JWT_SECRET) มาจาก Vault ผ่าน external-secret.yaml
+# ห้ามใส่ key ซ้ำกับใน Vault ที่นี่ เพราะ configMapRef อยู่หลัง secretRef ใน backend.yaml จึงทับค่าจาก Vault
 configMapGenerator:
-  - name: bev-claim-backend-config
-    behavior: merge
-    literals:
-      - DB_SERVER=CHANGE_ME_DB_HOST
-      - DB_PORT=1433
-      - BASE_URL=https://logisticssandbox.thaibevapp.com/bev-claim
+- name: bev-claim-backend-config
+  behavior: merge
+  literals:
+  - DB_PORT=1433
+  - BASE_URL=https://logisticssandbox.thaibevapp.com/bev-claim
+
 images:
-  - name: bev-claim-frontend
-    newName: CHANGE_ME_REGISTRY/lrdi/bev-claim-frontend
-    newTag: "1.0.0"
-  - name: bev-claim-backend
-    newName: CHANGE_ME_REGISTRY/lrdi/bev-claim-backend
-    newTag: "1.0.0"
+- name: bev-claim-backend
+  newName: harborregistryii.thaibevapp.com/lrdi/bev-claim-backend
+  newTag: v0.0.0
+- name: bev-claim-frontend
+  newName: harborregistryii.thaibevapp.com/lrdi/bev-claim-frontend
+  newTag: v0.0.0

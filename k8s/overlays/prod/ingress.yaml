@@ -1,13 +1,13 @@
+# Users → ingress /bev-claim → service bev-claim-frontend (nginx) → /bev-claim/api, /bev-claim/socket.io → backend
+# ไม่ rewrite path — frontend image ถูก build ด้วย base /bev-claim/ และ nginx รับ /bev-claim/... ทั้งเส้น
+# ingress class = traefik เหมือน bev-queue (traefik รองรับ WebSocket ของ socket.io และไม่จำกัดขนาด body โดยค่าเริ่มต้น)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: bev-claim
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    kubernetes.io/ingress.class: traefik
 spec:
-  ingressClassName: nginx
   rules:
     - host: logisticssandbox.thaibevapp.com
       http:

@@ -2,6 +2,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: bev-claim-uploads
+  annotations:
+    # เก็บไฟล์ที่ผู้ใช้อัปโหลด — ห้าม Argo CD prune/ลบ
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
@@ -23,6 +26,8 @@ spec:
     metadata:
       labels: { app: bev-claim, tier: backend }
     spec:
+      imagePullSecrets:
+        - name: lrdi-image-pull-secret
       containers:
         - name: backend
           image: bev-claim-backend

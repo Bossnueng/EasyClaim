@@ -1,12 +1,28 @@
+# ===== ค่าลับ / environment (ห้ามขึ้น git) =====
 .env
-#uploads
-backend/src/uploads/claim*
+.env.*
+!.env.example
+# ไฟล์ตัวอย่างที่ขึ้น git ได้: .env-example, backend/env-example, k8s/overlays/*/secret.env.example
 
+# ===== Kubernetes credentials (kubeconfig มี token เข้า cluster) =====
+# หมายเหตุ: ห้ามใส่ *secret*.yaml ตรงนี้ ไม่งั้น k8s/overlays/*/external-secret.yaml (ต้องขึ้น git ให้ Argo CD) จะถูก ignore ด้วย
+k8s/overlays/*/secret.env
+k8s/overlays/*/k8suat.yaml
+k8s/**/k8s*.yaml
+*kubeconfig*
+*.kubeconfig
 
-#.gitkeep 
-!backend/src/uploads/claim/.gitkeep
+# ===== key / certificate =====
+*.pem
+*.key
+*.p12
+*.pfx
 
-# Logs
+# ===== ไฟล์ที่ผู้ใช้อัปโหลด (บน K8s อยู่ใน PVC, บน Docker อยู่ใน volume) =====
+backend/src/uploads/*/*
+!backend/src/uploads/*/.gitkeep
+
+# ===== Logs =====
 logs
 *.log
 npm-debug.log*
@@ -15,30 +31,28 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# ===== Build / dependencies =====
 node_modules
 dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# ===== Editor / OS =====
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.claude/settings.local.json
 
+# ===== เอกสารในเครื่อง (ไม่ขึ้น git) =====
 BACKEND_SIGNATURE_API.md
 CHANGELOG_UI.md
 DOCKER.md
 K8S.md
-
-# Kubernetes credentials / Secret - ห้ามขึ้น git (ส่ง GitLab Variables / infra แยก)
-k8s/**/k8s*.yaml
-*kubeconfig*
-*.kubeconfig
-*secret*.yaml
-*secrets*.yaml

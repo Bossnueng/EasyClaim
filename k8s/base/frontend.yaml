@@ -11,6 +11,8 @@ spec:
     metadata:
       labels: { app: bev-claim, tier: frontend }
     spec:
+      imagePullSecrets:
+        - name: lrdi-image-pull-secret
       containers:
         - name: frontend
           image: bev-claim-frontend

@@ -1,51 +1,161 @@
-# bev-claim — GitLab CI/CD (UAT)
-# master/main -> build image (tag = commit SHA) -> deploy UAT อัตโนมัติ
-# PROD ทีมอื่นเป็นผู้ deploy: ส่งต่อ image tag (commit SHA) ที่ผ่าน UAT + overlay k8s/overlays/prod
-# ต้องตั้ง CI/CD Variables: CUSTOM_REGISTRY, CUSTOM_REGISTRY_USER, CUSTOM_REGISTRY_PASSWORD,
-#                         KUBECONFIG_UAT (File, scope uat)
+# bev-claim — GitLab CI (GitOps แบบเดียวกับ bev-queue)
+#
+#   push tag vX.Y.Z-uat.N  -> build_uat  : build + push image ขึ้น Harbor (tag = ชื่อ tag)
+#                          -> update_manifest : แก้ image tag ใน k8s/overlays/uat แล้ว commit กลับ default branch
+#   push tag vX.Y.Z        -> build_prod : ไม่ build ใหม่ — เพิ่ม tag vX.Y.Z ให้ image ตัวเดียวกับ vX.Y.Z-uat.N ใน Harbor
+#                          -> update_manifest : แก้ image tag ใน k8s/overlays/prod
+#   Argo CD เห็น commit ใหม่แล้ว sync ขึ้น K8s เอง (CI ไม่ได้สั่ง kubectl)
+#
+# CI/CD Variables ที่ต้องมี (ใช้ชุดเดียวกับ bev-queue):
+#   HARBOR_URL, HARBOR_PROJECT_PATH, HARBOR_ROBOT_FILE (File: {"name": "...", "secret": "..."})
+#   GITLAB_ACCESS_TOKEN (สิทธิ์ write_repository), GITLAB_USER_LOGIN
+#   ถ้าตั้ง variable เป็น Protected ต้อง protect tag v* ด้วย ไม่งั้น job มองไม่เห็นค่า
 
-stages: [build, deploy-uat]
+default:
+  image: harborregistryii.thaibevapp.com/baseimage/docker:28.1.1-essentials
+  services:
+    - name: docker:28.1.1-dind
+      command: ["--tls=false", "--insecure-registry=harborregistryii.thaibevapp.com"]
 
 variables:
-  IMAGE_FE: $CUSTOM_REGISTRY/lrdi/bev-claim-frontend
-  IMAGE_BE: $CUSTOM_REGISTRY/lrdi/bev-claim-backend
-  TAG: $CI_COMMIT_SHORT_SHA
+  DOCKER_BUILDKIT: 1
+  FE_IMAGE_NAME: "${HARBOR_URL}/${HARBOR_PROJECT_PATH}/bev-claim-frontend"
+  BE_IMAGE_NAME: "${HARBOR_URL}/${HARBOR_PROJECT_PATH}/bev-claim-backend"
+  # หน้าเว็บบน K8s เสิร์ฟใต้ /bev-claim/ (ต้องตรงกับ docker/nginx.conf และ ingress)
+  WEB_BASE_PATH: "/bev-claim/"
 
-# ถ้าบริษัทกำหนด tag ของ runner ให้เปิดบรรทัดด้านล่างและใส่ชื่อ tag
-# default:
-#   tags: [docker]
+stages:
+  - build
+  - update_manifest
 
-build:
+.base_build:
+  before_script:
+    - export ROBOT_NAME=$(cat ${HARBOR_ROBOT_FILE} | jq -r '.name')
+    - export ROBOT_SECRET=$(cat ${HARBOR_ROBOT_FILE} | jq -r '.secret')
+    - echo "$ROBOT_SECRET" | docker login --username "$ROBOT_NAME" --password-stdin "${HARBOR_URL}"
+  script:
+    - echo "Building frontend ${FE_IMAGE_TAG} (BASE_PATH=${WEB_BASE_PATH})"
+    - >
+      docker build --pull
+      --build-arg VITE_BASE_PATH=${WEB_BASE_PATH}
+      --build-arg VITE_API_URL=${WEB_BASE_PATH}api
+      --build-arg VITE_API_BASE_URL=${WEB_BASE_PATH%/}
+      -f Dockerfile -t ${FE_IMAGE_TAG} .
+    - docker push ${FE_IMAGE_TAG}
+    - echo "Building backend ${BE_IMAGE_TAG}"
+    - docker build --pull -f backend/Dockerfile -t ${BE_IMAGE_TAG} backend
+    - docker push ${BE_IMAGE_TAG}
+    - echo "FE_IMAGE_TAG=${FE_IMAGE_TAG}" > .env
+    - echo "BE_IMAGE_TAG=${BE_IMAGE_TAG}" >> .env
+    - echo "DEPLOY_ENV=${DEPLOY_ENV}" >> .env
+  after_script:
+    - docker logout ${HARBOR_URL}
+  artifacts:
+    reports:
+      dotenv: .env
+
+build_uat:
   stage: build
-  image: docker:27
-  services: [docker:27-dind]
+  extends: .base_build
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    DEPLOY_ENV: uat
+    FE_IMAGE_TAG: ${FE_IMAGE_NAME}:${CI_COMMIT_TAG}
+    BE_IMAGE_TAG: ${BE_IMAGE_NAME}:${CI_COMMIT_TAG}
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  script:
-    - echo "$CUSTOM_REGISTRY_PASSWORD" | docker login -u "$CUSTOM_REGISTRY_USER" --password-stdin "$CUSTOM_REGISTRY"
-    - docker build -t "$IMAGE_FE:$TAG" .
-    - docker build -t "$IMAGE_BE:$TAG" ./backend
-    - docker push "$IMAGE_FE:$TAG"
-    - docker push "$IMAGE_BE:$TAG"
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+-uat(\.\d+)?$/'
 
-deploy-uat:
-  stage: deploy-uat
-  image:
-    name: alpine/k8s:1.30.4
-    entrypoint: [""]
-  resource_group: uat
+# PROD ไม่ build ใหม่ — ใช้ image ตัวเดียวกับที่ผ่าน UAT แล้ว (tag vX.Y.Z ต้องอยู่บน commit เดียวกับ vX.Y.Z-uat*)
+build_prod:
+  stage: build
+  services: []
   variables:
-    KUBECONFIG: $KUBECONFIG_UAT
-  environment:
-    name: uat
-    url: https://logisticssandbox-uat.thaibevapp.com/bev-claim/
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    GIT_DEPTH: 0
+    DEPLOY_ENV: prod
+  before_script:
+    - git fetch --tags --force
+    - export ROBOT_NAME=$(cat ${HARBOR_ROBOT_FILE} | jq -r '.name')
+    - export ROBOT_SECRET=$(cat ${HARBOR_ROBOT_FILE} | jq -r '.secret')
+    - |
+      if echo "${HARBOR_PROJECT_PATH}" | grep -q '/'; then
+        export HARBOR_PROJECT=$(echo "${HARBOR_PROJECT_PATH}" | cut -d/ -f1)
+        export HARBOR_REPO_PREFIX="${HARBOR_PROJECT_PATH#*/}/"
+      else
+        export HARBOR_PROJECT="${HARBOR_PROJECT_PATH}"
+        export HARBOR_REPO_PREFIX=""
+      fi
   script:
-    - cd k8s/overlays/uat
-    - kustomize edit set image bev-claim-frontend=$IMAGE_FE:$TAG bev-claim-backend=$IMAGE_BE:$TAG
-    - kubectl apply -k .
-    - kubectl -n lrdi rollout status deployment/bev-claim-backend --timeout=300s
-    - kubectl -n lrdi rollout status deployment/bev-claim-frontend --timeout=300s
+    - |
+      UAT_TAG=$(git tag --points-at "${CI_COMMIT_SHA}" | { grep -E "^${CI_COMMIT_TAG}-uat(\.[0-9]+)?$" || true; } | sort -V | tail -1)
+      if [ -z "$UAT_TAG" ]; then
+        echo "ERROR: No UAT tag (${CI_COMMIT_TAG}-uat*) found on commit ${CI_COMMIT_SHA}."
+        echo "Production tag must be created from a UAT tag, not from a branch."
+        exit 1
+      fi
+      echo "Promoting UAT tag: ${UAT_TAG} -> ${CI_COMMIT_TAG}"
+      for spec in "bev-claim-frontend|${FE_IMAGE_NAME}" "bev-claim-backend|${BE_IMAGE_NAME}"; do
+        repo_name=${spec%%|*}
+        image_name=${spec#*|}
+        harbor_repo=$(echo "${HARBOR_REPO_PREFIX}${repo_name}" | sed 's|/|%252F|g')
+        HTTP_CODE=$(curl -sS -u "${ROBOT_NAME}:${ROBOT_SECRET}" \
+          -o /tmp/harbor-response.json -w "%{http_code}" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d "{\"name\": \"${CI_COMMIT_TAG}\"}" \
+          "https://${HARBOR_URL}/api/v2.0/projects/${HARBOR_PROJECT}/repositories/${harbor_repo}/artifacts/${UAT_TAG}/tags")
+        if [ "$HTTP_CODE" != "201" ]; then
+          echo "Harbor API failed for ${repo_name} with HTTP ${HTTP_CODE}"
+          cat /tmp/harbor-response.json
+          exit 1
+        fi
+        echo "Created Harbor tag: ${image_name}:${CI_COMMIT_TAG}"
+      done
+      echo "FE_IMAGE_TAG=${FE_IMAGE_NAME}:${CI_COMMIT_TAG}" > .env
+      echo "BE_IMAGE_TAG=${BE_IMAGE_NAME}:${CI_COMMIT_TAG}" >> .env
+      echo "DEPLOY_ENV=${DEPLOY_ENV}" >> .env
+  artifacts:
+    reports:
+      dotenv: .env
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+
+update_manifest:
+  stage: update_manifest
+  image:
+    name: harborregistryii.thaibevapp.com/baseimage/kustomize:latest
+    entrypoint: [""]
+  services: []
+  before_script:
+    - |
+      if [ -z "$GITLAB_ACCESS_TOKEN" ] || [ -z "$GITLAB_USER_LOGIN" ]; then
+        echo "TOKEN_SET=$([ -n "$GITLAB_ACCESS_TOKEN" ] && echo yes || echo no) USER_SET=$([ -n "$GITLAB_USER_LOGIN" ] && echo yes || echo no)"
+        echo "ถ้า no ทั้งคู่: variable เป็น Protected แต่ tag ไม่ได้ protect หรือ environment scope ไม่ใช่ All"
+        exit 1
+      fi
+    - git config --global user.name "${GITLAB_USER_NAME}"
+    - git config --global user.email "${GITLAB_USER_EMAIL}"
+    - git config --global gc.auto 0
+    # tag pipeline ไม่มี CI_COMMIT_BRANCH -> commit manifest กลับ default branch (branch ที่ Argo CD ดูอยู่)
+    - export BRANCH_NAME="${CI_COMMIT_BRANCH:-$CI_DEFAULT_BRANCH}"
+    - echo "BRANCH_NAME=${BRANCH_NAME} CI_COMMIT_TAG=${CI_COMMIT_TAG}"
+    - git remote set-url origin "https://${GITLAB_USER_LOGIN}:${GITLAB_ACCESS_TOKEN}@${CI_REPOSITORY_URL#*@}"
+    - git fetch origin ${BRANCH_NAME}
+    - git checkout -B ${BRANCH_NAME}
+    - git reset --hard origin/${BRANCH_NAME}
+  script:
+    - cd k8s/overlays/${DEPLOY_ENV}
+    - echo "frontend=${FE_IMAGE_TAG}"
+    - echo "backend=${BE_IMAGE_TAG}"
+    - kustomize edit set image bev-claim-frontend=${FE_IMAGE_TAG} bev-claim-backend=${BE_IMAGE_TAG}
+    - cat kustomization.yaml
+    - cd ../../..
+    - git add k8s/overlays/${DEPLOY_ENV}/kustomization.yaml
+    - git commit -m "[skip ci] Update image frontend:${FE_IMAGE_TAG} backend:${BE_IMAGE_TAG}, stage:${DEPLOY_ENV}"
+    - git push origin ${BRANCH_NAME}
+  needs:
+    - job: build_uat
+      optional: true
+    - job: build_prod
+      optional: true
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+-uat(\.\d+)?$/'
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'

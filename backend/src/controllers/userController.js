@@ -7,23 +7,23 @@ exports.getUsers = async (req, res) => {
         const pool = await connectDB();
         const result = await pool.request().query(`
             SELECT 
-                u.[user_id],
-                u.[username],
-                u.[full_name],
-                u.[email],
-                u.[phone],
-                u.[role_id],
-                u.[status],
-                u.[last_login],
-                u.[created_at],
-                u.[updated_at],
-                STRING_AGG(ua.[agent_id], ',') AS agent_ids_str
-            FROM [dbo].[users] u
-            LEFT JOIN [dbo].[user_agents] ua ON u.user_id = ua.user_id
+                u.user_id,
+                u.username,
+                u.full_name,
+                u.email,
+                u.phone,
+                u.role_id,
+                u.status,
+                u.last_login,
+                u.created_at,
+                u.updated_at,
+                GROUP_CONCAT(CAST(ua.agent_id AS CHAR) SEPARATOR ',') AS agent_ids_str
+            FROM users u
+            LEFT JOIN user_agents ua ON u.user_id = ua.user_id
             GROUP BY 
-                u.[user_id], u.[username], u.[full_name], u.[email], 
-                u.[phone], u.[role_id], u.[status], u.[last_login], 
-                u.[created_at], u.[updated_at]
+                u.user_id, u.username, u.full_name, u.email, 
+                u.phone, u.role_id, u.status, u.last_login, 
+                u.created_at, u.updated_at
         `);
 
         const formattedData = result.recordset.map(user => {
@@ -55,11 +55,11 @@ exports.createUser = async (req, res) => {
             .input("phone", sql.VarChar, phone)
             .input("role_id", sql.Int, role_id)
             .query(`
-                INSERT INTO [dbo].[users]
+                INSERT INTO users
                 (username, password_hash, full_name, email, phone, role_id, status, created_at, updated_at)
-                VALUES (@username, @password_hash, @full_name, @email, @phone, @role_id, 1, GETDATE(), GETDATE());
+                VALUES (@username, @password_hash, @full_name, @email, @phone, @role_id, 1, NOW(), NOW());
 
-                SELECT SCOPE_IDENTITY() AS user_id;
+                SELECT LAST_INSERT_ID() AS user_id;
             `);
 
         const newUserId = result.recordset[0].user_id;
@@ -69,7 +69,7 @@ exports.createUser = async (req, res) => {
                 await pool.request()
                     .input("user_id", sql.Int, newUserId)
                     .input("agent_id", sql.Int, agentId)
-                    .query(`INSERT INTO [dbo].[user_agents] (user_id, agent_id) VALUES (@user_id, @agent_id);`);
+                    .query(`INSERT INTO user_agents (user_id, agent_id) VALUES (@user_id, @agent_id);`);
             }
         }
 
@@ -97,9 +97,9 @@ exports.updateUser = async (req, res) => {
                 .input("phone", sql.VarChar, phone)
                 .input("role_id", sql.Int, role_id)
                 .query(`
-                    UPDATE [dbo].[users]
+                    UPDATE users
                     SET username=@username, password_hash=@password_hash, full_name=@full_name,
-                        email=@email, phone=@phone, role_id=@role_id, updated_at=GETDATE()
+                        email=@email, phone=@phone, role_id=@role_id, updated_at=NOW()
                     WHERE user_id=@user_id;
                 `);
         } else {
@@ -111,9 +111,9 @@ exports.updateUser = async (req, res) => {
                 .input("phone", sql.VarChar, phone)
                 .input("role_id", sql.Int, role_id)
                 .query(`
-                    UPDATE [dbo].[users]
+                    UPDATE users
                     SET username=@username, full_name=@full_name,
-                        email=@email, phone=@phone, role_id=@role_id, updated_at=GETDATE()
+                        email=@email, phone=@phone, role_id=@role_id, updated_at=NOW()
                     WHERE user_id=@user_id;
                 `);
         }
@@ -121,13 +121,13 @@ exports.updateUser = async (req, res) => {
         if (Array.isArray(agent_ids)) {
             await pool.request()
                 .input("user_id", sql.Int, user_id)
-                .query(`DELETE FROM [dbo].[user_agents] WHERE user_id=@user_id;`);
+                .query(`DELETE FROM user_agents WHERE user_id=@user_id;`);
 
             for (const agentId of agent_ids) {
                 await pool.request()
                     .input("user_id", sql.Int, user_id)
                     .input("agent_id", sql.Int, agentId)
-                    .query(`INSERT INTO [dbo].[user_agents] (user_id, agent_id) VALUES (@user_id, @agent_id);`);
+                    .query(`INSERT INTO user_agents (user_id, agent_id) VALUES (@user_id, @agent_id);`);
             }
         }
 
@@ -152,11 +152,11 @@ exports.deluser = async (req, res) => {
 
         await pool.request()
             .input("user_id", sql.Int, user_id)
-            .query(`DELETE FROM [dbo].[user_agents] WHERE user_id=@user_id`);
+            .query(`DELETE FROM user_agents WHERE user_id=@user_id`);
 
         await pool.request()
             .input("user_id", sql.Int, user_id)
-            .query(`DELETE FROM [dbo].[users] WHERE user_id=@user_id`);
+            .query(`DELETE FROM users WHERE user_id=@user_id`);
 
         res.json({ status: true, message: "Delete Success", user_id });
     } catch (error) {
@@ -174,8 +174,8 @@ exports.deleteuser = async (req, res) => {
             .input("user_id", sql.Int, user_id)
             //.input("agent_id", sql.Int, agent_id)
             .query(`
-                UPDATE [dbo].[users] 
-                SET status = 0, updated_at = GETDATE() 
+                UPDATE users 
+                SET status = 0, updated_at = NOW() 
                 WHERE user_id = @user_id
             `);
 

@@ -15,10 +15,10 @@ exports.getRole = async (req, res) => {
 
         const result = await pool.request()
             .query(`
-                SELECT [role_id]
-      ,[role_name]
-      ,[description]
-  FROM [dbo].[roles]
+                SELECT role_id
+      ,role_name
+      ,description
+  FROM roles
             `);
 
 
@@ -69,7 +69,7 @@ exports.createRole = async (req, res) => {
 
             .query(`
 
-                INSERT INTO [dbo].[roles]
+                INSERT INTO roles
                 (
                     role_name,
                     description
@@ -79,7 +79,7 @@ exports.createRole = async (req, res) => {
                     @role_name,
                     @description
                 );
- SELECT SCOPE_IDENTITY() AS role_id;
+ SELECT LAST_INSERT_ID() AS role_id;
             `);
 
 
@@ -119,7 +119,7 @@ exports.updateRole = async (req, res) => {
 
 
             .query(`
-UPDATE [dbo].[roles]
+UPDATE roles
 SET 
     role_name=@role_name,
     description=@description
@@ -159,7 +159,7 @@ exports.deleteRole = async (req, res) => {
         const result = await pool.request()
             .input("role_id", sql.Int, role_id)
             .query(`
-                DELETE FROM [dbo].[roles]
+                DELETE FROM roles
                 WHERE role_id = @role_id
             `);
 

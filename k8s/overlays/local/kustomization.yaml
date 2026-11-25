@@ -9,7 +9,7 @@ configMapGenerator:
     behavior: merge
     literals:
       - DB_SERVER=host.docker.internal
-      - DB_PORT=1434
+      - DB_PORT=3306   # MySQL ในเครื่อง
 images:
   - name: bev-claim-frontend
     newName: bev-claim-frontend

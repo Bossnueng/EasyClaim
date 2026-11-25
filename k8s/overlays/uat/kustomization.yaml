@@ -13,16 +13,39 @@ resources:
 # ค่าที่ไม่ลับ — ค่าลับ (DB_SERVER, DB_USER, DB_PASSWORD, DB_DATABASE, JWT_SECRET) มาจาก Vault ผ่าน external-secret.yaml
 # ห้ามใส่ key ซ้ำกับใน Vault ที่นี่ เพราะ configMapRef อยู่หลัง secretRef ใน backend.yaml จึงทับค่าจาก Vault
 configMapGenerator:
-- name: bev-claim-backend-config
-  behavior: merge
+- behavior: merge
   literals:
-  - DB_PORT=1433
+  - DB_PORT=3306   # MySQL (backend ใช้ mysql2)
   - BASE_URL=https://logisticssandbox-uat.thaibevapp.com/bev-claim
+  name: bev-claim-backend-config
+
+# UAT: ย่นเวลา auto-confirm ลายเซ็นลูกค้าเหลือ 5 นาที เพื่อให้ทดสอบได้เร็ว
+# (image เดียวกันกับ PROD — PROD ไม่ได้ตั้งค่านี้ จึงใช้ 24 ชม. / 72 ชม. ตามที่ build ไว้)
+# ค่าเป็นวินาที — แก้ตรงนี้แล้ว Argo CD sync จะ restart pod web ให้เอง ไม่ต้อง build ใหม่
+patches:
+- target:
+    kind: Deployment
+    name: bev-claim-frontend
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: bev-claim-frontend
+    spec:
+      template:
+        spec:
+          containers:
+          - name: frontend
+            env:
+            - name: AUTO_CONFIRM_SUBMIT_SECONDS
+              value: "300"
+            - name: AUTO_CONFIRM_RECEIVE_SECONDS
+              value: "300"
 
 images:
 - name: bev-claim-backend
   newName: harborregistryii.thaibevapp.com/lrdi/bev-claim-backend
-  newTag: v0.0.0-uat
+  newTag: v1.0.0-uat.2
 - name: bev-claim-frontend
   newName: harborregistryii.thaibevapp.com/lrdi/bev-claim-frontend
-  newTag: v0.0.0-uat
+  newTag: v1.0.0-uat.2

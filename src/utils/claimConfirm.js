@@ -40,7 +40,9 @@ export const readConfirm = (logs = [], kind, usersMap = {}) => {
 };
 
 export const getConfirmStartAt = (kind, claim, logs = [], deliveries = []) => {
-  if (kind === CONFIRM_KIND.SUBMIT) return claim?.claim_date || claim?.created_at || null;
+  // created_at มีเวลาจริงที่สร้างเคลม (สถานะเป็น Pending ทันทีตอนสร้าง)
+  // claim_date เป็นชนิด DATE (เที่ยงคืน) ใช้เป็นค่าสำรองเท่านั้น — ถ้าใช้ก่อน เวลาจะถูกนับตั้งแต่ 00:00
+  if (kind === CONFIRM_KIND.SUBMIT) return claim?.created_at || claim?.claim_date || null;
   return (
     getStatusStampDate(logs, ["10"]) ||
     getDeliveryDateByStatus(deliveries, claim?.claim_id, 10) ||

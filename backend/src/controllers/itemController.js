@@ -7,13 +7,13 @@ exports.getitem = async (req, res) => {
 
         const result = await pool.request()
             .query(`
-                SELECT [item_id]
-      ,[item_code]
-      ,[item_name]
-      ,[status]
-      ,[created_at]
-      ,[updated_at]
-  FROM [dbo].[items]
+                SELECT item_id
+      ,item_code
+      ,item_name
+      ,status
+      ,created_at
+      ,updated_at
+  FROM items
             `);
 
 
@@ -44,7 +44,7 @@ exports.createitem = async (req, res) => {
             .input("status", sql.NVarChar, status)
             .query(`
 
-                INSERT INTO [dbo].[items]
+                INSERT INTO items
                 (
                     item_code,
                     item_name,
@@ -57,10 +57,10 @@ exports.createitem = async (req, res) => {
                     @item_code,
                     @item_name,
                     @status,
-                    GETDATE(),
-                    GETDATE()
+                    NOW(),
+                    NOW()
                 );
- SELECT SCOPE_IDENTITY() AS item_id;
+ SELECT LAST_INSERT_ID() AS item_id;
             `);
 
 
@@ -95,7 +95,7 @@ exports.updataitem = async (req, res) => {
             item_code = @item_code,
             item_name = @item_name,
             status = @status,
-            updated_at=GETDATE()
+            updated_at=NOW()
         WHERE item_id = @item_id
     `);
 
@@ -131,7 +131,7 @@ exports.delItem = async (req, res) => {
         });
 
         await request.query(`
-            DELETE FROM [dbo].[items]
+            DELETE FROM items
             WHERE item_id IN (${params.join(",")})
         `);
 

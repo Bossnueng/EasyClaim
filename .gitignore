@@ -54,5 +54,10 @@ desktop.ini
 # ===== เอกสารในเครื่อง (ไม่ขึ้น git) =====
 BACKEND_SIGNATURE_API.md
 CHANGELOG_UI.md
+CHANGELOG_DEPLOY.md
+# ไฟล์ Application ของ Argo CD (ใช้สร้างในหน้า Argo CD เอง ไม่ขึ้น git เหมือน bev-queue)
+k8s/argocd/
+# คู่มือ YAML / Deploy แบบ PDF ขนาด A4
+manuals/
 DOCKER.md
 K8S.md

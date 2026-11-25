@@ -31,14 +31,14 @@ exports.Delivery = async (req, res) => {
         const pool = await connectDB();
         const result = await pool.request()
             .query(`
-                SELECT [delivery_id]
-                      ,[claim_id]
-                      ,[driver_id]
-                      ,[delivery_status]
-                      ,[receive_date]
-                      ,[created_at]
-                FROM [dbo].[Delivery]
-                ORDER BY [created_at] DESC
+                SELECT delivery_id
+                      ,claim_id
+                      ,driver_id
+                      ,delivery_status
+                      ,receive_date
+                      ,created_at
+                FROM Delivery
+                ORDER BY created_at DESC
             `);
 
         res.json({
@@ -74,13 +74,13 @@ exports.DeliveryDriver = async (req, res) => {
 				D.truck_plate,
 				c.claim_no,
 				c.shipment
-                FROM [dbo].[Delivery] D
+                FROM Delivery D
 				left join claims c on c.claim_id=D.claim_id
-                Where D.driver_id=@driver_id and convert(date,D.receive_date)=@receive_date 
+                Where D.driver_id=@driver_id and DATE(D.receive_date)=@receive_date 
                 and D.delivery_status=@delivery_status
                     AND NOT EXISTS (
         SELECT 1
-        FROM [dbo].[Delivery] D2
+        FROM Delivery D2
         WHERE D2.claim_id = D.claim_id
           AND D2.delivery_status = 9
     )
@@ -127,7 +127,7 @@ exports.createDelivery = async (req, res) => {
             .input("truck_plate", sql.NVarChar(10), truck_plate)
             .input("img_parth", sql.NVarChar(255), uploadedFile)
             .query(`
-                INSERT INTO [dbo].[Delivery]
+                INSERT INTO Delivery
                 (
                     claim_id,
                     driver_id,
@@ -141,12 +141,12 @@ exports.createDelivery = async (req, res) => {
                     @claim_id,
                     @driver_id,
                     @delivery_status,
-                    GETDATE(),
+                    NOW(),
                     @truck_plate,
                     @img_parth
                 );
 
-                SELECT SCOPE_IDENTITY() AS delivery_id;
+                SELECT LAST_INSERT_ID() AS delivery_id;
             `);
 
         const sqlupdataClaim = `
@@ -185,12 +185,12 @@ exports.UpdataDelivery = async (req, res) => {
             .input("driver_id", sql.VarChar, driver_id ? String(driver_id) : null)
             .input("delivery_status", sql.VarChar, delivery_status)
             .query(`
-                UPDATE [dbo].[Delivery]
+                UPDATE Delivery
                 SET 
                     claim_id = @claim_id,
                     driver_id = @driver_id,
                     delivery_status = @delivery_status,
-                    receive_date = GETDATE()
+                    receive_date = NOW()
                 WHERE
                     delivery_id=@delivery_id
             `);
@@ -220,7 +220,7 @@ exports.DelDelivery = async (req, res) => {
         const result = await pool.request()
             .input("delivery_id", sql.Int, delivery_id)
             .query(`
-                DELETE FROM [dbo].[Delivery]
+                DELETE FROM Delivery
                 WHERE delivery_id=@delivery_id
             `);
 

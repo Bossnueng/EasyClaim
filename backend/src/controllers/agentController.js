@@ -4,8 +4,8 @@ exports.getagent = async (req, res) => {
     try {
         const pool = await connectDB();
         const result = await pool.request().query(`
-            SELECT [agent_id], [agent_code], [agent_name], [teams_webhook_url], [status], [created_at]
-            FROM [dbo].[agents]
+            SELECT agent_id, agent_code, agent_name, teams_webhook_url, status, created_at
+            FROM agents
         `);
 
         res.json({ status: true, data: result.recordset });
@@ -24,10 +24,10 @@ exports.createAgent = async (req, res) => {
             .input("teams_webhook_url", sql.NVarChar, teams_webhook_url || null)
             .input("status", sql.Int, 1)
             .query(`
-                INSERT INTO [dbo].[agents] (agent_code, agent_name, teams_webhook_url, status, created_at)
-                VALUES (@agent_code, @agent_name, @teams_webhook_url, @status, GETDATE());
+                INSERT INTO agents (agent_code, agent_name, teams_webhook_url, status, created_at)
+                VALUES (@agent_code, @agent_name, @teams_webhook_url, @status, NOW());
 
-                SELECT SCOPE_IDENTITY() AS agent_id;
+                SELECT LAST_INSERT_ID() AS agent_id;
             `);
 
         res.json({ status: true, message: "Insert Success", agent_id: result.recordset[0].agent_id });
@@ -48,7 +48,7 @@ exports.updateAgent = async (req, res) => {
             .input("teams_webhook_url", sql.NVarChar, teams_webhook_url || null)
             .input("status", sql.Int, status)
             .query(`
-                UPDATE [dbo].[agents]
+                UPDATE agents
                 SET agent_code=@agent_code, agent_name=@agent_name, teams_webhook_url=@teams_webhook_url, status=@status
                 WHERE agent_id=@agent_id
             `);
@@ -66,11 +66,11 @@ exports.deleteAgent = async (req, res) => {
 
         await pool.request()
             .input("agent_id", sql.Int, agent_id)
-            .query(`DELETE FROM [dbo].[user_agents] WHERE agent_id=@agent_id`);
+            .query(`DELETE FROM user_agents WHERE agent_id=@agent_id`);
 
         await pool.request()
             .input("agent_id", sql.Int, agent_id)
-            .query(`DELETE FROM [dbo].[agents] WHERE agent_id=@agent_id`);
+            .query(`DELETE FROM agents WHERE agent_id=@agent_id`);
 
         res.json({ status: true, message: "Delete Success", agent_id });
     } catch (error) {

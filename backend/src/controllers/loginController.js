@@ -34,7 +34,7 @@ exports.checklogin = async (req, res) => {
                     email,
                     role_id,
                     status
-                FROM [dbo].[users]
+                FROM users
                 WHERE username = @username
             `);
 
@@ -69,7 +69,7 @@ exports.checklogin = async (req, res) => {
             .input("user_id", sql.Int, user.user_id)
             .query(`
                 SELECT agent_id 
-                FROM [dbo].[user_agents] 
+                FROM user_agents 
                 WHERE user_id = @user_id
             `);
 
@@ -80,8 +80,8 @@ exports.checklogin = async (req, res) => {
         await pool.request()
             .input("user_id", sql.Int, user.user_id)
             .query(`
-                UPDATE [dbo].[users]
-                SET last_login = GETDATE()
+                UPDATE users
+                SET last_login = NOW()
                 WHERE user_id = @user_id
             `);
 

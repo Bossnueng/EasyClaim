@@ -10,9 +10,9 @@ exports.getAgentsByUserId = async (req, res) => {
         const result = await pool.request()
             .input("user_id", sql.Int, userId)
             .query(`
-                SELECT a.[agent_id], a.[agent_code], a.[agent_name], a.[status]
-                FROM [dbo].[user_agents] ua
-                INNER JOIN [dbo].[agents] a ON ua.agent_id = a.agent_id
+                SELECT a.agent_id, a.agent_code, a.agent_name, a.status
+                FROM user_agents ua
+                INNER JOIN agents a ON ua.agent_id = a.agent_id
                 WHERE ua.user_id = @user_id
             `);
 
@@ -34,9 +34,9 @@ exports.getElementsByAgentId = async (req, res) => {
         const result = await pool.request()
             .input("agent_id", sql.Int, agentId)
             .query(`
-                SELECT u.[user_id], u.[username], u.[full_name], u.[email], u.[phone]
-                FROM [dbo].[user_agents] ua
-                INNER JOIN [dbo].[users] u ON ua.user_id = u.user_id
+                SELECT u.user_id, u.username, u.full_name, u.email, u.phone
+                FROM user_agents ua
+                INNER JOIN users u ON ua.user_id = u.user_id
                 WHERE ua.agent_id = @agent_id
             `);
 
@@ -69,14 +69,12 @@ exports.assignAgentsToUser = async (req, res) => {
                 .input("user_id", sql.Int, user_id)
                 .input("agent_id", sql.Int, agentId)
                 .query(`
-                    IF NOT EXISTS (
-                        SELECT 1 FROM [dbo].[user_agents] 
+                    INSERT INTO user_agents (user_id, agent_id)
+                    SELECT @user_id, @agent_id FROM DUAL
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM user_agents
                         WHERE user_id = @user_id AND agent_id = @agent_id
                     )
-                    BEGIN
-                        INSERT INTO [dbo].[user_agents] (user_id, agent_id)
-                        VALUES (@user_id, @agent_id)
-                    END
                 `);
         }
 
@@ -106,7 +104,7 @@ exports.updateUserAgents = async (req, res) => {
         // Step A: ลบ Mapping เดิมของ User รายนี้ออกทั้งหมด
         await pool.request()
             .input("user_id", sql.Int, user_id)
-            .query(`DELETE FROM [dbo].[user_agents] WHERE user_id = @user_id;`);
+            .query(`DELETE FROM user_agents WHERE user_id = @user_id;`);
 
         // Step B: เพิ่มรายการใหม่ที่เลือกเข้ามา
         for (const agentId of agent_ids) {
@@ -114,7 +112,7 @@ exports.updateUserAgents = async (req, res) => {
                 .input("user_id", sql.Int, user_id)
                 .input("agent_id", sql.Int, agentId)
                 .query(`
-                    INSERT INTO [dbo].[user_agents] (user_id, agent_id)
+                    INSERT INTO user_agents (user_id, agent_id)
                     VALUES (@user_id, @agent_id);
                 `);
         }
@@ -138,7 +136,7 @@ exports.removeAgentFromUser = async (req, res) => {
             .input("user_id", sql.Int, user_id)
             .input("agent_id", sql.Int, agent_id)
             .query(`
-                DELETE FROM [dbo].[user_agents]
+                DELETE FROM user_agents
                 WHERE user_id = @user_id AND agent_id = @agent_id;
             `);
 

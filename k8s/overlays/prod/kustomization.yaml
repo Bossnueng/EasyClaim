@@ -16,7 +16,7 @@ configMapGenerator:
 - name: bev-claim-backend-config
   behavior: merge
   literals:
-  - DB_PORT=1433
+  - DB_PORT=3306   # MySQL (backend ใช้ mysql2)
   - BASE_URL=https://logisticssandbox.thaibevapp.com/bev-claim
 
 images:

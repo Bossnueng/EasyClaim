@@ -28,6 +28,21 @@ export const loginService = {
     }
   },
 
+  /**
+   * สมัครใช้งานผ่านหน้าเว็บ — บัญชีจะอยู่ในสถานะรออนุมัติจนกว่า admin อนุมัติ
+   * POST /register
+   *   พนักงาน : { user_type: "employee", employee_id, full_name, password, email?, phone? }
+   *   คนนอก   : { user_type: "external", username, full_name, password, email, phone? }
+   */
+  register: async (payload) => {
+    try {
+      const response = await api.post("/register", payload);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
   logout: () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");

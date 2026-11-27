@@ -21,7 +21,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY index.js ./
 COPY socket ./socket
-COPY database ./database
+# backend/database (สคริปต์ SQL) ไม่ขึ้น git และแอปไม่ได้ใช้ตอนรัน — ไม่ต้อง copy เข้า image
 COPY src/config ./src/config
 COPY src/controllers ./src/controllers
 COPY src/middleware ./src/middleware

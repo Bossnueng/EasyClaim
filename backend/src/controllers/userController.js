@@ -51,7 +51,7 @@ exports.createUser = async (req, res) => {
             .input("username", sql.VarChar, username)
             .input("password_hash", sql.VarChar, password_hash)
             .input("full_name", sql.NVarChar, full_name)
-            .input("email", sql.VarChar, email)
+            .input("email", sql.VarChar, email || null) // อีเมลว่างเก็บเป็น NULL (คอลัมน์ email เป็น UNIQUE)
             .input("phone", sql.VarChar, phone)
             .input("role_id", sql.Int, role_id)
             .query(`
@@ -93,7 +93,7 @@ exports.updateUser = async (req, res) => {
                 .input("username", sql.VarChar, username)
                 .input("password_hash", sql.VarChar, password_hash)
                 .input("full_name", sql.NVarChar, full_name)
-                .input("email", sql.VarChar, email)
+                .input("email", sql.VarChar, email || null) // อีเมลว่างเก็บเป็น NULL (คอลัมน์ email เป็น UNIQUE)
                 .input("phone", sql.VarChar, phone)
                 .input("role_id", sql.Int, role_id)
                 .query(`
@@ -107,7 +107,7 @@ exports.updateUser = async (req, res) => {
                 .input("user_id", sql.Int, user_id)
                 .input("username", sql.VarChar, username)
                 .input("full_name", sql.NVarChar, full_name)
-                .input("email", sql.VarChar, email)
+                .input("email", sql.VarChar, email || null) // อีเมลว่างเก็บเป็น NULL (คอลัมน์ email เป็น UNIQUE)
                 .input("phone", sql.VarChar, phone)
                 .input("role_id", sql.Int, role_id)
                 .query(`

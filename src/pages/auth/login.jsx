@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Form, Input, Button, Alert } from "antd"; // 👈 เพิ่ม Alert เข้ามา
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { SafetyCertificateFilled, UserOutlined, LockOutlined } from "@ant-design/icons";
 import loginService from "../../services/loginService";
 
@@ -91,7 +91,7 @@ const Login = () => {
         </h2>
 
         <p style={{ fontSize: "14px", color: "#64748b", margin: "0 0 24px 0" }}>
-          กรอกข้อมูลชื่อผู้ใช้และรหัสผ่านเพื่อเข้าสู่ระบบ
+          กรอกข้อมูลเพื่อเข้าสู่ระบบ
         </p>
 
         {/* 👈 แสดงกล่องข้อความแจ้งเตือนแบบชัดเจนเมื่อเกิด Error */}
@@ -120,7 +120,7 @@ const Login = () => {
           <Form.Item
             label={<span style={{ fontWeight: "600", color: "#334155" }}>ชื่อผู้ใช้</span>}
             name="username"
-            rules={[{ required: true, message: "กรุณากรอก Username!" }]}
+            rules={[{ required: true, whitespace: true, message: "กรุณากรอกชื่อผู้ใช้" }]}
             style={{ marginBottom: "20px", textAlign: "left" }}
           >
             <Input
@@ -135,7 +135,7 @@ const Login = () => {
           <Form.Item
             label={<span style={{ fontWeight: "600", color: "#334155" }}>รหัสผ่าน</span>}
             name="password"
-            rules={[{ required: true, message: "กรุณากรอก Password!" }]}
+            rules={[{ required: true, message: "กรุณากรอกรหัสผ่าน" }]}
             style={{ marginBottom: "28px", textAlign: "left" }}
           >
             <Input.Password
@@ -169,6 +169,13 @@ const Login = () => {
             </Button>
           </Form.Item>
         </Form>
+
+        <div style={{ marginTop: "20px", fontSize: "14px", color: "#64748b" }}>
+          ยังไม่มีบัญชี?{" "}
+          <Link to="/register" style={{ color: "#059669", fontWeight: 600 }}>
+            ลงทะเบียนเข้าใช้งาน
+          </Link>
+        </div>
       </div>
     </div>
   );

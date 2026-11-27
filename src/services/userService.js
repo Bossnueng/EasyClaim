@@ -63,6 +63,45 @@ export const userService = {
   },
 
   /**
+   * จำนวนผู้สมัครที่รอ admin อนุมัติ (ใช้แสดงตัวเลขบนเมนู)
+   * GET /users/pending-count -> { status, pending }
+   */
+  getPendingCount: async () => {
+    try {
+      const response = await api.get("/users/pending-count");
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
+  /**
+   * อนุมัติผู้สมัคร พร้อมกำหนด Role และ Agent
+   * PUT /users/:id/approve { role_id, agent_ids }
+   */
+  approveUser: async (user_id, { role_id, agent_ids = [] }) => {
+    try {
+      const response = await api.put(`/users/${user_id}/approve`, { role_id, agent_ids });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
+  /**
+   * ไม่อนุมัติผู้สมัคร
+   * PUT /users/:id/reject
+   */
+  rejectUser: async (user_id) => {
+    try {
+      const response = await api.put(`/users/${user_id}/reject`);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : new Error(error.message);
+    }
+  },
+
+  /**
    * ปิดการใช้งาน User (Soft Delete)
    * DELETE /delusers/:id -> userController.deluser
    * @param {number|string} user_id 

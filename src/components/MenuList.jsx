@@ -1,4 +1,5 @@
-import { Menu } from "antd";
+import { useEffect, useState } from "react";
+import { Menu, Badge } from "antd";
 import {
   ShopOutlined,
   SafetyCertificateOutlined,
@@ -11,8 +12,11 @@ import {
 } from "@ant-design/icons";
 import { NavLink, useLocation } from "react-router-dom";
 import { isStaffUser, isAdminUser, CUSTOMER_ROLE_ID } from "../constants/roles";
+import userService from "../services/userService";
+import socket from "../services/socket";
 
-const MenuList = () => {
+// onNavigate: เรียกเมื่อกดเลือกเมนู (บนจอเล็กใช้ปิดเมนูที่ลอยอยู่)
+const MenuList = ({ onNavigate }) => {
   const location = useLocation();
 
   // ดึงข้อมูล User จาก localStorage
@@ -22,6 +26,30 @@ const MenuList = () => {
 
   const isStaffRole = isStaffUser(user);
   const isAdminRole = isAdminUser(user); // 🟢 2. เงื่อนไขสำหรับ Admin เท่านั้น (role_id = 1)
+
+  // จำนวนผู้สมัครใช้งานที่รอ admin อนุมัติ — แสดงเป็นตัวเลขบนเมนู "จัดการผู้ใช้งาน"
+  const [pendingUsers, setPendingUsers] = useState(0);
+  useEffect(() => {
+    if (!isAdminRole) return undefined;
+    let alive = true;
+    const refresh = () =>
+      userService
+        .getPendingCount()
+        .then((res) => alive && setPendingUsers(Number(res?.pending) || 0))
+        .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 60 * 1000);
+    window.addEventListener("bev-claim:pending-users-changed", refresh);
+    socket.on("user:registered", refresh);
+    socket.on("user:updated", refresh);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("bev-claim:pending-users-changed", refresh);
+      socket.off("user:registered", refresh);
+      socket.off("user:updated", refresh);
+    };
+  }, [isAdminRole]);
 
   const getSelectedKey = () => {
     // Customer
@@ -82,7 +110,13 @@ const MenuList = () => {
   };
 
   return (
-    <Menu theme="dark" mode="inline" selectedKeys={[getSelectedKey()]} className="menu-bar">
+    <Menu
+      theme="dark"
+      mode="inline"
+      selectedKeys={[getSelectedKey()]}
+      className="menu-bar"
+      onClick={() => onNavigate?.()}
+    >
 
       {/* ==================== STAFF MENUS ==================== */}
       {isStaffRole && (
@@ -100,7 +134,17 @@ const MenuList = () => {
             <>
 
               <Menu.Item key="staff-users" icon={<UserOutlined />}>
-                <NavLink to="/staff/users">จัดการผู้ใช้งาน</NavLink>
+                <NavLink to="/staff/users">
+                  จัดการผู้ใช้งาน
+                  {pendingUsers > 0 && (
+                    <Badge
+                      count={pendingUsers}
+                      size="small"
+                      title={`รออนุมัติ ${pendingUsers} คน`}
+                      style={{ marginLeft: 8, boxShadow: "none" }}
+                    />
+                  )}
+                </NavLink>
               </Menu.Item>
 
               <Menu.Item key="staff-agents" icon={<ShopOutlined />}>

@@ -4,6 +4,14 @@ const router = express.Router();
 const userController = require("../controllers/userController");
 const { verifyToken } = require("../middleware/authMiddleware");
 
+const registrationController = require("../controllers/registrationController");
+
+// สมัครใช้งานผ่านหน้าเว็บ (สถานะรออนุมัติ) + admin อนุมัติ/ไม่อนุมัติ
+router.post("/register", registrationController.register);
+router.get("/users/pending-count", registrationController.getPendingCount);
+router.put("/users/:id/approve", registrationController.approveUser);
+router.put("/users/:id/reject", registrationController.rejectUser);
+
 // GET
 router.get("/users", userController.getUsers);
 

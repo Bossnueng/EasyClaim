@@ -9,6 +9,7 @@ import CustomerClaimDatail from "../pages/customer/CustomerClaimDetail";
 import AgentManagement from "../pages/admin/AgentManagement";
 import RoleManagement from "../pages/admin/RoleManagement";
 import Login from "../pages/auth/login";
+import Register from "../pages/auth/Register";
 import UserSettings from "../pages/auth/UserSettings";
 import UserManagement from "../pages/admin/UserManagement";
 import SignatureManagement from "../pages/admin/SignatureManagement";
@@ -97,6 +98,7 @@ function AppRouter() {
 
       <Route element={<PublicRoute />}>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>

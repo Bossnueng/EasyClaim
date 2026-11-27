@@ -176,6 +176,33 @@ button:not(.ant-btn):focus-visible {
 .sidebar {
   color: #fff;
 }
+
+/* จอเล็ก (< 992px): เมนูลอยทับเนื้อหา ไม่ดันเนื้อหาให้แคบลง */
+.sidebar.sidebar--overlay {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  height: 100vh;
+  z-index: 1001;
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.25);
+}
+.sidebar.sidebar--overlay.ant-layout-sider-collapsed {
+  box-shadow: none;
+}
+
+/* พื้นหลังทึบตอนเปิดเมนูบนจอเล็ก — แตะเพื่อปิดเมนู */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.45);
+  animation: sidebar-backdrop-in 0.2s ease-out;
+}
+@keyframes sidebar-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 .logo {
   display: flex;
   align-items: center;

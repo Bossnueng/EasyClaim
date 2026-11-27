@@ -15,6 +15,8 @@ import {
   Radio,
   Row,
   Col,
+  Alert,
+  Badge,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -28,7 +30,9 @@ import {
   LockOutlined,
   ShopOutlined,
   IdcardOutlined,
-  StopOutlined,DownOutlined
+  StopOutlined,DownOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
 } from "@ant-design/icons";
 
 import userService from "../../services/userService";
@@ -56,11 +60,39 @@ export default function UserManagement() {
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
   const [agentSubmitting, setAgentSubmitting] = useState(false);
 
+  // Approve Modal State (ผู้สมัครผ่านหน้าเว็บ)
+  const [approvingUser, setApprovingUser] = useState(null);
+  const [approveSubmitting, setApproveSubmitting] = useState(false);
+
   const [form] = Form.useForm();
   const [agentForm] = Form.useForm();
+  const [approveForm] = Form.useForm();
   const searchInput = useRef(null);
 
-  const isUserInactive = (status) => Number(status) === 0;
+  // users.status: '1'/'ACTIVE' ใช้งาน, '0' ปิด, 'PENDING' รออนุมัติ, 'REJECTED' ไม่อนุมัติ
+  const getStatusKey = (status) => {
+    const s = String(status ?? "").trim().toUpperCase();
+    if (s === "PENDING") return "pending";
+    if (s === "REJECTED") return "rejected";
+    if (s === "0" || s === "INACTIVE") return "inactive";
+    return "active";
+  };
+  const isUserPending = (status) => getStatusKey(status) === "pending";
+  const isUserRejected = (status) => getStatusKey(status) === "rejected";
+  const isUserInactive = (status) => ["inactive", "rejected"].includes(getStatusKey(status));
+  const pendingCount = users.filter((u) => isUserPending(u.status)).length;
+
+  // ผู้ลงทะเบียนผ่านหน้าเว็บ: username ตัวเลขล้วน = พนักงาน (รหัสพนักงาน), มีตัวอักษร = บุคคลภายนอก
+  const isEmployeeUsername = (username) => /^\d+$/.test(String(username ?? ""));
+  const applicantTypeTag = (record) =>
+    isEmployeeUsername(record.username) ? (
+      <Tag color="geekblue" icon={<IdcardOutlined />} style={{ fontSize: 11, marginTop: 4 }}>พนักงาน</Tag>
+    ) : (
+      <Tag color="purple" icon={<ShopOutlined />} style={{ fontSize: 11, marginTop: 4 }}>บุคคลภายนอก</Tag>
+    );
+
+  // แจ้งเมนูด้านข้างให้อัปเดตตัวเลขผู้รออนุมัติ
+  const notifyPendingChanged = () => window.dispatchEvent(new Event("bev-claim:pending-users-changed"));
 
   useEffect(() => {
     fetchData();
@@ -212,6 +244,43 @@ export default function UserManagement() {
     }
   };
 
+  const handleOpenApprove = (user) => {
+    setApprovingUser(user);
+    approveForm.resetFields();
+    setTimeout(() => approveForm.setFieldsValue({ role_id: undefined, agent_ids: [] }), 0);
+  };
+
+  const handleApprove = async (values) => {
+    if (!approvingUser) return;
+    setApproveSubmitting(true);
+    try {
+      const roleId = Number(values.role_id);
+      await userService.approveUser(approvingUser.user_id, {
+        role_id: roleId,
+        agent_ids: roleId === 1 ? [] : (values.agent_ids || []).map(Number),
+      });
+      message.success(`อนุมัติ "${approvingUser.full_name || approvingUser.email}" เรียบร้อย`);
+      setApprovingUser(null);
+      fetchData();
+      notifyPendingChanged();
+    } catch (err) {
+      message.error("อนุมัติไม่สำเร็จ: " + (err.message || err));
+    } finally {
+      setApproveSubmitting(false);
+    }
+  };
+
+  const handleReject = async (record) => {
+    try {
+      await userService.rejectUser(record.user_id);
+      message.success(`ไม่อนุมัติ "${record.full_name || record.email}" เรียบร้อย`);
+      fetchData();
+      notifyPendingChanged();
+    } catch (err) {
+      message.error("ทำรายการไม่สำเร็จ: " + (err.message || err));
+    }
+  };
+
   const handleToggleStatus = async (record) => {
     try {
       if (!isUserInactive(record.status)) {
@@ -245,13 +314,16 @@ export default function UserManagement() {
       ...getColumnSearchProps("username", "Username"),
       sorter: (a, b) => (a.username || "").localeCompare(b.username || ""),
       render: (text, record) => (
-        <Text
-          delete={isUserInactive(record.status)}
-          disabled={isUserInactive(record.status)}
-          style={{ fontSize: 13, fontWeight: 600 }}
-        >
-          {text}
-        </Text>
+        <>
+          <Text
+            delete={isUserInactive(record.status)}
+            disabled={isUserInactive(record.status)}
+            style={{ fontSize: 13, fontWeight: 600 }}
+          >
+            {text}
+          </Text>
+          {(isUserPending(record.status) || isUserRejected(record.status)) && <div>{applicantTypeTag(record)}</div>}
+        </>
       ),
     },
     {
@@ -293,6 +365,9 @@ export default function UserManagement() {
       })),
       onFilter: (value, record) => Number(record.role_id) === Number(value),
       render: (role_id, record) => {
+        if (isUserPending(record.status)) {
+          return <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>รอกำหนด</Tag>;
+        }
         const matched = roles.find((r) => Number(r.role_id) === Number(role_id));
         return (
           <Tag
@@ -308,6 +383,9 @@ export default function UserManagement() {
       title: "เอเย่นต์ที่เกี่ยวข้อง",
       key: "agents",
       render: (_, record) => {
+        if (isUserPending(record.status)) {
+          return <span style={{ fontSize: 12, color: "#d46b08" }}>รอ admin ผูก Agent</span>;
+        }
 
         if (Number(record.role_id) === 1) {
           return (
@@ -350,12 +428,13 @@ export default function UserManagement() {
       key: "status",
       width: 110,
       align: "center",
-      render: (status) =>
-        !isUserInactive(status) ? (
-          <Tag color="success" icon={<CheckCircleOutlined />}>เปิดใช้งาน</Tag>
-        ) : (
-          <Tag color="default" icon={<StopOutlined />}>ปิดใช้งาน</Tag>
-        ),
+      render: (status) => {
+        const key = getStatusKey(status);
+        if (key === "pending") return <Tag color="warning" icon={<ClockCircleOutlined />}>รออนุมัติ</Tag>;
+        if (key === "rejected") return <Tag color="error" icon={<CloseCircleOutlined />}>ไม่อนุมัติ</Tag>;
+        if (key === "inactive") return <Tag color="default" icon={<StopOutlined />}>ปิดใช้งาน</Tag>;
+        return <Tag color="success" icon={<CheckCircleOutlined />}>เปิดใช้งาน</Tag>;
+      },
     },
     {
       title: "จัดการ",
@@ -364,6 +443,39 @@ export default function UserManagement() {
       width: 160,
       render: (_, record) => {
         const inactive = isUserInactive(record.status);
+
+        // ผู้สมัครผ่านหน้าเว็บ: อนุมัติ (เลือก role + agent) / ไม่อนุมัติ
+        // ที่เคยไม่อนุมัติไปแล้ว ยังกดอนุมัติภายหลังได้
+        if (isUserPending(record.status) || isUserRejected(record.status)) {
+          return (
+            <Space size="small">
+              <Button
+                type="primary"
+                size="small"
+                icon={<CheckCircleOutlined />}
+                onClick={() => handleOpenApprove(record)}
+                style={{ fontSize: 11, paddingLeft: 14, paddingRight: 14 }}
+              >
+                อนุมัติ
+              </Button>
+              {isUserPending(record.status) && (
+                <Popconfirm
+                  title="ยืนยันไม่อนุมัติ"
+                  description={`ไม่อนุมัติการสมัครของ "${record.full_name || record.email}" ?`}
+                  onConfirm={() => handleReject(record)}
+                  okText="ไม่อนุมัติ"
+                  cancelText="ยกเลิก"
+                  okButtonProps={{ danger: true, style: { paddingLeft: 20, paddingRight: 20 } }}
+                  cancelButtonProps={{ style: { paddingLeft: 20, paddingRight: 20 } }}
+                >
+                  <Button danger size="small" icon={<CloseCircleOutlined />} style={{ fontSize: 11, paddingLeft: 14, paddingRight: 14 }}>
+                    ไม่อนุมัติ
+                  </Button>
+                </Popconfirm>
+              )}
+            </Space>
+          );
+        }
 
         if (inactive) {
           return (
@@ -434,10 +546,11 @@ export default function UserManagement() {
 
     if (!matchText) return false;
 
-    if (statusFilter === "active") return !isUserInactive(u.status);
+    if (statusFilter === "pending") return isUserPending(u.status);
+    if (statusFilter === "active") return getStatusKey(u.status) === "active";
     if (statusFilter === "inactive") return isUserInactive(u.status);
     return true;
-  });
+  }).sort((a, b) => Number(isUserPending(b.status)) - Number(isUserPending(a.status))); // รออนุมัติขึ้นก่อน
 
   return (
     <div style={{ padding: 24, minHeight: "100vh", backgroundColor: "#f8fafc" }}>
@@ -496,6 +609,22 @@ export default function UserManagement() {
           </div>
         </Card>
 
+        {pendingCount > 0 && statusFilter !== "pending" && (
+          <Alert
+            type="warning"
+            showIcon
+            icon={<ClockCircleOutlined />}
+            style={{ borderRadius: 12 }}
+            message={`มีผู้สมัครใช้งานรออนุมัติ ${pendingCount} คน`}
+            description="ตรวจสอบข้อมูล แล้วกด “อนุมัติ” เพื่อกำหนดสิทธิ์ (Role) และ Agent ให้ผู้ใช้"
+            action={
+              <Button size="small" type="primary" onClick={() => setStatusFilter("pending")} style={{ paddingLeft: 16, paddingRight: 16 }}>
+                ดูรายการรออนุมัติ
+              </Button>
+            }
+          />
+        )}
+
         {/* Filter Bar & Table */}
         <Card borderless style={{ borderRadius: 12 }}>
           <div
@@ -523,8 +652,13 @@ export default function UserManagement() {
               buttonStyle="solid"
             >
               <Radio.Button value="all">ทั้งหมด ({users.length})</Radio.Button>
+              <Radio.Button value="pending">
+                <Badge dot={pendingCount > 0} offset={[4, -2]}>
+                  <span style={{ color: "inherit" }}>รออนุมัติ ({pendingCount})</span>
+                </Badge>
+              </Radio.Button>
               <Radio.Button value="active">
-                เปิดใช้งาน ({users.filter((u) => !isUserInactive(u.status)).length})
+                เปิดใช้งาน ({users.filter((u) => getStatusKey(u.status) === "active").length})
               </Radio.Button>
               <Radio.Button value="inactive">
                 ปิดใช้งาน ({users.filter((u) => isUserInactive(u.status)).length})
@@ -691,7 +825,76 @@ export default function UserManagement() {
           </Form>
         </Modal>
 
-        
+        {/* Modal อนุมัติผู้สมัคร: กำหนด Role + Agent */}
+        <Modal
+          title="อนุมัติผู้สมัครใช้งาน"
+          open={!!approvingUser}
+          onCancel={() => setApprovingUser(null)}
+          footer={null}
+          destroyOnClose
+          width={560}
+        >
+          {approvingUser && (
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px", margin: "12px 0 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 600 }}>{approvingUser.full_name || "-"}</span>
+                {applicantTypeTag(approvingUser)}
+              </div>
+              <div style={{ fontSize: 13, color: "#475569", marginTop: 4 }}>
+                {isEmployeeUsername(approvingUser.username) ? <IdcardOutlined /> : <UserOutlined />}{" "}
+                {isEmployeeUsername(approvingUser.username) ? "รหัสพนักงาน" : "ชื่อผู้ใช้"}: <b>{approvingUser.username}</b>
+              </div>
+              <div style={{ fontSize: 13, color: "#475569" }}>
+                <MailOutlined /> {approvingUser.email || "-"}
+                {approvingUser.phone ? <span style={{ marginLeft: 12 }}><PhoneOutlined /> {approvingUser.phone}</span> : null}
+              </div>
+            </div>
+          )}
+
+          <Form form={approveForm} layout="vertical" onFinish={handleApprove}>
+            <Form.Item
+              name="role_id"
+              label="สิทธิ์การใช้งาน (Role)"
+              rules={[{ required: true, message: "กรุณาเลือก Role" }]}
+            >
+              <Select
+                placeholder="-- เลือก Role --"
+                suffixIcon={<DownOutlined style={{ marginRight: 8, color: "#bfbfbf" }} />}
+                options={roles.map((r) => ({ value: Number(r.role_id), label: r.role_name }))}
+              />
+            </Form.Item>
+
+            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.role_id !== cur.role_id}>
+              {({ getFieldValue }) => {
+                const isAdmin = Number(getFieldValue("role_id")) === 1;
+                return (
+                  <Form.Item name="agent_ids" label="สังกัด/เอเย่นต์ที่เกี่ยวข้อง (เลือกได้หลายตัว)">
+                    <Select
+                      mode="multiple"
+                      allowClear
+                      disabled={isAdmin}
+                      placeholder={isAdmin ? "all Agent" : "-- เลือก Agent --"}
+                      maxTagCount="responsive"
+                      suffixIcon={<DownOutlined style={{ marginRight: 8, color: "#bfbfbf" }} />}
+                      options={agents.map((a) => ({ value: Number(a.agent_id), label: `${a.agent_name} (${a.agent_code})` }))}
+                    />
+                  </Form.Item>
+                );
+              }}
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 0, marginTop: 8, textAlign: "right" }}>
+              <Space size="middle">
+                <Button onClick={() => setApprovingUser(null)} style={{ paddingLeft: 20, paddingRight: 20 }}>
+                  ยกเลิก
+                </Button>
+                <Button type="primary" htmlType="submit" loading={approveSubmitting} icon={<CheckCircleOutlined />} style={{ paddingLeft: 24, paddingRight: 24 }}>
+                  อนุมัติและเปิดใช้งาน
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        </Modal>
       </Space>
     </div>
   );

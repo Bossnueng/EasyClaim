@@ -61,3 +61,6 @@ k8s/argocd/
 manuals/
 DOCKER.md
 K8S.md
+
+# สคริปต์ฐานข้อมูล (schema / migration / ข้อมูล) — เก็บไว้ในเครื่อง ไม่ขึ้น git
+backend/database/
